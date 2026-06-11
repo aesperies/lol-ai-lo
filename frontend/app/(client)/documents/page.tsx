@@ -1,0 +1,145 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/components/I18nProvider";
+import StatusBadge from "@/components/StatusBadge";
+import { Card, Label, PageHeader, Select, Spinner } from "@/components/ui";
+import { getFunds, getRequests } from "@/lib/api";
+import { DOC_TYPE_CATALOG, docTypeGroupLabel } from "@/lib/catalog";
+import { REQUEST_STATUSES, type Fund, type RequestItem, type RequestStatus } from "@/lib/types";
+import type { DictKey } from "@/lib/i18n";
+
+export default function DocumentsHistoryPage() {
+  const { t } = useI18n();
+
+  const [requests, setRequests] = useState<RequestItem[] | null>(null);
+  const [funds, setFunds] = useState<Fund[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [docTypeFilter, setDocTypeFilter] = useState<string>("");
+  const [fundFilter, setFundFilter] = useState<string>("");
+
+  useEffect(() => {
+    void getRequests().then(setRequests).catch(() => setRequests([]));
+    void getFunds().then(setFunds).catch(() => setFunds([]));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!requests) return [];
+    return requests.filter(
+      (r) =>
+        (!statusFilter || r.status === statusFilter) &&
+        (!docTypeFilter || r.docType === docTypeFilter) &&
+        (!fundFilter || r.fundId === fundFilter),
+    );
+  }, [requests, statusFilter, docTypeFilter, fundFilter]);
+
+  return (
+    <div>
+      <PageHeader title={t("documents.title")} subtitle={t("documents.subtitle")} />
+
+      {/* Filters */}
+      <Card className="mb-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="filter-status">{t("documents.filterStatus")}</Label>
+            <Select
+              id="filter-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">{t("common.all")}</option>
+              {REQUEST_STATUSES.map((s: RequestStatus) => (
+                <option key={s} value={s}>
+                  {t(`status.${s}` as DictKey)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="filter-doctype">{t("documents.filterDocType")}</Label>
+            <Select
+              id="filter-doctype"
+              value={docTypeFilter}
+              onChange={(e) => setDocTypeFilter(e.target.value)}
+            >
+              <option value="">{t("common.all")}</option>
+              {DOC_TYPE_CATALOG.map((group) => (
+                <optgroup key={group.label} label={docTypeGroupLabel(group)}>
+                  {group.options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="filter-fund">{t("documents.filterFund")}</Label>
+            <Select
+              id="filter-fund"
+              value={fundFilter}
+              onChange={(e) => setFundFilter(e.target.value)}
+            >
+              <option value="">{t("common.all")}</option>
+              {funds.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </Card>
+
+      {requests === null ? (
+        <div className="flex justify-center py-16">
+          <Spinner />
+        </div>
+      ) : filtered.length === 0 ? (
+        <Card className="text-center text-sm text-slate-500">
+          {t("documents.empty")}
+        </Card>
+      ) : (
+        <Card className="overflow-x-auto p-0">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                <th className="px-6 py-3 font-medium">{t("common.docType")}</th>
+                <th className="px-6 py-3 font-medium">{t("common.fund")}</th>
+                <th className="px-6 py-3 font-medium">{t("common.status")}</th>
+                <th className="px-6 py-3 font-medium">{t("common.date")}</th>
+                <th className="px-6 py-3 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-6 py-4 font-medium text-slate-800">
+                    {r.docTypeLabel ?? r.docType}
+                  </td>
+                  <td className="px-6 py-4 text-slate-600">{r.fundName ?? r.fundId}</td>
+                  <td className="px-6 py-4">
+                    <StatusBadge status={r.status} />
+                  </td>
+                  <td className="px-6 py-4 text-slate-500">
+                    {new Date(r.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <Link
+                      href={`/documents/${r.id}`}
+                      className="text-sm font-medium text-brand-700 hover:underline"
+                    >
+                      {t("documents.open")}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}

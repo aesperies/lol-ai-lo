@@ -1,0 +1,35 @@
+# Lol-AI-lo backend dependencies.
+# The app degrades gracefully: it starts and the test suite runs with only
+# fastapi / uvicorn / pydantic / pydantic-settings / python-docx /
+# python-multipart / httpx / pytest / pytest-asyncio installed.
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-docx
+python-multipart
+httpx
+
+# LLM + RAG (optional at runtime; endpoints return 503 if unconfigured)
+anthropic
+openai
+llama-index-core
+llama-index-embeddings-openai
+
+# Database / auth
+supabase
+
+# Google Drive storage (optional; local ./storage fallback)
+google-api-python-client
+google-auth
+
+# PDF extraction (optional; PDFs skipped as RAG context if missing)
+PyMuPDF
+pytesseract
+
+# Email (optional; console fallback)
+resend
+
+# Testing
+pytest
+pytest-asyncio

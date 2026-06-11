@@ -1,0 +1,320 @@
+"""Pydantic models mirroring the DB schema plus request/response DTOs.
+
+Authoritative source: supabase/migrations/001_initial_schema.sql.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Enums (mirror the Postgres enums exactly)
+# ---------------------------------------------------------------------------
+
+class UserRole(str, Enum):
+    client = "client"
+    counsel = "counsel"
+    admin = "admin"
+
+
+class SubscriptionTier(str, Enum):
+    starter = "starter"
+    growth = "growth"
+    custom = "custom"
+
+
+class RequestStatus(str, Enum):
+    parsing = "parsing"
+    confirmed = "confirmed"
+    generating = "generating"
+    review_pending = "review_pending"
+    counsel_review = "counsel_review"
+    validated = "validated"
+    delivered = "delivered"
+
+
+class DocumentVersionType(str, Enum):
+    draft = "draft"
+    redline = "redline"
+    counsel_edit = "counsel_edit"
+    final = "final"
+
+
+class PrecedentSource(str, Enum):
+    manual_upload = "manual_upload"
+    validated_output = "validated_output"
+    slp_curated = "slp_curated"
+    platform_base = "platform_base"
+
+
+class PrecedentVersionStatus(str, Enum):
+    draft = "draft"
+    active = "active"
+    superseded = "superseded"
+
+
+class AuditAction(str, Enum):
+    document_requested = "document_requested"
+    params_confirmed = "params_confirmed"
+    params_edited = "params_edited"
+    document_generated = "document_generated"
+    redline_generated = "redline_generated"
+    draft_downloaded = "draft_downloaded"
+    redline_downloaded = "redline_downloaded"
+    exit_a_acknowledged = "exit_a_acknowledged"
+    exit_a_downloaded = "exit_a_downloaded"
+    counsel_requested = "counsel_requested"
+    counsel_notified = "counsel_notified"
+    counsel_review_started = "counsel_review_started"
+    counsel_edit_inline = "counsel_edit_inline"
+    counsel_edit_uploaded = "counsel_edit_uploaded"
+    document_validated = "document_validated"
+    final_downloaded = "final_downloaded"
+    precedent_uploaded = "precedent_uploaded"
+    precedent_activated = "precedent_activated"
+    precedent_superseded = "precedent_superseded"
+    precedent_version_created = "precedent_version_created"
+
+
+class AuditResourceType(str, Enum):
+    request = "request"
+    document = "document"
+    precedent = "precedent"
+    precedent_version = "precedent_version"
+
+
+class UsageEventType(str, Enum):
+    document_generated = "document_generated"
+    exit_a = "exit_a"
+    exit_b_requested = "exit_b_requested"
+    exit_b_validated = "exit_b_validated"
+
+
+# ---------------------------------------------------------------------------
+# Allowed workflow transitions (guardrail: enforced on every status change)
+# ---------------------------------------------------------------------------
+
+STATUS_TRANSITIONS: dict[RequestStatus, set[RequestStatus]] = {
+    RequestStatus.parsing: {RequestStatus.confirmed},
+    RequestStatus.confirmed: {RequestStatus.generating},
+    RequestStatus.generating: {RequestStatus.review_pending},
+    RequestStatus.review_pending: {RequestStatus.counsel_review, RequestStatus.delivered},
+    RequestStatus.counsel_review: {RequestStatus.validated},
+    RequestStatus.validated: {RequestStatus.delivered},
+    RequestStatus.delivered: set(),
+}
+
+
+# ---------------------------------------------------------------------------
+# Document type catalog (grouped dropdown, SPEC.md)
+# ---------------------------------------------------------------------------
+
+DOC_TYPE_CATALOG: dict[str, list[str]] = {
+    "🏛 Gobierno Corporativo": [
+        "Acta de Reunión del Consejo",
+        "Resolución del Consejo per rollam",
+        "Acta de Junta General",
+        "Resolución de Junta General sin Reunión",
+        "Nombramiento / Cese de Administrador",
+        "Poder General (Delegación de Facultades)",
+        "Poder Especial",
+    ],
+    "💼 Operaciones de Fondo": [
+        "Llamada de Capital (Capital Call Notice)",
+        "Distribución a Inversores (Distribution Notice)",
+        "Extensión del Período de Inversión",
+        "Extensión del Plazo del Fondo",
+        "Certificado de Participación del Inversor",
+        "Waiver / Renuncia a Derecho Contractual",
+    ],
+    "📋 Gestión de Portfolio": [
+        "Term Sheet (no vinculante)",
+        "Carta de Intenciones (LOI)",
+        "NDA / Acuerdo de Confidencialidad",
+        "Acuerdo de Suscripción de Participaciones",
+        "Resolución de Aprobación de Inversión",
+        "Resolución de Seguimiento (Follow-on)",
+        "Resolución de Desinversión",
+    ],
+    "⚖️ Cumplimiento y Regulatorio": [
+        "Certificado de Titularidad Real (UBO)",
+        "Declaración AML/KYC",
+        "Certificado de Residencia Fiscal",
+        "Comunicación a Regulador (CNMV / AMF / BaFin)",
+        "Notificación AIFMD",
+    ],
+    "📝 Contratos con Terceros": [
+        "Contrato de Prestación de Servicios",
+        "Acuerdo de Asesoramiento (Advisory Agreement)",
+        "Contrato de Gestor de Cartera Delegado",
+        "Side Letter con Inversor",
+    ],
+    "🔧 Otros": [
+        "Other (describir abajo)",
+    ],
+}
+
+UNCLASSIFIABLE_MESSAGE = (
+    "No hemos podido clasificar tu solicitud. Por favor reformúlala indicando "
+    "el tipo de documento y las partes implicadas."
+)
+
+LEVEL3_WARNING = (
+    "Este documento se ha generado sin precedente de referencia. La validación "
+    "por abogado es obligatoria antes de su uso."
+)
+
+SLP_DISCLAIMER = (
+    "Este documento ha sido generado por Lol-AI-lo Legal SLP. Su uso sin "
+    "validación por abogado es responsabilidad exclusiva del cliente. "
+    "Lol-AI-lo Legal SLP no asume responsabilidad por documentos descargados "
+    "sin validación (Exit A)."
+)
+
+EXIT_A_CHECKBOX_TEXT = (
+    "Entiendo que este documento no ha sido revisado por un abogado y asumo "
+    "la responsabilidad de su uso."
+)
+
+
+# ---------------------------------------------------------------------------
+# Entity models (DB rows)
+# ---------------------------------------------------------------------------
+
+class Gestora(BaseModel):
+    id: str
+    name: str
+    drive_folder_id: Optional[str] = None
+    subscription_tier: SubscriptionTier = SubscriptionTier.starter
+    billing_email: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class Fund(BaseModel):
+    id: str
+    gestora_id: str
+    name: str
+    jurisdiction: str
+    created_at: Optional[datetime] = None
+
+
+class User(BaseModel):
+    id: str
+    email: str
+    role: UserRole = UserRole.client
+    gestora_id: Optional[str] = None  # NULL for admin/counsel
+    created_at: Optional[datetime] = None
+
+
+class Party(BaseModel):
+    role: str
+    name: str
+
+
+class KeyDate(BaseModel):
+    label: str
+    date: str
+
+
+class KeyTerm(BaseModel):
+    field: str
+    value: str
+
+
+class ParsedParams(BaseModel):
+    """Output of the Claude intake parser (SPEC.md verbatim JSON contract)."""
+
+    language: str = "es"
+    doc_type_confirmed: str = ""
+    parties: list[Party] = Field(default_factory=list)
+    key_dates: list[KeyDate] = Field(default_factory=list)
+    jurisdiction: str = ""
+    governing_law: str = ""
+    key_terms: list[KeyTerm] = Field(default_factory=list)
+    summary: str = ""
+    confidence: float = 0.0
+    unclear_fields: list[str] = Field(default_factory=list)
+    generation_ready: bool = False
+    message: Optional[str] = None  # set when the request is unclassifiable
+
+
+class RequestOut(BaseModel):
+    id: str
+    fund_id: str
+    user_id: str
+    doc_type: str
+    doc_type_custom: Optional[str] = None
+    freetext: str
+    language: Optional[str] = None
+    parsed_params: Optional[dict[str, Any]] = None
+    status: RequestStatus = RequestStatus.parsing
+    requires_counsel: bool = False
+    exit_a_acknowledged_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class DocumentOut(BaseModel):
+    id: str
+    request_id: str
+    version_type: DocumentVersionType
+    file_path: str
+    precedent_version_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class PrecedentOut(BaseModel):
+    id: str
+    gestora_id: Optional[str] = None
+    fund_id: Optional[str] = None
+    doc_type: str
+    language: str
+    source: PrecedentSource = PrecedentSource.manual_upload
+    created_at: Optional[datetime] = None
+
+
+class PrecedentVersionOut(BaseModel):
+    id: str
+    precedent_id: str
+    version_number: int
+    file_path: str
+    status: PrecedentVersionStatus = PrecedentVersionStatus.draft
+    rag_weight: float = 0.0
+    activated_at: Optional[datetime] = None
+    superseded_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# Request/response DTOs
+# ---------------------------------------------------------------------------
+
+class RequestCreate(BaseModel):
+    fund_id: str
+    doc_type: str
+    doc_type_custom: Optional[str] = None
+    freetext: str = Field(min_length=50, max_length=2000)
+    # "validación por abogado" intake toggle (default OFF per SPEC)
+    validation_requested: bool = False
+
+
+class ConfirmParamsBody(BaseModel):
+    """Client confirmation of parsed parameters; edited params optional."""
+
+    parsed_params: Optional[dict[str, Any]] = None
+
+
+class ExitAAcknowledgeBody(BaseModel):
+    # Frontend must send the explicit checkbox value; server re-verifies it.
+    acknowledged: bool = False
+
+
+class CounselInlineEditBody(BaseModel):
+    text: str = Field(min_length=1)
+    comment: Optional[str] = None
