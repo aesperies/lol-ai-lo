@@ -147,6 +147,10 @@ export interface RequestItem {
   status: RequestStatus;
   requiresCounsel: boolean;
   exitAAcknowledgedAt?: string | null;
+  /** Counsel SLA clock: stamped when the request enters counsel_review. */
+  counselRequestedAt?: string | null;
+  /** Counsel SLA clock: stamped when counsel validates. */
+  counselValidatedAt?: string | null;
   /** Precedent fallback chain level used at generation time. Level 3 forces Exit B. */
   fallbackLevel?: FallbackLevel;
   /** True when the generated document contains [MISSING: …] fields → blocks Exit A. */
@@ -267,4 +271,45 @@ export interface GenerationJob {
   status: GenerationJobStatus;
   attempts: number;
   lastError?: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin KPIs: quality (improvement #6) + counsel SLA (improvement #8)  */
+/* ------------------------------------------------------------------ */
+
+/** One aggregated quality group (GET /api/admin/quality). Ratios are 0–1. */
+export interface QualityStats {
+  count: number;
+  /** Mean draft→final similarity (1.0 = validated/accepted untouched). */
+  avgSimilarity: number | null;
+  avgRefinements: number | null;
+  /** Share delivered via Exit A (accepted as-is, the strongest signal). */
+  pctAcceptedAsIs: number | null;
+  /** Share validated by counsel (Exit B). */
+  pctValidated: number | null;
+}
+
+export interface QualityReport {
+  overall: QualityStats;
+  byDocType: Array<QualityStats & { docType: string }>;
+  byGestora: Array<QualityStats & { gestoraId: string; gestoraName?: string | null }>;
+}
+
+/** One counsel-SLA aggregate (GET /api/admin/sla). */
+export interface SlaStats {
+  /** Reviews currently in counsel_review. */
+  pending: number;
+  /** Pending reviews already past the SLA. */
+  pastSla: number;
+  /** Mean counsel response time over completed validations (hours). */
+  avgValidationHours: number | null;
+  remindersSent: number;
+  escalationsSent: number;
+}
+
+export interface SlaReport {
+  /** Promised review turnaround (backend sla_review_hours). */
+  slaHours: number;
+  overall: SlaStats;
+  byCounsel: Array<SlaStats & { counselEmail: string }>;
 }

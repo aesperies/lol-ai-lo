@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     # directed to Exit B (counsel validation).
     max_refinements: int = 3
 
+    # ---------- Counsel SLA (Exit B turnaround, improvement #8) ----------
+    # Promised review turnaround for counsel validation (hours).
+    sla_review_hours: float = 48.0
+    # Reminder to the assigned counsel when half the SLA has elapsed.
+    sla_reminder_hours: float = 24.0
+    # Escalation to the BACKUP counsel after SLA + 8h grace.
+    sla_escalation_hours: float = 56.0
+    # In-process periodic sweep (services/sla.py); disabled under pytest.
+    sla_sweep_enabled: bool = True
+    sla_sweep_interval_minutes: float = 30.0
+
     # -- readiness flags ---------------------------------------------------
     @property
     def supabase_configured(self) -> bool:

@@ -107,6 +107,13 @@ class RefinementStatus(str, Enum):
     failed = "failed"
 
 
+class SlaEventKind(str, Enum):
+    """Mirrors the sla_events.kind CHECK constraint (005_quality_and_sla.sql)."""
+
+    reminder = "reminder"
+    escalation = "escalation"
+
+
 # ---------------------------------------------------------------------------
 # Allowed workflow transitions (guardrail: enforced on every status change)
 # ---------------------------------------------------------------------------
@@ -279,6 +286,10 @@ class RequestOut(BaseModel):
     status: RequestStatus = RequestStatus.parsing
     requires_counsel: bool = False
     exit_a_acknowledged_at: Optional[datetime] = None
+    # Counsel SLA timestamps (005_quality_and_sla.sql): stamped when the
+    # request enters 'counsel_review' / 'validated' respectively.
+    counsel_requested_at: Optional[datetime] = None
+    counsel_validated_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

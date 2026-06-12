@@ -93,6 +93,7 @@ const es = {
   "nav.gestoras": "Gestoras",
   "nav.precedents": "Precedentes",
   "nav.users": "Usuarios",
+  "nav.quality": "Calidad y SLA",
 
   // Auth
   "auth.loginTitle": "Iniciar sesión",
@@ -301,6 +302,9 @@ const es = {
   "counsel.queueEmpty": "No hay revisiones pendientes.",
   "counsel.requestedBy": "Solicitado por",
   "counsel.review": "Revisar",
+  // SLA chip (verde <50% · ámbar 50–100% · rojo >100% del SLA)
+  "counsel.slaChip": "{hours} h / {sla} h SLA",
+  "counsel.slaExceeded": "SLA superado · {hours} h",
   "counsel.reviewTitle": "Revisión de documento",
   "counsel.draftPane": "Borrador",
   "counsel.redlinePane": "Redline vs. Precedente",
@@ -379,6 +383,29 @@ const es = {
   "admin.users.invite": "Invitar usuario",
   "admin.users.gestora": "Gestora",
   "admin.users.invited": "Invitación enviada.",
+
+  // Admin — quality & SLA (improvements #6 & #8)
+  "admin.quality.title": "Calidad y SLA",
+  "admin.quality.subtitle":
+    "Calidad de la generación (cuánto cambia el abogado el borrador de la IA) y cumplimiento del SLA de revisión por abogado.",
+  "admin.quality.qualityTitle": "Calidad por tipo de documento",
+  "admin.quality.qualityHint":
+    "Similitud 1,00 = documento entregado sin cambios respecto al borrador de la IA.",
+  "admin.quality.count": "Docs",
+  "admin.quality.avgSimilarity": "Similitud media",
+  "admin.quality.pctAcceptedAsIs": "% aceptado sin cambios",
+  "admin.quality.avgRefinements": "Ajustes medios",
+  "admin.quality.overall": "Total",
+  "admin.quality.empty": "Aún no hay métricas de calidad.",
+  "admin.sla.title": "SLA de revisión por abogado",
+  "admin.sla.target": "SLA objetivo: {hours} h",
+  "admin.sla.counsel": "Abogado",
+  "admin.sla.pending": "Pendientes",
+  "admin.sla.avgHours": "Horas medias de respuesta",
+  "admin.sla.pastSla": "Fuera de SLA",
+  "admin.sla.reminders": "Recordatorios",
+  "admin.sla.escalations": "Escalados",
+  "admin.sla.empty": "Aún no hay datos de SLA.",
 } as const;
 
 export type DictKey = keyof typeof es;
@@ -433,6 +460,7 @@ const en: Record<DictKey, string> = {
   "nav.gestoras": "Management companies",
   "nav.precedents": "Precedents",
   "nav.users": "Users",
+  "nav.quality": "Quality & SLA",
 
   "auth.loginTitle": "Sign in",
   "auth.loginSubtitle": "Access your fund documentation workspace.",
@@ -622,6 +650,8 @@ const en: Record<DictKey, string> = {
   "counsel.queueEmpty": "No pending reviews.",
   "counsel.requestedBy": "Requested by",
   "counsel.review": "Review",
+  "counsel.slaChip": "{hours} h / {sla} h SLA",
+  "counsel.slaExceeded": "SLA exceeded · {hours} h",
   "counsel.reviewTitle": "Document review",
   "counsel.draftPane": "Draft",
   "counsel.redlinePane": "Redline vs. Precedent",
@@ -696,6 +726,28 @@ const en: Record<DictKey, string> = {
   "admin.users.invite": "Invite user",
   "admin.users.gestora": "Management company",
   "admin.users.invited": "Invitation sent.",
+
+  "admin.quality.title": "Quality & SLA",
+  "admin.quality.subtitle":
+    "Generation quality (how much counsel changes the AI draft) and counsel review SLA compliance.",
+  "admin.quality.qualityTitle": "Quality by document type",
+  "admin.quality.qualityHint":
+    "Similarity 1.00 = document delivered with no changes versus the AI draft.",
+  "admin.quality.count": "Docs",
+  "admin.quality.avgSimilarity": "Avg. similarity",
+  "admin.quality.pctAcceptedAsIs": "% accepted as-is",
+  "admin.quality.avgRefinements": "Avg. adjustments",
+  "admin.quality.overall": "Total",
+  "admin.quality.empty": "No quality metrics yet.",
+  "admin.sla.title": "Counsel review SLA",
+  "admin.sla.target": "Target SLA: {hours} h",
+  "admin.sla.counsel": "Counsel",
+  "admin.sla.pending": "Pending",
+  "admin.sla.avgHours": "Avg. response hours",
+  "admin.sla.pastSla": "Past SLA",
+  "admin.sla.reminders": "Reminders",
+  "admin.sla.escalations": "Escalations",
+  "admin.sla.empty": "No SLA data yet.",
 };
 
 /* ------------------------------------------------------------------ */

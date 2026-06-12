@@ -61,6 +61,55 @@ def send_counsel_notification(
     return send_email(counsel_email, subject, body)
 
 
+def send_sla_reminder(
+    *,
+    counsel_name: str,
+    counsel_email: str,
+    fund_name: str,
+    doc_type: str,
+    hours_pending: int,
+    sla_hours: int,
+    review_url: str,
+) -> dict:
+    """SLA sweep template: half the review SLA has elapsed without validation."""
+    subject = f"[Lol-AI-lo] Recordatorio: revisión pendiente — {fund_name} — {doc_type}"
+    body = (
+        f"Hola {counsel_name},\n\n"
+        f"Tienes una revisión pendiente que lleva {hours_pending}h sin atender "
+        f"(SLA de revisión: {sla_hours}h).\n\n"
+        f"Fondo: {fund_name}\n"
+        f"Tipo de documento: {doc_type}\n\n"
+        f"Revisar el documento: {review_url}\n\n"
+        f"Lol-AI-lo Legal SLP"
+    )
+    return send_email(counsel_email, subject, body)
+
+
+def send_sla_escalation(
+    *,
+    counsel_name: str,
+    counsel_email: str,
+    fund_name: str,
+    doc_type: str,
+    hours_pending: int,
+    sla_hours: int,
+    review_url: str,
+) -> dict:
+    """SLA sweep template: review unattended past the SLA — escalated to the
+    backup counsel."""
+    subject = f"[Lol-AI-lo] Escalado: revisión sin atender — {fund_name} — {doc_type}"
+    body = (
+        f"Hola {counsel_name},\n\n"
+        f"Una revisión lleva {hours_pending}h sin atender y ha superado el SLA "
+        f"de {sla_hours}h. Se te ha escalado como counsel de respaldo.\n\n"
+        f"Fondo: {fund_name}\n"
+        f"Tipo de documento: {doc_type}\n\n"
+        f"Revisar el documento: {review_url}\n\n"
+        f"Lol-AI-lo Legal SLP"
+    )
+    return send_email(counsel_email, subject, body)
+
+
 def send_client_ready(
     *,
     client_name: str,

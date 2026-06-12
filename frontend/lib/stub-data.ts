@@ -27,12 +27,19 @@ import type {
   ParsedParty,
   ParsedTerm,
   Precedent,
+  QualityReport,
   RedlineSegment,
   Refinement,
   RequestItem,
   ReviewBundle,
+  SlaReport,
   UserProfile,
 } from "@/lib/types";
+
+/** Relative timestamp so the SLA demo chips stay meaningful over time. */
+function hoursAgoIso(hours: number): string {
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
 
 export const STUB_GESTORA: Gestora = {
   id: "g-demo-1",
@@ -234,6 +241,8 @@ export const stubRequests: RequestItem[] = [
     language: "es",
     status: "counsel_review",
     requiresCounsel: true,
+    // Ámbar SLA chip: past half the 48h SLA, not yet over it.
+    counselRequestedAt: hoursAgoIso(30),
     fallbackLevel: 0,
     hasMissingFields: false,
     createdAt: "2026-06-08T09:00:00Z",
@@ -276,6 +285,48 @@ export const stubRequests: RequestItem[] = [
     hasMissingFields: false,
     createdAt: "2026-06-11T08:30:00Z",
     updatedAt: "2026-06-11T08:33:00Z",
+  },
+  {
+    id: "r-5",
+    fundId: "f-2",
+    fundName: STUB_FUNDS[1].name,
+    gestoraId: STUB_GESTORA.id,
+    userId: "u-client-2",
+    requestedByName: "Jorge Molina",
+    docType: "side_letter_inversor",
+    docTypeLabel: docTypeLabel("side_letter_inversor"),
+    freetext:
+      "Side letter con el inversor institucional Pensions Nord para el Fund II reconociendo derechos de información trimestral ampliada y co-inversión preferente.",
+    language: "es",
+    status: "counsel_review",
+    requiresCounsel: true,
+    // Verde SLA chip: well within the first half of the 48h SLA.
+    counselRequestedAt: hoursAgoIso(4),
+    fallbackLevel: 1,
+    hasMissingFields: false,
+    createdAt: hoursAgoIso(5),
+    updatedAt: hoursAgoIso(4),
+  },
+  {
+    id: "r-6",
+    fundId: "f-1",
+    fundName: STUB_FUNDS[0].name,
+    gestoraId: STUB_GESTORA.id,
+    userId: "u-client-1",
+    requestedByName: "Lucía Fernández",
+    docType: "waiver_renuncia",
+    docTypeLabel: docTypeLabel("waiver_renuncia"),
+    freetext:
+      "Waiver puntual de la restricción de transmisión de participaciones del artículo 9 del reglamento del Fund I a favor del inversor Faro Capital, para una transmisión entre vehículos del mismo grupo.",
+    language: "es",
+    status: "counsel_review",
+    requiresCounsel: true,
+    // Rojo SLA chip: pending past the 48h SLA ("SLA superado").
+    counselRequestedAt: hoursAgoIso(55),
+    fallbackLevel: 0,
+    hasMissingFields: false,
+    createdAt: hoursAgoIso(56),
+    updatedAt: hoursAgoIso(55),
   },
 ];
 
@@ -804,3 +855,102 @@ export function stubAddComment(
   stubComments.push(comment);
   return comment;
 }
+
+/* ------------------------------------------------------------------ */
+/* Admin KPI demo data: quality (#6) + counsel SLA (#8)                 */
+/* ------------------------------------------------------------------ */
+
+/** Demo numbers for GET /api/admin/quality. */
+export const STUB_QUALITY_REPORT: QualityReport = {
+  overall: {
+    count: 23,
+    avgSimilarity: 0.94,
+    avgRefinements: 0.7,
+    pctAcceptedAsIs: 0.61,
+    pctValidated: 0.39,
+  },
+  byDocType: [
+    {
+      docType: docTypeLabel("nda"),
+      count: 8,
+      avgSimilarity: 0.98,
+      avgRefinements: 0.3,
+      pctAcceptedAsIs: 0.88,
+      pctValidated: 0.12,
+    },
+    {
+      docType: docTypeLabel("llamada_capital"),
+      count: 7,
+      avgSimilarity: 0.95,
+      avgRefinements: 0.6,
+      pctAcceptedAsIs: 0.57,
+      pctValidated: 0.43,
+    },
+    {
+      docType: docTypeLabel("term_sheet"),
+      count: 5,
+      avgSimilarity: 0.91,
+      avgRefinements: 1.2,
+      pctAcceptedAsIs: 0.4,
+      pctValidated: 0.6,
+    },
+    {
+      docType: docTypeLabel("notificacion_aifmd"),
+      count: 3,
+      avgSimilarity: 0.84,
+      avgRefinements: 1.3,
+      pctAcceptedAsIs: 0, // Level 3 always forces Exit B
+      pctValidated: 1,
+    },
+  ],
+  byGestora: [
+    {
+      gestoraId: STUB_GESTORA.id,
+      gestoraName: STUB_GESTORA.name,
+      count: 17,
+      avgSimilarity: 0.95,
+      avgRefinements: 0.6,
+      pctAcceptedAsIs: 0.65,
+      pctValidated: 0.35,
+    },
+    {
+      gestoraId: "g-demo-2",
+      gestoraName: "Atlantique Capital Gestion SAS",
+      count: 6,
+      avgSimilarity: 0.9,
+      avgRefinements: 1.0,
+      pctAcceptedAsIs: 0.5,
+      pctValidated: 0.5,
+    },
+  ],
+};
+
+/** Demo numbers for GET /api/admin/sla (mirrors the 48h review SLA). */
+export const STUB_SLA_REPORT: SlaReport = {
+  slaHours: 48,
+  overall: {
+    pending: 3,
+    pastSla: 1,
+    avgValidationHours: 21.4,
+    remindersSent: 2,
+    escalationsSent: 1,
+  },
+  byCounsel: [
+    {
+      counselEmail: "maria.llopis@lolailolegal.es",
+      pending: 3,
+      pastSla: 1,
+      avgValidationHours: 19.8,
+      remindersSent: 2,
+      escalationsSent: 0,
+    },
+    {
+      counselEmail: "carlos.duran@lolailolegal.es",
+      pending: 0,
+      pastSla: 0,
+      avgValidationHours: 26.5,
+      remindersSent: 0,
+      escalationsSent: 1,
+    },
+  ],
+};

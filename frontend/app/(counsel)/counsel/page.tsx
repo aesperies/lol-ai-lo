@@ -1,7 +1,9 @@
 "use client";
 
 /**
- * Counsel dashboard — pending reviews queue.
+ * Counsel dashboard — pending reviews queue, sorted oldest first, each row
+ * showing hours pending and a colored SLA chip (verde <50% SLA, ámbar
+ * 50–100%, rojo >100% "SLA superado").
  * NOTE: lives at /counsel (not /dashboard) because Next.js route groups do
  * not namespace URLs and /dashboard belongs to the client area; middleware
  * protects /counsel and /review for the counsel role.
@@ -11,16 +13,40 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
-import { Button, Card, PageHeader, Spinner } from "@/components/ui";
-import { getCounselQueue } from "@/lib/api";
+import { Badge, Button, Card, PageHeader, Spinner } from "@/components/ui";
+import type { BadgeTone } from "@/components/ui";
+import { SLA_REVIEW_HOURS, getCounselQueue } from "@/lib/api";
 import type { RequestItem } from "@/lib/types";
+
+/** Hours the review has been pending (counselRequestedAt, createdAt fallback). */
+function hoursPending(r: RequestItem): number {
+  const since = r.counselRequestedAt ?? r.createdAt;
+  return Math.max(0, (Date.now() - new Date(since).getTime()) / 3_600_000);
+}
+
+function SlaChip({ request }: { request: RequestItem }) {
+  const { t } = useI18n();
+  const hours = Math.floor(hoursPending(request));
+  const ratio = hoursPending(request) / SLA_REVIEW_HOURS;
+  const tone: BadgeTone = ratio < 0.5 ? "green" : ratio <= 1 ? "amber" : "red";
+  const label =
+    ratio > 1
+      ? t("counsel.slaExceeded", { hours })
+      : t("counsel.slaChip", { hours, sla: SLA_REVIEW_HOURS });
+  return <Badge tone={tone}>{label}</Badge>;
+}
 
 export default function CounselDashboardPage() {
   const { t } = useI18n();
   const [queue, setQueue] = useState<RequestItem[] | null>(null);
 
   useEffect(() => {
-    void getCounselQueue().then(setQueue).catch(() => setQueue([]));
+    void getCounselQueue()
+      // Oldest pending review first (the most at-risk against the SLA).
+      .then((rows) =>
+        setQueue([...rows].sort((a, b) => hoursPending(b) - hoursPending(a))),
+      )
+      .catch(() => setQueue([]));
   }, []);
 
   return (
@@ -54,6 +80,7 @@ export default function CounselDashboardPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  <SlaChip request={r} />
                   <StatusBadge status={r.status} />
                   <Link href={`/review/${r.id}`}>
                     <Button>{t("counsel.review")}</Button>

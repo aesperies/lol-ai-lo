@@ -1,6 +1,7 @@
 """Request lifecycle endpoints: intake, parse, confirm, Exit A/B, counsel flow."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -40,9 +41,20 @@ from models.schema import (
     User,
     UserRole,
 )
-from services import audit, db as dbmod, email_service, intake_parser, rag, storage, usage
+from services import (
+    audit,
+    db as dbmod,
+    email_service,
+    intake_parser,
+    quality,
+    rag,
+    storage,
+    usage,
+)
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
+
+logger = logging.getLogger("lolailo.requests")
 
 
 def _ip(http_request: Request) -> Optional[str]:
@@ -95,6 +107,9 @@ async def submit_request(
             # "validación por abogado" toggle: counsel review requested upfront
             "requires_counsel": body.validation_requested,
             "exit_a_acknowledged_at": None,
+            # Counsel SLA timestamps (005_quality_and_sla.sql).
+            "counsel_requested_at": None,
+            "counsel_validated_at": None,
         },
     )
     audit.log_action(
@@ -313,6 +328,14 @@ async def exit_a_download(
     )
     usage.record_usage(db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.exit_a)
 
+    # Quality KPI (improvement #6): accepted as-is → similarity 1.0 (the
+    # strongest quality signal). Once per request (UNIQUE on request_id);
+    # a metric failure must NEVER block delivery.
+    try:
+        quality.record_exit_a_metric(db, request_row=row, gestora_id=gestora_id, draft_doc=draft)
+    except Exception:  # noqa: BLE001 — metrics are best-effort by design
+        logger.exception("Quality metric failed for request %s (delivery continues)", request_id)
+
     # Precedent candidate: NOT active until an admin approves (guardrail 8).
     precedent = db.insert(
         "precedents",
@@ -370,7 +393,9 @@ async def exit_b_request_validation(
     gestora_id = assert_request_access(db, user, row)
     require_status(row, RequestStatus.review_pending)
 
-    row = transition(db, row, RequestStatus.counsel_review)
+    transition(db, row, RequestStatus.counsel_review)
+    # SLA clock starts now (counsel response metrics + sweep, services/sla.py).
+    row = db.update("requests", request_id, {"counsel_requested_at": now_iso()})
     audit.log_action(
         db,
         user=user,
@@ -474,7 +499,23 @@ async def counsel_validate(
             "iteration": source_doc.get("iteration", 0),
         },
     )
-    row = transition(db, row, RequestStatus.validated)
+    transition(db, row, RequestStatus.validated)
+    # SLA clock stops now (counsel response metrics, services/sla.py).
+    row = db.update("requests", request_id, {"counsel_validated_at": now_iso()})
+
+    # Quality KPI (improvement #6): how much did counsel change the AI draft?
+    # A metric failure must NEVER block validation.
+    try:
+        quality.record_exit_b_metric(
+            db,
+            request_row=row,
+            gestora_id=gestora_id,
+            draft_doc=latest_document(db, request_id, DocumentVersionType.draft),
+            final_doc_path=source_doc["file_path"],
+        )
+    except Exception:  # noqa: BLE001 — metrics are best-effort by design
+        logger.exception("Quality metric failed for request %s (validation continues)", request_id)
+
     audit.log_action(
         db,
         user=user,

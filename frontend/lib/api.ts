@@ -17,6 +17,8 @@ import {
   STUB_ASSIGNED_COUNSEL,
   STUB_FUNDS,
   STUB_ALL_USERS,
+  STUB_QUALITY_REPORT,
+  STUB_SLA_REPORT,
   delay,
   findRequest,
   nextRequestId,
@@ -55,12 +57,16 @@ import type {
   Gestora,
   ParsedParams,
   Precedent,
+  QualityReport,
+  QualityStats,
   RedlineSegment,
   Refinement,
   RefinementStatus,
   RequestItem,
   ReviewBundle,
   Role,
+  SlaReport,
+  SlaStats,
   SubscriptionTier,
   UserProfile,
 } from "@/lib/types";
@@ -113,6 +119,10 @@ export const apiPaths = {
   precedentVersionSupersede: (precedentId: string, versionId: string) =>
     `/api/precedents/${precedentId}/versions/${versionId}/supersede`,
   users: "/api/users",
+  // Admin KPIs: quality (improvement #6) + counsel SLA (improvement #8).
+  adminQuality: "/api/admin/quality",
+  adminSla: "/api/admin/sla",
+  adminSlaSweep: "/api/admin/sla/sweep",
 } as const;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -341,6 +351,10 @@ export async function acknowledgeExitA(id: string): Promise<RequestItem> {
 /** Mirrors the backend `max_refinements` setting (config.py, default 3). */
 export const MAX_REFINEMENTS = 3;
 
+/** Mirrors the backend `sla_review_hours` setting (config.py, default 48):
+ * promised counsel review turnaround for Exit B. */
+export const SLA_REVIEW_HOURS = 48;
+
 interface RefinementWire {
   id: string;
   request_id: string;
@@ -411,6 +425,8 @@ export async function requestExitB(id: string): Promise<RequestItem> {
     if (!req) throw new ApiError(404, "Request not found");
     req.status = "counsel_review";
     req.requiresCounsel = true;
+    // SLA clock starts now (counsel dashboard chip / admin SLA report).
+    req.counselRequestedAt = nowIso();
     req.updatedAt = nowIso();
     return req;
   }
@@ -560,6 +576,8 @@ export async function validateRequest(id: string): Promise<RequestItem> {
     if (!req) throw new ApiError(404, "Request not found");
     // Counsel-validated docs enter the precedent library automatically.
     req.status = "delivered";
+    // SLA clock stops now (counsel response metrics).
+    req.counselValidatedAt = nowIso();
     req.updatedAt = nowIso();
     return req;
   }
@@ -854,6 +872,94 @@ export async function removeCounselAssignment(id: string): Promise<void> {
     headers,
   });
   if (!res.ok) throw new ApiError(res.status, res.statusText);
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin KPIs: quality (improvement #6) + counsel SLA (improvement #8)  */
+/* ------------------------------------------------------------------ */
+
+interface QualityStatsWire {
+  count: number;
+  avg_similarity: number | null;
+  avg_refinements: number | null;
+  pct_accepted_as_is: number | null;
+  pct_validated: number | null;
+}
+
+function mapQualityStats(wire: QualityStatsWire): QualityStats {
+  return {
+    count: wire.count,
+    avgSimilarity: wire.avg_similarity,
+    avgRefinements: wire.avg_refinements,
+    pctAcceptedAsIs: wire.pct_accepted_as_is,
+    pctValidated: wire.pct_validated,
+  };
+}
+
+/** Aggregated quality stats (admin-only). */
+export async function getQualityReport(): Promise<QualityReport> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return STUB_QUALITY_REPORT;
+  }
+  const res = await apiFetch<{
+    overall: QualityStatsWire;
+    by_doc_type: Array<QualityStatsWire & { doc_type: string }>;
+    by_gestora: Array<
+      QualityStatsWire & { gestora_id: string; gestora_name?: string | null }
+    >;
+  }>(apiPaths.adminQuality);
+  return {
+    overall: mapQualityStats(res.overall),
+    byDocType: res.by_doc_type.map((r) => ({
+      docType: r.doc_type,
+      ...mapQualityStats(r),
+    })),
+    byGestora: res.by_gestora.map((r) => ({
+      gestoraId: r.gestora_id,
+      gestoraName: r.gestora_name ?? null,
+      ...mapQualityStats(r),
+    })),
+  };
+}
+
+interface SlaStatsWire {
+  pending: number;
+  past_sla: number;
+  avg_validation_hours: number | null;
+  reminders_sent: number;
+  escalations_sent: number;
+}
+
+function mapSlaStats(wire: SlaStatsWire): SlaStats {
+  return {
+    pending: wire.pending,
+    pastSla: wire.past_sla,
+    avgValidationHours: wire.avg_validation_hours,
+    remindersSent: wire.reminders_sent,
+    escalationsSent: wire.escalations_sent,
+  };
+}
+
+/** Counsel response metrics (admin-only). */
+export async function getSlaReport(): Promise<SlaReport> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return STUB_SLA_REPORT;
+  }
+  const res = await apiFetch<{
+    sla_hours: number;
+    overall: SlaStatsWire;
+    by_counsel: Array<SlaStatsWire & { counsel_email: string }>;
+  }>(apiPaths.adminSla);
+  return {
+    slaHours: res.sla_hours,
+    overall: mapSlaStats(res.overall),
+    byCounsel: res.by_counsel.map((r) => ({
+      counselEmail: r.counsel_email,
+      ...mapSlaStats(r),
+    })),
+  };
 }
 
 /** Triggers a browser download for a Blob. */

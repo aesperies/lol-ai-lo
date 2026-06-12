@@ -7,6 +7,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from auth import get_current_user, require_admin, require_client
+from config import get_settings
 from models.schema import (
     AssignedCounselOut,
     CounselAssignmentCreate,
@@ -17,10 +18,6 @@ from models.schema import (
 from services import db as dbmod
 
 router = APIRouter(prefix="/api", tags=["counsel-assignments"])
-
-# TODO: turnaround is fixed at 48h for now; make it configurable per
-# gestora/assignment (subscription tier, SLA) later.
-TURNAROUND_HOURS = 48
 
 
 def resolve_counsel_recipients(
@@ -44,6 +41,30 @@ def resolve_counsel_recipients(
             ]
             if recipients:
                 return mode, recipients
+    return "broadcast", db.select("users", role=UserRole.counsel.value)
+
+
+def resolve_backup_counsel_recipients(
+    db: dbmod.Database, gestora_id: Optional[str]
+) -> tuple[str, list[dict[str, Any]]]:
+    """Who receives an SLA ESCALATION for this gestora (services/sla.py).
+
+    Escalations skip the primary (who already got the reminder) and go to the
+    BACKUP assignment(s); with no backup, broadcast to every counsel user.
+    """
+    if gestora_id:
+        backups = [
+            a
+            for a in db.select("counsel_assignments", gestora_id=gestora_id)
+            if not a.get("is_primary")
+        ]
+        recipients = [
+            u
+            for u in (db.get("users", a["counsel_user_id"]) for a in backups)
+            if u is not None and u.get("role") == UserRole.counsel.value
+        ]
+        if recipients:
+            return "backup", recipients
     return "broadcast", db.select("users", role=UserRole.counsel.value)
 
 
@@ -146,5 +167,7 @@ async def my_counsel(user: User = Depends(require_client)) -> Any:
         name=counsel["email"].split("@")[0],
         email=counsel["email"],
         is_primary=chosen["is_primary"],
-        turnaround_hours=TURNAROUND_HOURS,
+        # Review SLA (config sla_review_hours, default 48h).
+        # TODO: make it configurable per gestora/assignment (subscription tier).
+        turnaround_hours=int(get_settings().sla_review_hours),
     )

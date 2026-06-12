@@ -7,10 +7,14 @@ DB -> dev store when DEV_AUTH_STUB=true).
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.admin_metrics import router as admin_metrics_router
 from api.counsel_assignments import router as counsel_assignments_router
 from api.doc_types import router as doc_types_router
 from api.documents import router as documents_router
@@ -20,7 +24,22 @@ from api.refinements import router as refinements_router
 from api.requests import router as requests_router
 from config import ServiceNotConfiguredError, get_settings
 
-app = FastAPI(title="Lol-AI-lo API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Periodic counsel-SLA sweep (services/sla.py): reminders + escalations
+    for reviews stuck past their thresholds. No-op under pytest or when
+    SLA_SWEEP_ENABLED=false. TODO: move to an external scheduler (cron /
+    Celery beat) in production multi-worker setups."""
+    from services import sla  # local import keeps startup dependency-free
+
+    sla.start_sweep_loop()
+    try:
+        yield
+    finally:
+        sla.stop_sweep_loop()
+
+
+app = FastAPI(title="Lol-AI-lo API", version="1.0.0", lifespan=lifespan)
 
 _settings = get_settings()
 app.add_middleware(
@@ -44,6 +63,7 @@ app.include_router(precedents_router)
 app.include_router(notifications_router)
 app.include_router(counsel_assignments_router)
 app.include_router(doc_types_router)
+app.include_router(admin_metrics_router)
 
 
 @app.get("/health")
