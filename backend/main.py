@@ -10,11 +10,12 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.admin_metrics import router as admin_metrics_router
+from api.admin_retention import router as admin_retention_router
 from api.billing import router as billing_router
 from api.counsel_assignments import router as counsel_assignments_router
 from api.doc_types import router as doc_types_router
@@ -43,13 +44,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Lol-AI-lo API", version="1.0.0", lifespan=lifespan)
 
 _settings = get_settings()
+# CORS tightened (improvement #9): only the configured frontend origin, only
+# the methods/headers the frontend actually sends.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_settings.frontend_url, "http://localhost:3000"],
+    allow_origins=[_settings.frontend_url],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Dev-User"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next) -> Response:
+    """Security headers on every response (improvement #9): no MIME sniffing,
+    no framing, conservative referrers, and no-store caching for /api payloads
+    (documents and personal data must never land in shared caches)."""
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.url.path.startswith("/api"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.exception_handler(ServiceNotConfiguredError)
@@ -65,6 +82,7 @@ app.include_router(notifications_router)
 app.include_router(counsel_assignments_router)
 app.include_router(doc_types_router)
 app.include_router(admin_metrics_router)
+app.include_router(admin_retention_router)
 app.include_router(billing_router)
 
 

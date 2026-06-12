@@ -51,6 +51,7 @@ from services import (
     storage,
     usage,
 )
+from services.rate_limit import rate_limit
 
 router = APIRouter(prefix="/api/requests", tags=["refinements"])
 
@@ -195,7 +196,12 @@ def _run_refinement_pipeline(
     transition(db, db.get("requests", request_id), RequestStatus.review_pending)
 
 
-@router.post("/{request_id}/refinements", status_code=202)
+@router.post(
+    "/{request_id}/refinements",
+    status_code=202,
+    # LLM-cost endpoint: 6/min per user (improvement #9 rate limiting).
+    dependencies=[Depends(rate_limit("refinement", 6))],
+)
 async def request_refinement(
     request_id: str,
     body: RefinementCreate,

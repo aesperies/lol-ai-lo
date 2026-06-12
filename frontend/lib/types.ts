@@ -50,6 +50,22 @@ export interface Gestora {
   createdAt: string;
 }
 
+/** Per-gestora GDPR data-retention policy
+ * (GET/PUT /api/admin/gestoras/{id}/retention, improvement #10). */
+export interface RetentionPolicy {
+  gestoraId: string;
+  /** Months delivered-request documents are kept (6-120). */
+  months: number;
+  /** True when the gestora has no explicit policy (platform default). */
+  isDefault: boolean;
+  updatedAt?: string | null;
+}
+
+/** Mirror of the backend bounds/default (config + 007_data_retention.sql). */
+export const RETENTION_MONTHS_MIN = 6;
+export const RETENTION_MONTHS_MAX = 120;
+export const RETENTION_MONTHS_DEFAULT = 60;
+
 export interface Fund {
   id: string;
   gestoraId: string;

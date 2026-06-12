@@ -48,9 +48,11 @@ from services import (
     intake_parser,
     quality,
     rag,
+    signed_urls,
     storage,
     usage,
 )
+from services.rate_limit import rate_limit
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
 
@@ -131,7 +133,11 @@ async def submit_request(
     return row
 
 
-@router.post("/{request_id}/parse")
+@router.post(
+    "/{request_id}/parse",
+    # LLM-cost endpoint: 10/min per user (improvement #9 rate limiting).
+    dependencies=[Depends(rate_limit("parse", 10))],
+)
 async def parse_request(
     request_id: str,
     http_request: Request,
@@ -412,6 +418,11 @@ async def exit_b_request_validation(
 
     fund = db.get("funds", row["fund_id"]) or {}
     deadline = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
+    # Session-free, expiring draft download for the email (improvement #9);
+    # the platform review link stays alongside it.
+    draft_download_url = signed_urls.signed_download_url(
+        request_id, DocumentVersionType.draft.value
+    )
     # Routing: gestora's PRIMARY assigned counsel -> backup -> broadcast.
     routing, recipients = resolve_counsel_recipients(db, gestora_id)
     recipient_emails = [u["email"] for u in recipients]
@@ -424,6 +435,7 @@ async def exit_b_request_validation(
             requested_by=user.email,
             review_url=f"{settings.frontend_url}/review/{request_id}",
             suggested_deadline=deadline,
+            signed_download_url=draft_download_url,
         )
         audit.log_action(
             db,
@@ -580,5 +592,9 @@ async def counsel_validate(
             fund_name=fund.get("name", ""),
             download_url=f"{settings.frontend_url}/requests/{request_id}/download/final",
             validated_by_counsel=user.email,
+            # Session-free, expiring direct download (improvement #9).
+            signed_download_url=signed_urls.signed_download_url(
+                request_id, DocumentVersionType.final.value
+            ),
         )
     return row

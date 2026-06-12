@@ -13,11 +13,12 @@ from config import get_settings
 from models.schema import (
     AuditAction,
     AuditResourceType,
+    DocumentVersionType,
     RequestStatus,
     User,
     UserRole,
 )
-from services import audit, db as dbmod, email_service
+from services import audit, db as dbmod, email_service, signed_urls
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -45,6 +46,10 @@ async def notify_counsel(
     requester = db.get("users", row["user_id"]) or {}
     deadline = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
 
+    # Session-free, expiring draft download for the email (improvement #9).
+    draft_download_url = signed_urls.signed_download_url(
+        request_id, DocumentVersionType.draft.value
+    )
     routing, recipients = resolve_counsel_recipients(db, gestora_id)
     recipient_emails = [u["email"] for u in recipients]
     deliveries: list[dict[str, Any]] = []
@@ -57,6 +62,7 @@ async def notify_counsel(
             requested_by=requester.get("email", ""),
             review_url=f"{settings.frontend_url}/review/{request_id}",
             suggested_deadline=deadline,
+            signed_download_url=draft_download_url,
         )
         deliveries.append(delivery)
         audit.log_action(
@@ -108,5 +114,9 @@ async def notify_client_ready(
         fund_name=fund.get("name", ""),
         download_url=f"{settings.frontend_url}/requests/{request_id}/download/final",
         validated_by_counsel=validated_by,
+        # Session-free, expiring direct download (improvement #9).
+        signed_download_url=signed_urls.signed_download_url(
+            request_id, DocumentVersionType.final.value
+        ),
     )
     return {"delivery": delivery}

@@ -59,3 +59,16 @@ def read(storage_key: str) -> bytes:
         return drive.download_bytes(storage_key.removeprefix("drive:"))
     logical_path = storage_key.removeprefix("local:")
     return _safe_local_path(logical_path).read_bytes()
+
+
+def delete(storage_key: str) -> None:
+    """Delete the stored bytes for a storage key (GDPR retention sweep).
+
+    Missing files are ignored: the sweep must be idempotent and a re-run after
+    a partial failure should not raise.
+    """
+    if storage_key.startswith("drive:"):
+        drive.delete_file(storage_key.removeprefix("drive:"))
+        return
+    logical_path = storage_key.removeprefix("local:")
+    _safe_local_path(logical_path).unlink(missing_ok=True)

@@ -80,6 +80,12 @@ def download_bytes(file_id: str) -> bytes:
     return buffer.getvalue()
 
 
+def delete_file(file_id: str) -> None:
+    """Permanently delete a Drive file (GDPR retention sweep)."""
+    service = _get_service()
+    service.files().delete(fileId=file_id).execute()
+
+
 def ensure_folder(name: str, parent_folder_id: str) -> str:
     """Find or create a subfolder; returns its id."""
     service = _get_service()

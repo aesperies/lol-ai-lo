@@ -74,6 +74,23 @@ class Settings(BaseSettings):
     price_exit_a_eur: float = 0.0
     price_exit_b_eur: float = 0.0
 
+    # ---------- Security hardening (improvement #9) ----------
+    # HMAC secret for signed, expiring download links (services/signed_urls.py).
+    # TODO: real secret required for production (openssl rand -hex 32) — when
+    # unset a process-stable random fallback is derived and a warning logged
+    # (links stop working across restarts/workers).
+    url_signing_secret: str = ""
+    # Lifetime of signed download links embedded in emails (hours).
+    signed_url_ttl_hours: float = 72.0
+    # Public base URL of THIS backend, used to build signed download links.
+    backend_url: str = "http://localhost:8000"
+    # In-process sliding-window rate limiting (services/rate_limit.py);
+    # disabled under pytest except in the dedicated rate-limit tests.
+    # TODO: Redis-based limiter for multi-worker production deployments.
+    rate_limit_enabled: bool = True
+    # Max accepted upload size (counsel .docx, admin precedents), in MiB.
+    max_upload_mb: int = 15
+
     # ---------- Counsel SLA (Exit B turnaround, improvement #8) ----------
     # Promised review turnaround for counsel validation (hours).
     sla_review_hours: float = 48.0

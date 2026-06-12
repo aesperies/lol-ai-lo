@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
-from api import now_iso
+from api import now_iso, validate_upload
 from auth import assert_precedent_access, get_current_user, require_admin
 from models.schema import (
     AuditAction,
@@ -52,11 +52,10 @@ def _version_path(precedent: dict[str, Any], version_number: int, filename: str)
     return f"gestoras/{precedent['gestora_id']}/precedents/{precedent['id']}-v{version_number}{extension}"
 
 
-def _validate_upload(filename: str) -> None:
-    lowered = filename.lower()
-    # .docx = generation base; .pdf = RAG reference only (guardrail 7).
-    if not (lowered.endswith(".docx") or lowered.endswith(".pdf")):
-        raise HTTPException(status_code=422, detail="Precedents must be .docx or .pdf")
+# .docx = generation base; .pdf = RAG reference only (guardrail 7).
+# Extension + max size + magic bytes enforced via api.validate_upload
+# (improvement #9 upload hardening).
+_PRECEDENT_EXTENSIONS = (".docx", ".pdf")
 
 
 @router.post("", status_code=201)
@@ -76,7 +75,8 @@ async def upload_precedent(
         raise HTTPException(status_code=422, detail="gestora_id is required for non-global precedents")
     if gestora_id and db.get("gestoras", gestora_id) is None:
         raise HTTPException(status_code=404, detail="Gestora not found")
-    _validate_upload(file.filename or "")
+    data = await file.read()
+    validate_upload(file.filename or "", data, _PRECEDENT_EXTENSIONS)
 
     precedent = db.insert(
         "precedents",
@@ -88,7 +88,7 @@ async def upload_precedent(
             "source": source.value,
         },
     )
-    key = storage.save(_version_path(precedent, 1, file.filename or "precedent.docx"), await file.read())
+    key = storage.save(_version_path(precedent, 1, file.filename or "precedent.docx"), data)
     version = db.insert(
         "precedent_versions",
         {
@@ -159,12 +159,13 @@ async def add_version(
     precedent = db.get("precedents", precedent_id)
     if precedent is None:
         raise HTTPException(status_code=404, detail="Precedent not found")
-    _validate_upload(file.filename or "")
+    data = await file.read()
+    validate_upload(file.filename or "", data, _PRECEDENT_EXTENSIONS)
 
     existing = db.select("precedent_versions", precedent_id=precedent_id)
     next_number = max((v["version_number"] for v in existing), default=0) + 1
     key = storage.save(
-        _version_path(precedent, next_number, file.filename or "precedent.docx"), await file.read()
+        _version_path(precedent, next_number, file.filename or "precedent.docx"), data
     )
     version = db.insert(
         "precedent_versions",

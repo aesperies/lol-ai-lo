@@ -34,7 +34,9 @@ import {
   stubMyUsage,
   stubParse,
   stubPollGenerationJob,
+  stubGetRetentionPolicy,
   stubPrecedents,
+  stubPutRetentionPolicy,
   stubRedline,
   stubRefinements,
   stubRequests,
@@ -70,6 +72,7 @@ import type {
   Refinement,
   RefinementStatus,
   RequestItem,
+  RetentionPolicy,
   ReviewBundle,
   Role,
   SlaReport,
@@ -137,6 +140,10 @@ export const apiPaths = {
   adminBillingExport: (period?: string) =>
     `/api/admin/billing/export${period ? `?period=${period}` : ""}`,
   myUsage: "/api/my/usage",
+  // GDPR data retention per gestora (improvement #10).
+  adminRetention: (gestoraId: string) =>
+    `/api/admin/gestoras/${gestoraId}/retention`,
+  adminRetentionSweep: "/api/admin/retention/sweep",
 } as const;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -1048,6 +1055,56 @@ export async function downloadBillingCsv(period?: string): Promise<Blob> {
   });
   if (!res.ok) throw new ApiError(res.status, res.statusText);
   return res.blob();
+}
+
+/* ------------------------------------------------------------------ */
+/* GDPR data retention (improvement #10)                               */
+/* ------------------------------------------------------------------ */
+
+interface RetentionPolicyWire {
+  gestora_id: string;
+  months: number;
+  is_default: boolean;
+  updated_at?: string | null;
+}
+
+function mapRetentionPolicy(wire: RetentionPolicyWire): RetentionPolicy {
+  return {
+    gestoraId: wire.gestora_id,
+    months: wire.months,
+    isDefault: wire.is_default,
+    updatedAt: wire.updated_at ?? null,
+  };
+}
+
+/** The gestora's retention policy (platform default when none set). Admin-only. */
+export async function getRetentionPolicy(
+  gestoraId: string,
+): Promise<RetentionPolicy> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubGetRetentionPolicy(gestoraId);
+  }
+  const res = await apiFetch<RetentionPolicyWire>(
+    apiPaths.adminRetention(gestoraId),
+  );
+  return mapRetentionPolicy(res);
+}
+
+/** Upserts the gestora's retention policy (months, 6-120). Admin-only. */
+export async function updateRetentionPolicy(
+  gestoraId: string,
+  months: number,
+): Promise<RetentionPolicy> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubPutRetentionPolicy(gestoraId, months);
+  }
+  const res = await apiFetch<RetentionPolicyWire>(
+    apiPaths.adminRetention(gestoraId),
+    { method: "PUT", body: { months } },
+  );
+  return mapRetentionPolicy(res);
 }
 
 /** The client's own gestora consumption for the current period. */

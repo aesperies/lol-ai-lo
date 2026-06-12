@@ -78,6 +78,9 @@ class AuditAction(str, Enum):
     precedent_activated = "precedent_activated"
     precedent_superseded = "precedent_superseded"
     precedent_version_created = "precedent_version_created"
+    # GDPR data retention (improvement #10, 007_data_retention.sql).
+    retention_policy_updated = "retention_policy_updated"
+    retention_sweep = "retention_sweep"
 
 
 class AuditResourceType(str, Enum):
@@ -85,6 +88,8 @@ class AuditResourceType(str, Enum):
     document = "document"
     precedent = "precedent"
     precedent_version = "precedent_version"
+    # GDPR data retention (improvement #10, 007_data_retention.sql).
+    gestora = "gestora"
 
 
 class UsageEventType(str, Enum):
@@ -417,6 +422,22 @@ class GenerationJobOut(BaseModel):
 class RefinementCreate(BaseModel):
     # Mirrors the DB CHECK: char_length(instruction) between 5 and 1000.
     instruction: str = Field(min_length=5, max_length=1000)
+
+
+class RetentionPolicyBody(BaseModel):
+    """PUT /api/admin/gestoras/{id}/retention — mirrors the DB CHECK
+    (months between 6 and 120, 007_data_retention.sql)."""
+
+    months: int = Field(ge=6, le=120)
+
+
+class RetentionPolicyOut(BaseModel):
+    gestora_id: str
+    months: int
+    # True when the gestora has no explicit policy row (platform default).
+    is_default: bool = False
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
 
 class RefinementOut(BaseModel):

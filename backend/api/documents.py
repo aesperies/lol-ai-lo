@@ -12,8 +12,9 @@ from api import (
     latest_document,
     require_status,
     transition,
+    validate_upload,
 )
-from auth import assert_request_access, get_current_user, require_counsel
+from auth import assert_request_access, get_current_user, gestora_of_request, require_counsel
 from config import ServiceNotConfiguredError, get_settings
 from models import doc_fields
 from models.schema import (
@@ -36,9 +37,11 @@ from services import (
     jobs,
     rag,
     redline as redline_service,
+    signed_urls,
     storage,
     usage,
 )
+from services.rate_limit import rate_limit
 
 router = APIRouter(prefix="/api", tags=["documents"])
 
@@ -180,7 +183,12 @@ def _run_generation_pipeline(
     transition(db, db.get("requests", request_id), RequestStatus.review_pending)
 
 
-@router.post("/requests/{request_id}/generate", status_code=202)
+@router.post(
+    "/requests/{request_id}/generate",
+    status_code=202,
+    # LLM-cost endpoint: 6/min per user (improvement #9 rate limiting).
+    dependencies=[Depends(rate_limit("generation", 6))],
+)
 async def generate(
     request_id: str,
     http_request: Request,
@@ -373,6 +381,73 @@ async def view_document_html(
 
 
 # ---------------------------------------------------------------------------
+# Signed download links (improvement #9)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/download/{token}",
+    # Auth-free endpoint: IP-keyed limit (improvement #9 rate limiting).
+    dependencies=[Depends(rate_limit("signed_download", 30, per="ip"))],
+)
+async def signed_download(token: str, http_request: Request) -> Response:
+    """Serve a document via a signed, expiring link (NO auth dependency).
+
+    Email links must not depend on a session: the HMAC token (services/
+    signed_urls.py) IS the credential — it pins request_id + version_type and
+    expires after signed_url_ttl_hours. Any invalid/expired/tampered token is
+    a 404 (no-leak pattern). Audited with the same actions as the
+    authenticated download path plus {"mode": "signed_link"}. Unlike the
+    authenticated client download, a signed final download does NOT close the
+    workflow (validated -> delivered): there is no authenticated user to
+    attribute the delivery to.
+    """
+    payload = signed_urls.verify(token)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Invalid or expired download link")
+
+    db = dbmod.get_db()
+    row = db.get("requests", payload["request_id"])
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invalid or expired download link")
+    try:
+        version_type = DocumentVersionType(payload["version_type"])
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid or expired download link")
+    if version_type not in _DOWNLOAD_AUDIT:
+        raise HTTPException(status_code=404, detail="Version type not downloadable")
+    if version_type == DocumentVersionType.final:
+        require_status(row, RequestStatus.validated, RequestStatus.delivered)
+
+    doc = latest_document(db, row["id"], version_type)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"No {version_type.value} document for this request")
+    data = storage.read(doc["file_path"])
+
+    audit.log_action(
+        db,
+        user=None,  # the signed token is the credential — no session user
+        action=_DOWNLOAD_AUDIT[version_type],
+        resource_type=AuditResourceType.document,
+        resource_id=doc["id"],
+        gestora_id=gestora_of_request(db, row),
+        metadata={
+            "request_id": row["id"],
+            "version_type": version_type.value,
+            "iteration": doc.get("iteration", 0),
+            "mode": "signed_link",
+        },
+        ip_address=_ip(http_request),
+    )
+    return Response(
+        content=data,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{row["id"]}-{version_type.value}.docx"'
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Counsel edits (Exit B review)
 # ---------------------------------------------------------------------------
 
@@ -431,15 +506,16 @@ async def counsel_edit_upload(
     gestora_id = assert_request_access(db, user, row)
     require_status(row, RequestStatus.counsel_review)
 
-    if not (file.filename or "").lower().endswith(".docx"):
-        raise HTTPException(status_code=422, detail="Counsel uploads must be .docx")
+    # Upload hardening (improvement #9): extension + size + magic bytes.
+    data = await file.read()
+    validate_upload(file.filename or "", data, (".docx",))
 
     edits = db.select("documents", request_id=request_id, version_type=DocumentVersionType.counsel_edit.value)
     path = (
         f"gestoras/{gestora_id}/funds/{row['fund_id']}/documents/{request_id}/"
         f"counsel_edit_v{len(edits) + 1}.docx"
     )
-    key = storage.save(path, await file.read())
+    key = storage.save(path, data)
     doc = db.insert(
         "documents",
         {

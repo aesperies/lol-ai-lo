@@ -353,6 +353,18 @@ const es = {
   "admin.counsel.assigned": "Counsel asignado.",
   "admin.counsel.removed": "Asignación eliminada.",
 
+  // Admin — GDPR data retention (per gestora)
+  "admin.retention.title": "Política de retención de datos",
+  "admin.retention.subtitle":
+    "Meses que se conservan los documentos de solicitudes entregadas. Pasado el plazo, el barrido de retención elimina los archivos; el registro de auditoría se conserva siempre (RGPD).",
+  "admin.retention.months": "Retención (meses)",
+  "admin.retention.hint": "Entre 6 y 120 meses.",
+  "admin.retention.default": "Valor por defecto de la plataforma",
+  "admin.retention.custom": "Política personalizada",
+  "admin.retention.save": "Guardar política",
+  "admin.retention.saved": "Política de retención guardada.",
+  "admin.retention.invalid": "Indica un valor entre 6 y 120 meses.",
+
   "tier.starter": "Starter",
   "tier.growth": "Growth",
   "tier.custom": "Custom",
@@ -753,6 +765,18 @@ const en: Record<DictKey, string> = {
   "admin.users.invite": "Invite user",
   "admin.users.gestora": "Management company",
   "admin.users.invited": "Invitation sent.",
+
+  // Admin — GDPR data retention (per gestora)
+  "admin.retention.title": "Data retention policy",
+  "admin.retention.subtitle":
+    "How long delivered documents are kept for the selected gestora before the retention sweep removes them (audit trail is always preserved).",
+  "admin.retention.months": "Retention (months)",
+  "admin.retention.hint": "Between 6 and 120 months.",
+  "admin.retention.default": "Platform default",
+  "admin.retention.custom": "Custom policy",
+  "admin.retention.save": "Save policy",
+  "admin.retention.saved": "Retention policy saved.",
+  "admin.retention.invalid": "Enter a value between 6 and 120 months.",
 
   "admin.quality.title": "Quality & SLA",
   "admin.quality.subtitle":

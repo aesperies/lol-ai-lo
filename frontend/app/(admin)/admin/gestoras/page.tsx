@@ -27,16 +27,20 @@ import {
   getCounselAssignments,
   getFunds,
   getGestoras,
+  getRetentionPolicy,
   getUsers,
   removeCounselAssignment,
+  updateRetentionPolicy,
 } from "@/lib/api";
 import type {
   CounselAssignment,
   Fund,
   Gestora,
+  RetentionPolicy,
   SubscriptionTier,
   UserProfile,
 } from "@/lib/types";
+import { RETENTION_MONTHS_MAX, RETENTION_MONTHS_MIN } from "@/lib/types";
 import type { DictKey } from "@/lib/i18n";
 
 const TIERS: SubscriptionTier[] = ["starter", "growth", "custom"];
@@ -60,6 +64,11 @@ export default function AdminGestorasPage() {
   const [assignPrimary, setAssignPrimary] = useState(false);
   const [counselBusy, setCounselBusy] = useState(false);
 
+  // GDPR retention policy for the gestora selected above (improvement #10).
+  const [retention, setRetention] = useState<RetentionPolicy | null>(null);
+  const [retentionMonths, setRetentionMonths] = useState("");
+  const [retentionBusy, setRetentionBusy] = useState(false);
+
   useEffect(() => {
     void getGestoras()
       .then((list) => {
@@ -80,6 +89,42 @@ export default function AdminGestorasPage() {
       .then(setAssignments)
       .catch(() => setAssignments([]));
   }, [assignGestoraId]);
+
+  useEffect(() => {
+    if (!assignGestoraId) return;
+    setRetention(null);
+    void getRetentionPolicy(assignGestoraId)
+      .then((p) => {
+        setRetention(p);
+        setRetentionMonths(String(p.months));
+      })
+      .catch(() => setRetention(null));
+  }, [assignGestoraId]);
+
+  async function handleSaveRetention(e: React.FormEvent) {
+    e.preventDefault();
+    const months = Number(retentionMonths);
+    if (
+      !Number.isInteger(months) ||
+      months < RETENTION_MONTHS_MIN ||
+      months > RETENTION_MONTHS_MAX
+    ) {
+      setNotice(t("admin.retention.invalid"));
+      return;
+    }
+    setRetentionBusy(true);
+    setNotice(null);
+    try {
+      const saved = await updateRetentionPolicy(assignGestoraId, months);
+      setRetention(saved);
+      setRetentionMonths(String(saved.months));
+      setNotice(t("admin.retention.saved"));
+    } catch {
+      setNotice(t("common.error"));
+    } finally {
+      setRetentionBusy(false);
+    }
+  }
 
   async function refreshAssignments() {
     const refreshed = await getCounselAssignments(assignGestoraId).catch(() => null);
@@ -357,6 +402,54 @@ export default function AdminGestorasPage() {
             </Button>
           </form>
         </div>
+      </Card>
+
+      {/* GDPR data retention for the gestora selected in the section above */}
+      <Card className="mt-6">
+        <CardTitle className="mb-1">{t("admin.retention.title")}</CardTitle>
+        <p className="mb-4 text-xs text-slate-500">
+          {t("admin.retention.subtitle")}
+        </p>
+
+        {retention === null ? (
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : (
+          <form
+            className="flex flex-wrap items-end gap-4"
+            onSubmit={handleSaveRetention}
+          >
+            <div>
+              <Label htmlFor="retention-months">
+                {t("admin.retention.months")}
+              </Label>
+              <Input
+                id="retention-months"
+                type="number"
+                min={RETENTION_MONTHS_MIN}
+                max={RETENTION_MONTHS_MAX}
+                value={retentionMonths}
+                onChange={(e) => setRetentionMonths(e.target.value)}
+                className="w-32"
+                required
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                {t("admin.retention.hint")}
+              </p>
+            </div>
+            <div className="pb-5">
+              <Badge tone={retention.isDefault ? "slate" : "indigo"}>
+                {retention.isDefault
+                  ? t("admin.retention.default")
+                  : t("admin.retention.custom")}
+              </Badge>
+            </div>
+            <Button type="submit" className="mb-5" disabled={retentionBusy}>
+              {t("admin.retention.save")}
+            </Button>
+          </form>
+        )}
       </Card>
     </div>
   );

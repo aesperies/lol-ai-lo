@@ -34,10 +34,12 @@ import type {
   RedlineSegment,
   Refinement,
   RequestItem,
+  RetentionPolicy,
   ReviewBundle,
   SlaReport,
   UserProfile,
 } from "@/lib/types";
+import { RETENTION_MONTHS_DEFAULT } from "@/lib/types";
 
 /** Relative timestamp so the SLA demo chips stay meaningful over time. */
 function hoursAgoIso(hours: number): string {
@@ -1082,4 +1084,29 @@ export function stubMyUsage(): MyUsage {
     docsGenerated: 64,
     docsLimit: 75,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* GDPR retention policies (improvement #10)                           */
+/* ------------------------------------------------------------------ */
+
+/** Explicit per-gestora policies; absence = platform default (60 months). */
+const stubRetentionPolicies = new Map<string, number>();
+
+export function stubGetRetentionPolicy(gestoraId: string): RetentionPolicy {
+  const months = stubRetentionPolicies.get(gestoraId);
+  return {
+    gestoraId,
+    months: months ?? RETENTION_MONTHS_DEFAULT,
+    isDefault: months === undefined,
+    updatedAt: months === undefined ? null : nowIso(),
+  };
+}
+
+export function stubPutRetentionPolicy(
+  gestoraId: string,
+  months: number,
+): RetentionPolicy {
+  stubRetentionPolicies.set(gestoraId, months);
+  return { gestoraId, months, isDefault: false, updatedAt: nowIso() };
 }

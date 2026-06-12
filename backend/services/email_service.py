@@ -36,6 +36,15 @@ def send_email(to: str, subject: str, body: str) -> dict:
     return {"delivery": "console", "to": to, "subject": subject}
 
 
+def _signed_link_line(signed_download_url: Optional[str], label: str) -> str:
+    """Signed, expiring direct-download line (improvement #9); empty when the
+    caller has no signed URL — the platform link always stays alongside it."""
+    if not signed_download_url:
+        return ""
+    ttl = int(get_settings().signed_url_ttl_hours)
+    return f"{label} (enlace válido {ttl}h): {signed_download_url}\n"
+
+
 def send_counsel_notification(
     *,
     counsel_name: str,
@@ -45,6 +54,7 @@ def send_counsel_notification(
     requested_by: str,
     review_url: str,
     suggested_deadline: str,
+    signed_download_url: Optional[str] = None,
 ) -> dict:
     """SPEC template: review-pending notification to counsel."""
     subject = f"[Lol-AI-lo] Revisión pendiente — {fund_name} — {doc_type}"
@@ -55,7 +65,8 @@ def send_counsel_notification(
         f"Tipo de documento: {doc_type}\n"
         f"Solicitado por: {requested_by}\n"
         f"Plazo sugerido: {suggested_deadline}\n\n"
-        f"Revisar el documento: {review_url}\n\n"
+        f"Revisar el documento: {review_url}\n"
+        f"{_signed_link_line(signed_download_url, 'Descargar el borrador')}\n"
         f"Lol-AI-lo Legal SLP"
     )
     return send_email(counsel_email, subject, body)
@@ -118,6 +129,7 @@ def send_client_ready(
     fund_name: str,
     download_url: str,
     validated_by_counsel: Optional[str] = None,
+    signed_download_url: Optional[str] = None,
 ) -> dict:
     """SPEC template: document-ready notification to the client."""
     subject = f"[Lol-AI-lo] Tu documento está listo — {doc_type}"
@@ -130,7 +142,8 @@ def send_client_ready(
         f"Tipo de documento: {doc_type}\n"
         f"Fondo: {fund_name}\n"
         f"{validated_line}\n"
-        f"Descargar: {download_url}\n\n"
+        f"Descargar: {download_url}\n"
+        f"{_signed_link_line(signed_download_url, 'Descarga directa')}\n"
         f"Lol-AI-lo Legal SLP"
     )
     return send_email(client_email, subject, body)
