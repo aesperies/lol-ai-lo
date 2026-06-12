@@ -22,15 +22,16 @@ import {
   nextRequestId,
   nowIso,
   stubAddComment,
+  stubCounselAssignments,
   stubDraftText,
-  stubFallbackLevel,
   stubGestoras,
-  stubHasMissing,
   stubParse,
+  stubPollGenerationJob,
   stubPrecedents,
   stubRedline,
   stubRequests,
   stubReviewBundle,
+  stubStartGenerationJob,
 } from "@/lib/stub-data";
 import {
   getSupabaseBrowserClient,
@@ -39,9 +40,12 @@ import {
 } from "@/lib/supabase/client";
 import type {
   AssignedCounsel,
+  CounselAssignment,
   CounselComment,
   DocumentVersionType,
   Fund,
+  GenerationJob,
+  GenerationJobStatus,
   Gestora,
   ParsedParams,
   Precedent,
@@ -64,6 +68,7 @@ export const apiPaths = {
   parse: (id: string) => `/api/requests/${id}/parse`,
   confirm: (id: string) => `/api/requests/${id}/confirm`,
   generate: (id: string) => `/api/requests/${id}/generate`,
+  generationJob: (id: string) => `/api/requests/${id}/generation-job`,
   exitAAcknowledge: (id: string) => `/api/requests/${id}/exit-a/acknowledge`,
   exitB: (id: string) => `/api/requests/${id}/exit-b`,
   documentDownload: (id: string, type: DocumentVersionType) =>
@@ -74,7 +79,11 @@ export const apiPaths = {
   validate: (id: string) => `/api/requests/${id}/validate`,
   comments: (id: string) => `/api/requests/${id}/comments`,
   counselQueue: "/api/counsel/queue",
-  assignedCounsel: "/api/counsel/assigned",
+  myCounsel: "/api/my/counsel",
+  counselAssignments: (gestoraId: string) =>
+    `/api/counsel-assignments?gestora_id=${gestoraId}`,
+  counselAssignmentCreate: "/api/counsel-assignments",
+  counselAssignment: (id: string) => `/api/counsel-assignments/${id}`,
   funds: "/api/funds",
   gestoras: "/api/gestoras",
   precedents: "/api/precedents",
@@ -218,19 +227,45 @@ export async function confirmRequest(
   });
 }
 
-export async function generateRequest(id: string): Promise<RequestItem> {
+/** Enqueues generation (202): returns the job to poll via getGenerationJob. */
+export async function generateRequest(id: string): Promise<GenerationJob> {
   if (isStubMode()) {
     const req = findRequest(id);
     if (!req) throw new ApiError(404, "Request not found");
+    await delay(STUB_LATENCY / 2);
     req.status = "generating";
-    await delay(1800);
-    req.fallbackLevel = stubFallbackLevel(req.docType);
-    req.hasMissingFields = stubHasMissing(req);
-    req.status = "review_pending";
     req.updatedAt = nowIso();
-    return req;
+    return stubStartGenerationJob(req);
   }
-  return apiFetch<RequestItem>(apiPaths.generate(id), { method: "POST" });
+  const res = await apiFetch<{ job_id: string; status: GenerationJobStatus }>(
+    apiPaths.generate(id),
+    { method: "POST" },
+  );
+  return { id: res.job_id, status: res.status, attempts: 0 };
+}
+
+/** Latest generation job for a request (poll target of the 202 flow). */
+export async function getGenerationJob(
+  requestId: string,
+): Promise<GenerationJob> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 4);
+    const job = stubPollGenerationJob(requestId);
+    if (!job) throw new ApiError(404, "No generation job for this request");
+    return job;
+  }
+  const res = await apiFetch<{
+    id: string;
+    status: GenerationJobStatus;
+    attempts: number;
+    last_error?: string | null;
+  }>(apiPaths.generationJob(requestId));
+  return {
+    id: res.id,
+    status: res.status,
+    attempts: res.attempts,
+    lastError: res.last_error ?? null,
+  };
 }
 
 export async function acknowledgeExitA(id: string): Promise<RequestItem> {
@@ -391,12 +426,24 @@ export async function validateRequest(id: string): Promise<RequestItem> {
   return apiFetch<RequestItem>(apiPaths.validate(id), { method: "POST" });
 }
 
-export async function getAssignedCounsel(): Promise<AssignedCounsel> {
+/** The requesting client's gestora's assigned counsel, or null when none. */
+export async function getAssignedCounsel(): Promise<AssignedCounsel | null> {
   if (isStubMode()) {
     return STUB_ASSIGNED_COUNSEL;
   }
-  // TODO: backend endpoint returning the counsel assigned to the gestora + SLA.
-  return apiFetch<AssignedCounsel>(apiPaths.assignedCounsel);
+  const res = await apiFetch<{
+    name: string;
+    email: string;
+    is_primary: boolean;
+    turnaround_hours: number;
+  } | null>(apiPaths.myCounsel);
+  if (!res) return null;
+  return {
+    name: res.name,
+    email: res.email,
+    isPrimary: res.is_primary,
+    turnaroundHours: res.turnaround_hours,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -564,6 +611,109 @@ export async function inviteUser(input: {
     return;
   }
   await apiFetch(apiPaths.users, { method: "POST", body: input });
+}
+
+/* ------------------------------------------------------------------ */
+/* Counsel assignments (admin)                                         */
+/* ------------------------------------------------------------------ */
+
+interface CounselAssignmentWire {
+  id: string;
+  gestora_id: string;
+  counsel_user_id: string;
+  is_primary: boolean;
+  counsel_email?: string | null;
+  created_at?: string;
+}
+
+function mapCounselAssignment(wire: CounselAssignmentWire): CounselAssignment {
+  return {
+    id: wire.id,
+    gestoraId: wire.gestora_id,
+    counselUserId: wire.counsel_user_id,
+    isPrimary: wire.is_primary,
+    counselEmail: wire.counsel_email ?? null,
+    createdAt: wire.created_at ?? "",
+  };
+}
+
+export async function getCounselAssignments(
+  gestoraId: string,
+): Promise<CounselAssignment[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubCounselAssignments.filter((a) => a.gestoraId === gestoraId);
+  }
+  const rows = await apiFetch<CounselAssignmentWire[]>(
+    apiPaths.counselAssignments(gestoraId),
+  );
+  return rows.map(mapCounselAssignment);
+}
+
+/** Assigns counsel to a gestora; a new primary demotes the previous one. */
+export async function assignCounsel(input: {
+  gestoraId: string;
+  counselUserId: string;
+  isPrimary: boolean;
+}): Promise<CounselAssignment> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    if (input.isPrimary) {
+      for (const a of stubCounselAssignments) {
+        if (a.gestoraId === input.gestoraId) a.isPrimary = false;
+      }
+    }
+    const existing = stubCounselAssignments.find(
+      (a) =>
+        a.gestoraId === input.gestoraId &&
+        a.counselUserId === input.counselUserId,
+    );
+    if (existing) {
+      existing.isPrimary = input.isPrimary;
+      return { ...existing };
+    }
+    const counsel = STUB_ALL_USERS.find((u) => u.id === input.counselUserId);
+    if (!counsel || counsel.role !== "counsel") {
+      throw new ApiError(422, "Assigned user must have role 'counsel'");
+    }
+    const assignment: CounselAssignment = {
+      id: `ca-${Date.now()}`,
+      gestoraId: input.gestoraId,
+      counselUserId: input.counselUserId,
+      counselEmail: counsel.email,
+      isPrimary: input.isPrimary,
+      createdAt: nowIso(),
+    };
+    stubCounselAssignments.push(assignment);
+    return assignment;
+  }
+  const row = await apiFetch<CounselAssignmentWire>(
+    apiPaths.counselAssignmentCreate,
+    {
+      method: "POST",
+      body: {
+        gestora_id: input.gestoraId,
+        counsel_user_id: input.counselUserId,
+        is_primary: input.isPrimary,
+      },
+    },
+  );
+  return mapCounselAssignment(row);
+}
+
+export async function removeCounselAssignment(id: string): Promise<void> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    const index = stubCounselAssignments.findIndex((a) => a.id === id);
+    if (index >= 0) stubCounselAssignments.splice(index, 1);
+    return;
+  }
+  const headers = await authHeaders();
+  const res = await fetch(`${API_URL}${apiPaths.counselAssignment(id)}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
 }
 
 /** Triggers a browser download for a Blob. */

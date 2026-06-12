@@ -148,6 +148,8 @@ const es = {
     "Un abogado de Lol-AI-lo Legal SLP revisará y validará el documento antes de su entrega.",
   "intake.assignedCounsel": "Abogado asignado",
   "intake.turnaround": "Plazo estimado de revisión: {hours} h laborables",
+  "intake.noAssignedCounsel":
+    "Un abogado del equipo de Lol-AI-lo Legal SLP será asignado a tu solicitud.",
   "intake.submit": "Generar Documento →",
 
   // Flow
@@ -156,6 +158,10 @@ const es = {
   "flow.generating": "Generando documento…",
   "flow.generatingHint":
     "Recuperando precedentes y redactando el borrador. Puede tardar hasta 60 segundos.",
+  "flow.generationFailed": "La generación del documento ha fallado.",
+  "flow.generationFailedHint":
+    "Puedes reintentar la generación. Si el problema persiste, contacta con soporte.",
+  "flow.retry": "Reintentar",
 
   // Parsed params review
   "params.title": "Revisión de parámetros",
@@ -259,6 +265,22 @@ const es = {
   "admin.gestoras.funds": "Fondos",
   "admin.gestoras.create": "Crear gestora",
   "admin.gestoras.created": "Gestora creada.",
+
+  // Admin — counsel assignments
+  "admin.counsel.title": "Counsel asignado",
+  "admin.counsel.subtitle":
+    "Asigna abogados a cada gestora. Las notificaciones de validación (Exit B) se envían al abogado principal; sin asignación, a todos los abogados.",
+  "admin.counsel.assign": "Asignar counsel",
+  "admin.counsel.selectCounsel": "Selecciona un abogado",
+  "admin.counsel.primary": "Principal",
+  "admin.counsel.backup": "Suplente",
+  "admin.counsel.makePrimary": "Hacer principal",
+  "admin.counsel.remove": "Quitar",
+  "admin.counsel.empty":
+    "Sin counsel asignado: las notificaciones se envían a todos los abogados.",
+  "admin.counsel.assigned": "Counsel asignado.",
+  "admin.counsel.removed": "Asignación eliminada.",
+
   "tier.starter": "Starter",
   "tier.growth": "Growth",
   "tier.custom": "Custom",
@@ -394,6 +416,8 @@ const en: Record<DictKey, string> = {
     "A Lol-AI-lo Legal SLP lawyer will review and validate the document before delivery.",
   "intake.assignedCounsel": "Assigned counsel",
   "intake.turnaround": "Estimated review turnaround: {hours} business hours",
+  "intake.noAssignedCounsel":
+    "A lawyer from the Lol-AI-lo Legal SLP team will be assigned to your request.",
   "intake.submit": "Generar Documento →",
 
   "flow.parsing": "Analyzing your request…",
@@ -401,6 +425,10 @@ const en: Record<DictKey, string> = {
   "flow.generating": "Generating document…",
   "flow.generatingHint":
     "Retrieving precedents and drafting the document. This can take up to 60 seconds.",
+  "flow.generationFailed": "Document generation failed.",
+  "flow.generationFailedHint":
+    "You can retry the generation. If the problem persists, contact support.",
+  "flow.retry": "Reintentar",
 
   "params.title": "Parameter review",
   "params.subtitle":
@@ -496,6 +524,21 @@ const en: Record<DictKey, string> = {
   "admin.gestoras.funds": "Funds",
   "admin.gestoras.create": "Create gestora",
   "admin.gestoras.created": "Gestora created.",
+
+  "admin.counsel.title": "Assigned counsel",
+  "admin.counsel.subtitle":
+    "Assign lawyers to each management company. Validation (Exit B) notifications go to the primary counsel; with no assignment, to all counsel users.",
+  "admin.counsel.assign": "Assign counsel",
+  "admin.counsel.selectCounsel": "Select a lawyer",
+  "admin.counsel.primary": "Primary",
+  "admin.counsel.backup": "Backup",
+  "admin.counsel.makePrimary": "Make primary",
+  "admin.counsel.remove": "Remove",
+  "admin.counsel.empty":
+    "No counsel assigned: notifications are sent to all counsel users.",
+  "admin.counsel.assigned": "Counsel assigned.",
+  "admin.counsel.removed": "Assignment removed.",
+
   "tier.starter": "Starter",
   "tier.growth": "Growth",
   "tier.custom": "Custom",

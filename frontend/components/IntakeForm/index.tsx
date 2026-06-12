@@ -185,15 +185,24 @@ export default function IntakeForm({
               label={t("intake.counselToggle")}
             />
           </div>
-          {requiresCounsel && counsel ? (
+          {requiresCounsel ? (
             <div className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-700">
-              <p>
-                <span className="font-medium">{t("intake.assignedCounsel")}:</span>{" "}
-                {counsel.name} — {counsel.firm}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {t("intake.turnaround", { hours: counsel.turnaroundHours })}
-              </p>
+              {counsel ? (
+                <>
+                  <p>
+                    <span className="font-medium">{t("intake.assignedCounsel")}:</span>{" "}
+                    {counsel.name} — {counsel.email}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {t("intake.turnaround", { hours: counsel.turnaroundHours })}
+                  </p>
+                </>
+              ) : (
+                // No counsel assigned to this gestora (GET /api/my/counsel → null).
+                <p className="text-xs text-slate-500">
+                  {t("intake.noAssignedCounsel")}
+                </p>
+              )}
             </div>
           ) : null}
         </div>

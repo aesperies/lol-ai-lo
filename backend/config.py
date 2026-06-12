@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     local_storage_dir: str = "./storage"
     dev_auth_stub: bool = False
+    # Generation-job retry backoff base in seconds (delays: base*1, base*4).
+    # The test suite pins JOB_BACKOFF_BASE=0 so retries are instant.
+    job_backoff_base: float = 1.0
 
     # -- readiness flags ---------------------------------------------------
     @property

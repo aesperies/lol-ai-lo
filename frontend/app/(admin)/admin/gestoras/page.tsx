@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Admin — gestoras (management companies).
+ * Admin — gestoras (management companies) + counsel assignment per gestora.
  * Lives under /admin/gestoras so that middleware can protect the whole
  * /admin prefix for the admin role.
  */
@@ -19,9 +19,24 @@ import {
   PageHeader,
   Select,
   Spinner,
+  Toggle,
 } from "@/components/ui";
-import { createGestora, getFunds, getGestoras } from "@/lib/api";
-import type { Fund, Gestora, SubscriptionTier } from "@/lib/types";
+import {
+  assignCounsel,
+  createGestora,
+  getCounselAssignments,
+  getFunds,
+  getGestoras,
+  getUsers,
+  removeCounselAssignment,
+} from "@/lib/api";
+import type {
+  CounselAssignment,
+  Fund,
+  Gestora,
+  SubscriptionTier,
+  UserProfile,
+} from "@/lib/types";
 import type { DictKey } from "@/lib/i18n";
 
 const TIERS: SubscriptionTier[] = ["starter", "growth", "custom"];
@@ -37,10 +52,94 @@ export default function AdminGestorasPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Counsel assignment per gestora (Exit B routing).
+  const [counselUsers, setCounselUsers] = useState<UserProfile[]>([]);
+  const [assignGestoraId, setAssignGestoraId] = useState("");
+  const [assignments, setAssignments] = useState<CounselAssignment[] | null>(null);
+  const [assignCounselId, setAssignCounselId] = useState("");
+  const [assignPrimary, setAssignPrimary] = useState(false);
+  const [counselBusy, setCounselBusy] = useState(false);
+
   useEffect(() => {
-    void getGestoras().then(setGestoras).catch(() => setGestoras([]));
+    void getGestoras()
+      .then((list) => {
+        setGestoras(list);
+        if (list.length > 0) setAssignGestoraId((prev) => prev || list[0].id);
+      })
+      .catch(() => setGestoras([]));
     void getFunds().then(setFunds).catch(() => setFunds([]));
+    void getUsers()
+      .then((users) => setCounselUsers(users.filter((u) => u.role === "counsel")))
+      .catch(() => setCounselUsers([]));
   }, []);
+
+  useEffect(() => {
+    if (!assignGestoraId) return;
+    setAssignments(null);
+    void getCounselAssignments(assignGestoraId)
+      .then(setAssignments)
+      .catch(() => setAssignments([]));
+  }, [assignGestoraId]);
+
+  async function refreshAssignments() {
+    const refreshed = await getCounselAssignments(assignGestoraId).catch(() => null);
+    if (refreshed) setAssignments(refreshed);
+  }
+
+  async function handleAssign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!assignGestoraId || !assignCounselId) return;
+    setCounselBusy(true);
+    setNotice(null);
+    try {
+      await assignCounsel({
+        gestoraId: assignGestoraId,
+        counselUserId: assignCounselId,
+        isPrimary: assignPrimary,
+      });
+      setAssignCounselId("");
+      setAssignPrimary(false);
+      setNotice(t("admin.counsel.assigned"));
+      await refreshAssignments();
+    } catch {
+      setNotice(t("common.error"));
+    } finally {
+      setCounselBusy(false);
+    }
+  }
+
+  async function handleMakePrimary(assignment: CounselAssignment) {
+    setCounselBusy(true);
+    setNotice(null);
+    try {
+      // Re-assigning with isPrimary demotes the previous primary server-side.
+      await assignCounsel({
+        gestoraId: assignment.gestoraId,
+        counselUserId: assignment.counselUserId,
+        isPrimary: true,
+      });
+      setNotice(t("admin.counsel.assigned"));
+      await refreshAssignments();
+    } catch {
+      setNotice(t("common.error"));
+    } finally {
+      setCounselBusy(false);
+    }
+  }
+
+  async function handleRemove(assignment: CounselAssignment) {
+    setCounselBusy(true);
+    setNotice(null);
+    try {
+      await removeCounselAssignment(assignment.id);
+      setNotice(t("admin.counsel.removed"));
+      await refreshAssignments();
+    } catch {
+      setNotice(t("common.error"));
+    } finally {
+      setCounselBusy(false);
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -153,6 +252,112 @@ export default function AdminGestorasPage() {
           </form>
         </Card>
       </div>
+
+      {/* Counsel asignado (Exit B routing per gestora) */}
+      <Card className="mt-6">
+        <CardTitle className="mb-1">{t("admin.counsel.title")}</CardTitle>
+        <p className="mb-4 text-xs text-slate-500">{t("admin.counsel.subtitle")}</p>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <div className="mb-4 max-w-sm">
+              <Label htmlFor="assign-gestora">{t("admin.users.gestora")}</Label>
+              <Select
+                id="assign-gestora"
+                value={assignGestoraId}
+                onChange={(e) => setAssignGestoraId(e.target.value)}
+              >
+                {(gestoras ?? []).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            {assignments === null ? (
+              <div className="flex justify-center py-8">
+                <Spinner />
+              </div>
+            ) : assignments.length === 0 ? (
+              <p className="text-sm text-slate-500">{t("admin.counsel.empty")}</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {assignments.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-slate-800">
+                        {a.counselEmail ?? a.counselUserId}
+                      </span>
+                      <Badge tone={a.isPrimary ? "indigo" : "slate"}>
+                        {a.isPrimary
+                          ? t("admin.counsel.primary")
+                          : t("admin.counsel.backup")}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!a.isPrimary ? (
+                        <Button
+                          variant="secondary"
+                          onClick={() => void handleMakePrimary(a)}
+                          disabled={counselBusy}
+                        >
+                          {t("admin.counsel.makePrimary")}
+                        </Button>
+                      ) : null}
+                      <Button
+                        variant="secondary"
+                        onClick={() => void handleRemove(a)}
+                        disabled={counselBusy}
+                      >
+                        {t("admin.counsel.remove")}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <form className="space-y-4 self-start" onSubmit={handleAssign}>
+            <div>
+              <Label htmlFor="assign-counsel">{t("role.counsel")}</Label>
+              <Select
+                id="assign-counsel"
+                value={assignCounselId}
+                onChange={(e) => setAssignCounselId(e.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  {t("admin.counsel.selectCounsel")}
+                </option>
+                {counselUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name ?? u.email}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-slate-700">
+                {t("admin.counsel.primary")}
+              </span>
+              <Toggle
+                checked={assignPrimary}
+                onChange={setAssignPrimary}
+                label={t("admin.counsel.primary")}
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={counselBusy || !assignCounselId}
+            >
+              {t("admin.counsel.assign")}
+            </Button>
+          </form>
+        </div>
+      </Card>
     </div>
   );
 }

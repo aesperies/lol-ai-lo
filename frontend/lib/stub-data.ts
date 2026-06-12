@@ -12,9 +12,11 @@
 import { docTypeLabel } from "@/lib/catalog";
 import type {
   AssignedCounsel,
+  CounselAssignment,
   CounselComment,
   FallbackLevel,
   Fund,
+  GenerationJob,
   Gestora,
   ParsedParams,
   Precedent,
@@ -87,11 +89,24 @@ export const STUB_ALL_USERS: UserProfile[] = [
   STUB_USERS_BY_ROLE.admin,
 ];
 
+// TODO backend: turnaround is fixed at 48h for now (configurable later).
 export const STUB_ASSIGNED_COUNSEL: AssignedCounsel = {
   name: "María Llopis",
-  firm: "Lol-AI-lo Legal SLP",
+  email: "maria.llopis@lolailolegal.es",
+  isPrimary: true,
   turnaroundHours: 48,
 };
+
+export const stubCounselAssignments: CounselAssignment[] = [
+  {
+    id: "ca-1",
+    gestoraId: STUB_GESTORA.id,
+    counselUserId: "u-counsel-1",
+    counselEmail: "maria.llopis@lolailolegal.es",
+    isPrimary: true,
+    createdAt: "2026-02-01T09:00:00Z",
+  },
+];
 
 /* ------------------------------------------------------------------ */
 /* Mutable in-memory store                                             */
@@ -374,6 +389,67 @@ export function stubFallbackLevel(docType: string): FallbackLevel {
 /** Simulated [MISSING] detection: no figures in the freetext → a [MISSING: importe] field. */
 export function stubHasMissing(req: RequestItem): boolean {
   return !/\d/.test(req.freetext);
+}
+
+/* ------------------------------------------------------------------ */
+/* Simulated async generation jobs (202 + poll)                        */
+/* ------------------------------------------------------------------ */
+
+/** Include this marker in the freetext to demo a failed generation job. */
+export const STUB_FAIL_GENERATION_MARKER = "[demo:fail]";
+
+interface StubJob extends GenerationJob {
+  requestId: string;
+  polls: number;
+}
+
+let jobSeq = 0;
+const stubJobs = new Map<string, StubJob>();
+
+/** Starts a simulated generation job for a request (status 'queued'). */
+export function stubStartGenerationJob(req: RequestItem): GenerationJob {
+  jobSeq += 1;
+  const job: StubJob = {
+    id: `job-${jobSeq}`,
+    requestId: req.id,
+    status: "queued",
+    attempts: 0,
+    lastError: null,
+    polls: 0,
+  };
+  stubJobs.set(req.id, job);
+  return { id: job.id, status: job.status, attempts: job.attempts };
+}
+
+/**
+ * Each poll advances the simulated job: queued → running → succeeded after
+ * ~2 polls (or failed when the freetext contains STUB_FAIL_GENERATION_MARKER,
+ * mirroring the backend's final-failure revert to 'confirmed').
+ */
+export function stubPollGenerationJob(requestId: string): GenerationJob | undefined {
+  const job = stubJobs.get(requestId);
+  const req = findRequest(requestId);
+  if (!job || !req) return undefined;
+  job.polls += 1;
+
+  if (job.status === "queued") {
+    job.status = "running";
+    job.attempts = 1;
+  } else if (job.status === "running" && job.polls >= 2) {
+    if (req.freetext.includes(STUB_FAIL_GENERATION_MARKER)) {
+      job.status = "failed";
+      job.attempts = 3;
+      job.lastError = "Error simulado de generación (demo).";
+      req.status = "confirmed"; // backend reverts so the client can retry
+    } else {
+      job.status = "succeeded";
+      req.fallbackLevel = stubFallbackLevel(req.docType);
+      req.hasMissingFields = stubHasMissing(req);
+      req.status = "review_pending";
+    }
+    req.updatedAt = nowIso();
+  }
+  return { id: job.id, status: job.status, attempts: job.attempts, lastError: job.lastError };
 }
 
 export function stubDraftText(req: RequestItem): string {

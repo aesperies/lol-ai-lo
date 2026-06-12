@@ -94,6 +94,13 @@ class UsageEventType(str, Enum):
     exit_b_validated = "exit_b_validated"
 
 
+class GenerationJobStatus(str, Enum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
 # ---------------------------------------------------------------------------
 # Allowed workflow transitions (guardrail: enforced on every status change)
 # ---------------------------------------------------------------------------
@@ -101,7 +108,9 @@ class UsageEventType(str, Enum):
 STATUS_TRANSITIONS: dict[RequestStatus, set[RequestStatus]] = {
     RequestStatus.parsing: {RequestStatus.confirmed},
     RequestStatus.confirmed: {RequestStatus.generating},
-    RequestStatus.generating: {RequestStatus.review_pending},
+    # 'confirmed' = revert path after a generation job FINALLY fails, so the
+    # client can re-trigger generation (services/jobs.py).
+    RequestStatus.generating: {RequestStatus.review_pending, RequestStatus.confirmed},
     RequestStatus.review_pending: {RequestStatus.counsel_review, RequestStatus.delivered},
     RequestStatus.counsel_review: {RequestStatus.validated},
     RequestStatus.validated: {RequestStatus.delivered},
@@ -278,6 +287,27 @@ class PrecedentOut(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class CounselAssignment(BaseModel):
+    id: str
+    gestora_id: str
+    counsel_user_id: str
+    is_primary: bool = False
+    created_at: Optional[datetime] = None
+
+
+class GenerationJob(BaseModel):
+    id: str
+    request_id: str
+    status: GenerationJobStatus = GenerationJobStatus.queued
+    attempts: int = 0
+    max_attempts: int = 3
+    last_error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 class PrecedentVersionOut(BaseModel):
     id: str
     precedent_id: str
@@ -318,3 +348,34 @@ class ExitAAcknowledgeBody(BaseModel):
 class CounselInlineEditBody(BaseModel):
     text: str = Field(min_length=1)
     comment: Optional[str] = None
+
+
+class CounselAssignmentCreate(BaseModel):
+    gestora_id: str
+    counsel_user_id: str
+    is_primary: bool = False
+
+
+class CounselAssignmentOut(BaseModel):
+    id: str
+    gestora_id: str
+    counsel_user_id: str
+    is_primary: bool = False
+    counsel_email: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class AssignedCounselOut(BaseModel):
+    """The counsel a client's gestora is assigned to (intake form display)."""
+
+    name: str
+    email: str
+    is_primary: bool = False
+    turnaround_hours: int = 48
+
+
+class GenerationJobOut(BaseModel):
+    id: str
+    status: GenerationJobStatus
+    attempts: int = 0
+    last_error: Optional[str] = None

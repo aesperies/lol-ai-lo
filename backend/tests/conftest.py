@@ -11,12 +11,14 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 # --- environment must be set before backend imports -----------------------
 os.environ["DEV_AUTH_STUB"] = "true"
 os.environ["LOCAL_STORAGE_DIR"] = tempfile.mkdtemp(prefix="lolailo-test-storage-")
+os.environ["JOB_BACKOFF_BASE"] = "0"  # instant generation-job retries in tests
 for _var in (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -35,7 +37,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import config
-from models.schema import SLP_DISCLAIMER, PrecedentVersionStatus
+from models.schema import LEVEL3_WARNING, SLP_DISCLAIMER, PrecedentVersionStatus
 from services import db as dbmod
 from services import docx_renderer, generator, intake_parser, storage
 
@@ -54,10 +56,13 @@ def db() -> dbmod.DevStore:
 
 
 @pytest.fixture()
-def client(db: dbmod.DevStore) -> TestClient:
+def client(db: dbmod.DevStore):
     from main import app
 
-    return TestClient(app)
+    # Context-managed so all requests share one event loop and in-process
+    # generation jobs (asyncio tasks) keep running between requests.
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture()
@@ -204,12 +209,54 @@ def wf(client: TestClient, seed: dict[str, Any], fake_llm: dict[str, Any], anthr
                 f"/api/requests/{request_id}/generate", headers=auth(user or self.seed["client_a"])
             )
 
+        def job_status(self, request_id: str, user: dict | None = None):
+            return self.client.get(
+                f"/api/requests/{request_id}/generation-job",
+                headers=auth(user or self.seed["client_a"]),
+            )
+
+        def wait_for_job(self, request_id: str, user: dict | None = None, timeout: float = 5.0) -> dict:
+            """Poll the generation job until it reaches a terminal state."""
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                response = self.job_status(request_id, user)
+                assert response.status_code == 200, response.text
+                job = response.json()
+                if job["status"] in ("succeeded", "failed"):
+                    return job
+                time.sleep(0.02)
+            raise AssertionError(f"generation job for {request_id} did not finish in {timeout}s")
+
+        def generation_summary(self, request_id: str) -> dict:
+            """Mirror of the old synchronous /generate response payload,
+            rebuilt from the store now that generation runs as an async job."""
+            store = dbmod.get_db()
+            row = store.get("requests", request_id)
+            drafts = store.select("documents", request_id=request_id, version_type="draft")
+            redlines = store.select("documents", request_id=request_id, version_type="redline")
+            generated = [
+                entry
+                for entry in store.select("audit_log", action="document_generated")
+                if (entry.get("metadata") or {}).get("request_id") == request_id
+            ]
+            rag_level = generated[-1]["metadata"]["rag_level"] if generated else None
+            return {
+                "request": row,
+                "draft": drafts[-1] if drafts else None,
+                "redline": redlines[-1] if redlines else None,
+                "rag_level": rag_level,
+                "requires_counsel": row.get("requires_counsel", False),
+                "warning": LEVEL3_WARNING if rag_level == 3 else None,
+            }
+
         def to_review_pending(self, user: dict | None = None, fund: dict | None = None) -> tuple[str, dict]:
             request_id = self.create(user, fund)
             assert self.parse(request_id, user).status_code == 200
             assert self.confirm(request_id, user).status_code == 200
             response = self.generate(request_id, user)
-            assert response.status_code == 200, response.text
-            return request_id, response.json()
+            assert response.status_code == 202, response.text
+            job = self.wait_for_job(request_id, user)
+            assert job["status"] == "succeeded", job
+            return request_id, self.generation_summary(request_id)
 
     return Workflow()

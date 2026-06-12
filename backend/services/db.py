@@ -42,7 +42,7 @@ class DevStore:
             row = dict(row)
             row.setdefault("id", str(uuid.uuid4()))
             row.setdefault("created_at", _now())
-            if table == "requests":
+            if table in ("requests", "generation_jobs"):
                 row.setdefault("updated_at", _now())
             if table == "audit_log":
                 row.setdefault("timestamp", _now())
@@ -71,7 +71,7 @@ class DevStore:
             if row is None:
                 raise KeyError(f"{table}/{row_id} not found")
             row.update(fields)
-            if table == "requests":
+            if table in ("requests", "generation_jobs"):
                 row["updated_at"] = _now()
             return dict(row)
 
@@ -111,6 +111,11 @@ class SupabaseDB:
             raise PermissionError(f"{table} is append-only: UPDATE not permitted")
         res = self._client.table(table).update(fields).eq("id", row_id).execute()
         return res.data[0]
+
+    def delete(self, table: str, row_id: str) -> None:
+        if table in _APPEND_ONLY_TABLES:
+            raise PermissionError(f"{table} is append-only: DELETE not permitted")
+        self._client.table(table).delete().eq("id", row_id).execute()
 
 
 Database = Any  # duck-typed: DevStore | SupabaseDB

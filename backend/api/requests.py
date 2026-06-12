@@ -15,6 +15,7 @@ from api import (
     require_status,
     transition,
 )
+from api.counsel_assignments import resolve_counsel_recipients
 from auth import (
     assert_request_access,
     get_current_user,
@@ -370,7 +371,10 @@ async def exit_b_request_validation(
 
     fund = db.get("funds", row["fund_id"]) or {}
     deadline = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
-    for counsel_user in db.select("users", role=UserRole.counsel.value):
+    # Routing: gestora's PRIMARY assigned counsel -> backup -> broadcast.
+    routing, recipients = resolve_counsel_recipients(db, gestora_id)
+    recipient_emails = [u["email"] for u in recipients]
+    for counsel_user in recipients:
         delivery = email_service.send_counsel_notification(
             counsel_name=counsel_user["email"].split("@")[0],
             counsel_email=counsel_user["email"],
@@ -387,7 +391,12 @@ async def exit_b_request_validation(
             resource_type=AuditResourceType.request,
             resource_id=request_id,
             gestora_id=gestora_id,
-            metadata={"to": counsel_user["email"], "delivery": delivery.get("delivery")},
+            metadata={
+                "to": counsel_user["email"],
+                "delivery": delivery.get("delivery"),
+                "routing": routing,
+                "recipients": recipient_emails,
+            },
             ip_address=_ip(http_request),
         )
     return row

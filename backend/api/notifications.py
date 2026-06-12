@@ -7,6 +7,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api import get_request_or_404
+from api.counsel_assignments import resolve_counsel_recipients
 from auth import assert_request_access, get_current_user, require_counsel_or_admin
 from config import get_settings
 from models.schema import (
@@ -31,7 +32,8 @@ async def notify_counsel(
     http_request: Request,
     user: User = Depends(get_current_user),
 ) -> Any:
-    """(Re)send the review-pending email to all counsel users."""
+    """(Re)send the review-pending email to the routed counsel (primary ->
+    backup -> broadcast to all counsel users)."""
     db = dbmod.get_db()
     settings = get_settings()
     row = get_request_or_404(db, request_id)
@@ -43,8 +45,10 @@ async def notify_counsel(
     requester = db.get("users", row["user_id"]) or {}
     deadline = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
 
+    routing, recipients = resolve_counsel_recipients(db, gestora_id)
+    recipient_emails = [u["email"] for u in recipients]
     deliveries: list[dict[str, Any]] = []
-    for counsel_user in db.select("users", role=UserRole.counsel.value):
+    for counsel_user in recipients:
         delivery = email_service.send_counsel_notification(
             counsel_name=counsel_user["email"].split("@")[0],
             counsel_email=counsel_user["email"],
@@ -62,10 +66,15 @@ async def notify_counsel(
             resource_type=AuditResourceType.request,
             resource_id=request_id,
             gestora_id=gestora_id,
-            metadata={"to": counsel_user["email"], "delivery": delivery.get("delivery")},
+            metadata={
+                "to": counsel_user["email"],
+                "delivery": delivery.get("delivery"),
+                "routing": routing,
+                "recipients": recipient_emails,
+            },
             ip_address=_ip(http_request),
         )
-    return {"sent": len(deliveries), "deliveries": deliveries}
+    return {"sent": len(deliveries), "routing": routing, "deliveries": deliveries}
 
 
 @router.post("/requests/{request_id}/client-ready")

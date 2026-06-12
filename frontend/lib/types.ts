@@ -179,8 +179,30 @@ export interface ReviewBundle {
   comments: CounselComment[];
 }
 
+/** Counsel assigned to the requesting client's gestora (GET /api/my/counsel). */
 export interface AssignedCounsel {
   name: string;
-  firm: string;
+  email: string;
+  isPrimary: boolean;
   turnaroundHours: number;
+}
+
+/** counsel_assignments row (admin management + Exit B routing). */
+export interface CounselAssignment {
+  id: string;
+  gestoraId: string;
+  counselUserId: string;
+  isPrimary: boolean;
+  counselEmail?: string | null;
+  createdAt: string;
+}
+
+export type GenerationJobStatus = "queued" | "running" | "succeeded" | "failed";
+
+/** generation_jobs row exposed by the async generate flow (202 + poll). */
+export interface GenerationJob {
+  id: string;
+  status: GenerationJobStatus;
+  attempts: number;
+  lastError?: string | null;
 }

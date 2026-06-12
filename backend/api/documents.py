@@ -1,6 +1,7 @@
-"""Document endpoints: generation, redline, downloads, counsel edits."""
+"""Document endpoints: generation (async job), redline, downloads, counsel edits."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
@@ -19,6 +20,7 @@ from models.schema import (
     AuditResourceType,
     CounselInlineEditBody,
     DocumentVersionType,
+    GenerationJobOut,
     RequestStatus,
     UsageEventType,
     User,
@@ -29,6 +31,7 @@ from services import (
     db as dbmod,
     docx_renderer,
     generator,
+    jobs,
     rag,
     redline as redline_service,
     storage,
@@ -48,39 +51,24 @@ def _ip(http_request: Request) -> Optional[str]:
     return http_request.client.host if http_request.client else None
 
 
-@router.post("/requests/{request_id}/generate")
-async def generate(
+def _run_generation_pipeline(
+    db: dbmod.Database,
     request_id: str,
-    http_request: Request,
-    user: User = Depends(get_current_user),
-) -> Any:
-    """Generate draft + redline for a confirmed request.
-
-    Guardrail 2: refuses unless status is 'confirmed' (client confirmation)
-    AND parsed_params.generation_ready is true.
-    """
-    db = dbmod.get_db()
+    gestora_id: str,
+    user: User,
+    ip_address: Optional[str],
+) -> None:
+    """The generation pipeline (RAG -> Claude -> docx -> redline), unchanged
+    from the previous synchronous endpoint. Runs inside a generation job
+    (services/jobs.py); raising makes the job runner retry."""
     settings = get_settings()
-    if user.role == UserRole.counsel:
-        raise HTTPException(status_code=403, detail="Counsel cannot trigger generation")
-
-    row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
-    require_status(row, RequestStatus.confirmed)
-
+    row = db.get("requests", request_id)
+    if row is None:
+        raise RuntimeError(f"Request {request_id} disappeared during generation")
     params = row.get("parsed_params") or {}
-    if not params.get("generation_ready"):
-        raise HTTPException(status_code=409, detail="parsed_params.generation_ready must be true")
-
-    # Fail fast BEFORE mutating status so a 503 leaves the request re-runnable.
-    if not settings.anthropic_configured:
-        raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
-
     fund = db.get("funds", row["fund_id"]) or {}
     gestora = db.get("gestoras", gestora_id) or {}
     language = row.get("language") or params.get("language") or "es"
-
-    row = transition(db, row, RequestStatus.generating)
 
     # RAG: hard gestora_id + doc_type pre-filter, then fallback chain.
     retrieval = rag.retrieve(
@@ -137,13 +125,12 @@ async def generate(
             "precedent_version_id": retrieval.base_version_id,
             "model": settings.claude_model,
         },
-        ip_address=_ip(http_request),
+        ip_address=ip_address,
     )
     usage.record_usage(
         db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.document_generated
     )
 
-    redline_doc = None
     if retrieval.base_text is not None:
         redline_key = storage.save(
             f"{base_path}/redline.docx",
@@ -171,18 +158,95 @@ async def generate(
                 "base_precedent_version_id": retrieval.base_version_id,
                 "author": redline_service.REDLINE_AUTHOR,
             },
-            ip_address=_ip(http_request),
+            ip_address=ip_address,
         )
 
-    row = transition(db, row, RequestStatus.review_pending)
-    return {
-        "request": row,
-        "draft": draft_doc,
-        "redline": redline_doc,
-        "rag_level": retrieval.level,
-        "requires_counsel": row.get("requires_counsel", False),
-        "warning": retrieval.warning,
-    }
+    # On success the workflow continues exactly as before.
+    transition(db, db.get("requests", request_id), RequestStatus.review_pending)
+
+
+@router.post("/requests/{request_id}/generate", status_code=202)
+async def generate(
+    request_id: str,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Enqueue draft + redline generation for a confirmed request (202).
+
+    All guardrails are validated synchronously BEFORE any job is created.
+    Guardrail 2: refuses unless status is 'confirmed' (client confirmation)
+    AND parsed_params.generation_ready is true. The pipeline itself runs as
+    an async generation job; poll GET .../generation-job for its state.
+    """
+    db = dbmod.get_db()
+    settings = get_settings()
+    if user.role == UserRole.counsel:
+        raise HTTPException(status_code=403, detail="Counsel cannot trigger generation")
+
+    row = get_request_or_404(db, request_id)
+    gestora_id = assert_request_access(db, user, row)
+    require_status(row, RequestStatus.confirmed)
+
+    params = row.get("parsed_params") or {}
+    if not params.get("generation_ready"):
+        raise HTTPException(status_code=409, detail="parsed_params.generation_ready must be true")
+
+    # Fail fast BEFORE mutating status so a 503 leaves the request re-runnable.
+    if not settings.anthropic_configured:
+        raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
+
+    transition(db, row, RequestStatus.generating)
+    ip_address = _ip(http_request)
+
+    def on_final_failure(exc: Exception) -> None:
+        # Revert to 'confirmed' so the client can retry, and record the
+        # failure in the audit log (enum is fixed: document_generated with
+        # failed=true metadata marks a failed generation).
+        current = db.get("requests", request_id)
+        if current is not None and current["status"] == RequestStatus.generating.value:
+            transition(db, current, RequestStatus.confirmed)
+        audit.log_action(
+            db,
+            user=user,
+            action=AuditAction.document_generated,
+            resource_type=AuditResourceType.request,
+            resource_id=request_id,
+            gestora_id=gestora_id,
+            metadata={"failed": True, "error": str(exc)},
+            ip_address=ip_address,
+        )
+
+    job = jobs.get_runner().enqueue(
+        db,
+        request_id=request_id,
+        # to_thread: the pipeline is blocking (LLM call, docx render); a fresh
+        # coroutine is produced per attempt so retries re-run it cleanly.
+        factory=lambda: asyncio.to_thread(
+            _run_generation_pipeline, db, request_id, gestora_id, user, ip_address
+        ),
+        on_final_failure=on_final_failure,
+    )
+    return {"job_id": job["id"], "status": job["status"]}
+
+
+@router.get("/requests/{request_id}/generation-job", response_model=GenerationJobOut)
+async def get_generation_job(
+    request_id: str,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Latest generation job for a request (poll target for the 202 flow)."""
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    assert_request_access(db, user, row)
+    job = jobs.latest_job(db, request_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No generation job for this request")
+    return GenerationJobOut(
+        id=job["id"],
+        status=job["status"],
+        attempts=job.get("attempts", 0),
+        last_error=job.get("last_error"),
+    )
 
 
 @router.get("/requests/{request_id}/documents/{version_type}/download")
