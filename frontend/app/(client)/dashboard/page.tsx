@@ -4,13 +4,42 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
-import { Button, Card, PageHeader, Spinner } from "@/components/ui";
-import { getRequests } from "@/lib/api";
-import type { RequestItem } from "@/lib/types";
+import { Button, Card, PageHeader, Spinner, UsageBar } from "@/components/ui";
+import { getMyUsage, getRequests } from "@/lib/api";
+import type { MyUsage, RequestItem } from "@/lib/types";
+
+/** Small monthly-consumption widget (improvement #7). Hidden when the
+ * /api/my/usage call fails — consumption is informative, never blocking. */
+function UsageWidget({ usage }: { usage: MyUsage }) {
+  const { t } = useI18n();
+  const pct =
+    usage.docsLimit === null || usage.docsLimit === 0
+      ? null
+      : (usage.docsGenerated / usage.docsLimit) * 100;
+  return (
+    <Card className="mb-6 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+          {t("dashboard.usageTitle")}
+        </span>
+        <span className="text-sm text-slate-700">
+          {usage.docsLimit === null
+            ? t("dashboard.usageUnlimited", { used: usage.docsGenerated })
+            : t("dashboard.usage", {
+                used: usage.docsGenerated,
+                limit: usage.docsLimit,
+              })}
+        </span>
+      </div>
+      {pct !== null ? <UsageBar pct={pct} className="mt-2" /> : null}
+    </Card>
+  );
+}
 
 export default function ClientDashboardPage() {
   const { t } = useI18n();
   const [requests, setRequests] = useState<RequestItem[] | null>(null);
+  const [usage, setUsage] = useState<MyUsage | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -20,6 +49,10 @@ export default function ClientDashboardPage() {
         setError(true);
         setRequests([]);
       });
+    // Graceful: hide the widget entirely if the usage call fails.
+    void getMyUsage()
+      .then(setUsage)
+      .catch(() => setUsage(null));
   }, []);
 
   return (
@@ -33,6 +66,8 @@ export default function ClientDashboardPage() {
           </Link>
         }
       />
+
+      {usage !== null ? <UsageWidget usage={usage} /> : null}
 
       {requests === null ? (
         <div className="flex justify-center py-16">

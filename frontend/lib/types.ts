@@ -313,3 +313,44 @@ export interface SlaReport {
   overall: SlaStats;
   byCounsel: Array<SlaStats & { counselEmail: string }>;
 }
+
+/* ------------------------------------------------------------------ */
+/* Billing over usage_events (improvement #7)                          */
+/* ------------------------------------------------------------------ */
+
+/** One gestora's consumption in a billing period (GET /api/admin/billing). */
+export interface BillingRow {
+  gestoraId: string;
+  gestoraName: string | null;
+  subscriptionTier: SubscriptionTier;
+  /** Billable generations (document_generated events, refinements included). */
+  docsGenerated: number;
+  /** Monthly doc allowance of the tier; null = unlimited (custom). */
+  docsLimit: number | null;
+  overageDocs: number;
+  exitACount: number;
+  exitBRequested: number;
+  exitBValidated: number;
+  fundCount: number;
+  /** Funds allowance of the tier; null = unlimited (custom). */
+  fundsLimit: number | null;
+  overFundsLimit: boolean;
+  /** Dashboard estimate (0 while overage prices are unset / TBD). */
+  estimatedOverageEur: number;
+}
+
+export interface BillingReport {
+  /** YYYY-MM. */
+  period: string;
+  rows: BillingRow[];
+}
+
+/** The client's own gestora consumption this month (GET /api/my/usage). */
+export interface MyUsage {
+  /** YYYY-MM (current period). */
+  billingPeriod: string;
+  subscriptionTier: SubscriptionTier;
+  docsGenerated: number;
+  /** null = unlimited (custom tier). */
+  docsLimit: number | null;
+}

@@ -134,3 +134,43 @@ def send_client_ready(
         f"Lol-AI-lo Legal SLP"
     )
     return send_email(client_email, subject, body)
+
+
+def send_usage_alert(
+    *,
+    gestora_name: str,
+    billing_email: str,
+    billing_period: str,
+    threshold: int,
+    docs_generated: int,
+    docs_limit: int,
+) -> dict:
+    """Billing usage alert (improvement #7): the gestora crossed 80% / 100%
+    of its monthly document allowance."""
+    if threshold >= 100:
+        subject = f"[Lol-AI-lo] Límite mensual de documentos alcanzado — {gestora_name}"
+        headline = (
+            f"Habéis alcanzado el límite mensual de documentos de vuestro plan "
+            f"({docs_generated} de {docs_limit} en {billing_period})."
+        )
+        followup = (
+            "Los documentos adicionales generados este mes se facturarán como "
+            "exceso según vuestro plan."
+        )
+    else:
+        subject = f"[Lol-AI-lo] Aviso de consumo ({threshold}%) — {gestora_name}"
+        headline = (
+            f"Habéis superado el {threshold}% del límite mensual de documentos "
+            f"de vuestro plan ({docs_generated} de {docs_limit} en {billing_period})."
+        )
+        followup = (
+            "Si esperáis superar el límite, contactad con nosotros para "
+            "revisar vuestro plan."
+        )
+    body = (
+        f"Hola,\n\n"
+        f"{headline}\n\n"
+        f"{followup}\n\n"
+        f"Lol-AI-lo Legal SLP"
+    )
+    return send_email(billing_email, subject, body)

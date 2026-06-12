@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.admin_metrics import router as admin_metrics_router
+from api.billing import router as billing_router
 from api.counsel_assignments import router as counsel_assignments_router
 from api.doc_types import router as doc_types_router
 from api.documents import router as documents_router
@@ -64,6 +65,7 @@ app.include_router(notifications_router)
 app.include_router(counsel_assignments_router)
 app.include_router(doc_types_router)
 app.include_router(admin_metrics_router)
+app.include_router(billing_router)
 
 
 @app.get("/health")

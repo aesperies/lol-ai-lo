@@ -27,6 +27,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: "/admin/precedents", labelKey: "nav.precedents" },
     { href: "/admin/users", labelKey: "nav.users" },
     { href: "/admin/quality", labelKey: "nav.quality" },
+    { href: "/admin/billing", labelKey: "nav.billing" },
   ],
 };
 

@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     # directed to Exit B (counsel validation).
     max_refinements: int = 3
 
+    # ---------- Billing (improvement #7) ----------
+    # Per-doc overage prices in EUR once the tier's monthly doc allowance is
+    # exhausted (SPEC PRICING STRUCTURE: Exit A €X < Exit B €Y).
+    # TODO: tiers/prices TBD per SPEC — 0 = TBD, estimated overage stays €0.
+    price_exit_a_eur: float = 0.0
+    price_exit_b_eur: float = 0.0
+
     # ---------- Counsel SLA (Exit B turnaround, improvement #8) ----------
     # Promised review turnaround for counsel validation (hours).
     sla_review_hours: float = 48.0

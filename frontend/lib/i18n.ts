@@ -94,6 +94,7 @@ const es = {
   "nav.precedents": "Precedentes",
   "nav.users": "Usuarios",
   "nav.quality": "Calidad y SLA",
+  "nav.billing": "Facturación",
 
   // Auth
   "auth.loginTitle": "Iniciar sesión",
@@ -406,6 +407,31 @@ const es = {
   "admin.sla.reminders": "Recordatorios",
   "admin.sla.escalations": "Escalados",
   "admin.sla.empty": "Aún no hay datos de SLA.",
+
+  // Admin — billing over usage_events (improvement #7)
+  "admin.billing.title": "Facturación",
+  "admin.billing.subtitle":
+    "Consumo mensual por gestora: documentos generados, límites del plan y exceso estimado.",
+  "admin.billing.period": "Periodo",
+  "admin.billing.exportCsv": "Exportar CSV",
+  "admin.billing.gestora": "Gestora",
+  "admin.billing.tier": "Plan",
+  "admin.billing.docs": "Docs generados / límite",
+  "admin.billing.overage": "Exceso",
+  "admin.billing.exitA": "Exit A",
+  "admin.billing.exitB": "Exit B (sol. / val.)",
+  "admin.billing.overageEur": "€ exceso est.",
+  "admin.billing.funds": "Fondos",
+  "admin.billing.unlimited": "Ilimitado",
+  "admin.billing.overFunds": "Supera el límite de fondos del plan",
+  "admin.billing.empty": "No hay datos de consumo para este periodo.",
+  "admin.billing.pricesTbdHint":
+    "El € estimado es 0 mientras los precios de exceso no estén configurados.",
+
+  // Client dashboard — consumption widget (improvement #7)
+  "dashboard.usageTitle": "Consumo del plan",
+  "dashboard.usage": "Este mes: {used} de {limit} documentos",
+  "dashboard.usageUnlimited": "Este mes: {used} documentos · plan sin límite",
 } as const;
 
 export type DictKey = keyof typeof es;
@@ -461,6 +487,7 @@ const en: Record<DictKey, string> = {
   "nav.precedents": "Precedents",
   "nav.users": "Users",
   "nav.quality": "Quality & SLA",
+  "nav.billing": "Billing",
 
   "auth.loginTitle": "Sign in",
   "auth.loginSubtitle": "Access your fund documentation workspace.",
@@ -748,6 +775,29 @@ const en: Record<DictKey, string> = {
   "admin.sla.reminders": "Reminders",
   "admin.sla.escalations": "Escalations",
   "admin.sla.empty": "No SLA data yet.",
+
+  "admin.billing.title": "Billing",
+  "admin.billing.subtitle":
+    "Monthly consumption per management company: documents generated, plan limits and estimated overage.",
+  "admin.billing.period": "Period",
+  "admin.billing.exportCsv": "Export CSV",
+  "admin.billing.gestora": "Management company",
+  "admin.billing.tier": "Plan",
+  "admin.billing.docs": "Docs generated / limit",
+  "admin.billing.overage": "Overage",
+  "admin.billing.exitA": "Exit A",
+  "admin.billing.exitB": "Exit B (req. / val.)",
+  "admin.billing.overageEur": "Est. overage €",
+  "admin.billing.funds": "Funds",
+  "admin.billing.unlimited": "Unlimited",
+  "admin.billing.overFunds": "Exceeds the plan's funds limit",
+  "admin.billing.empty": "No consumption data for this period.",
+  "admin.billing.pricesTbdHint":
+    "The estimated € stays 0 while overage prices are not configured.",
+
+  "dashboard.usageTitle": "Plan consumption",
+  "dashboard.usage": "This month: {used} of {limit} documents",
+  "dashboard.usageUnlimited": "This month: {used} documents · unlimited plan",
 };
 
 /* ------------------------------------------------------------------ */

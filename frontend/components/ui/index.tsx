@@ -181,6 +181,41 @@ export function Label({
   );
 }
 
+/* --------------------------- Usage bar ---------------------------- */
+
+/**
+ * Consumption progress bar (billing, improvement #7).
+ * Tone by percentage of the allowance: green <80%, amber 80–100%, red >100%.
+ */
+export function UsageBar({
+  pct,
+  className,
+}: {
+  /** 0–100+ (values past 100 render a full red bar). */
+  pct: number;
+  className?: string;
+}) {
+  const tone =
+    pct > 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500";
+  return (
+    <div
+      role="progressbar"
+      aria-valuenow={Math.round(pct)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      className={cx(
+        "h-2 w-full overflow-hidden rounded-full bg-slate-100",
+        className,
+      )}
+    >
+      <div
+        className={cx("h-full rounded-full transition-all", tone)}
+        style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+      />
+    </div>
+  );
+}
+
 /* ----------------------------- Spinner ---------------------------- */
 
 export function Spinner({ className }: { className?: string }) {

@@ -13,6 +13,8 @@ import { docTypeLabel } from "@/lib/catalog";
 import { translate, type DictKey } from "@/lib/i18n";
 import type {
   AssignedCounsel,
+  BillingReport,
+  BillingRow,
   CounselAssignment,
   CounselComment,
   DocumentHtml,
@@ -22,6 +24,7 @@ import type {
   Fund,
   GenerationJob,
   Gestora,
+  MyUsage,
   ParsedDate,
   ParsedParams,
   ParsedParty,
@@ -954,3 +957,129 @@ export const STUB_SLA_REPORT: SlaReport = {
     },
   ],
 };
+
+/* ------------------------------------------------------------------ */
+/* Billing demo data (improvement #7)                                  */
+/* ------------------------------------------------------------------ */
+
+/** Current billing period (YYYY-MM, UTC) — mirrors the backend derivation. */
+export function stubCurrentPeriod(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+/** The period before the current one (YYYY-MM). */
+function stubPreviousPeriod(): string {
+  const date = new Date();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() - 1);
+  return date.toISOString().slice(0, 7);
+}
+
+/** Demo periods for the selector (newest first). */
+export function stubBillingPeriods(): string[] {
+  return [stubCurrentPeriod(), stubPreviousPeriod()];
+}
+
+/**
+ * Demo rows: Iberia (growth, 64/75 docs) shows the AMBER bar (≥80%);
+ * Atlantique (starter, 24/20 docs + 3/2 funds) shows the RED over-limit
+ * state with overage docs and an estimated overage amount.
+ */
+function stubBillingRowsCurrent(): BillingRow[] {
+  return [
+    {
+      gestoraId: STUB_GESTORA.id,
+      gestoraName: STUB_GESTORA.name,
+      subscriptionTier: "growth",
+      docsGenerated: 64,
+      docsLimit: 75,
+      overageDocs: 0,
+      exitACount: 38,
+      exitBRequested: 17,
+      exitBValidated: 15,
+      fundCount: 2,
+      fundsLimit: 5,
+      overFundsLimit: false,
+      estimatedOverageEur: 0,
+    },
+    {
+      gestoraId: "g-demo-2",
+      gestoraName: "Atlantique Capital Gestion SAS",
+      subscriptionTier: "starter",
+      docsGenerated: 24,
+      docsLimit: 20,
+      overageDocs: 4,
+      exitACount: 9,
+      exitBRequested: 6,
+      exitBValidated: 5,
+      fundCount: 3,
+      fundsLimit: 2,
+      overFundsLimit: true,
+      estimatedOverageEur: 180,
+    },
+  ];
+}
+
+/** Both gestoras comfortably under their limits (green bars). */
+function stubBillingRowsPrevious(): BillingRow[] {
+  return stubBillingRowsCurrent().map((row) => ({
+    ...row,
+    docsGenerated: Math.round((row.docsLimit ?? 0) * 0.4),
+    overageDocs: 0,
+    exitACount: Math.round(row.exitACount * 0.4),
+    exitBRequested: Math.round(row.exitBRequested * 0.4),
+    exitBValidated: Math.round(row.exitBValidated * 0.4),
+    fundCount: Math.min(row.fundCount, row.fundsLimit ?? row.fundCount),
+    overFundsLimit: false,
+    estimatedOverageEur: 0,
+  }));
+}
+
+/** Demo report for GET /api/admin/billing?period=… */
+export function stubBillingReport(period?: string): BillingReport {
+  const effective = period ?? stubCurrentPeriod();
+  return {
+    period: effective,
+    rows:
+      effective === stubCurrentPeriod()
+        ? stubBillingRowsCurrent()
+        : stubBillingRowsPrevious(),
+  };
+}
+
+/** Demo CSV for GET /api/admin/billing/export (columns match the JSON). */
+export function stubBillingCsv(period?: string): string {
+  const report = stubBillingReport(period);
+  const header =
+    "gestora_id,gestora_name,subscription_tier,docs_generated,docs_limit," +
+    "overage_docs,exit_a_count,exit_b_requested,exit_b_validated,fund_count," +
+    "funds_limit,over_funds_limit,estimated_overage_eur";
+  const lines = report.rows.map((r) =>
+    [
+      r.gestoraId,
+      `"${r.gestoraName ?? ""}"`,
+      r.subscriptionTier,
+      r.docsGenerated,
+      r.docsLimit ?? "",
+      r.overageDocs,
+      r.exitACount,
+      r.exitBRequested,
+      r.exitBValidated,
+      r.fundCount,
+      r.fundsLimit ?? "",
+      r.overFundsLimit,
+      r.estimatedOverageEur,
+    ].join(","),
+  );
+  return [header, ...lines].join("\n");
+}
+
+/** Demo numbers for GET /api/my/usage (the stub client's gestora, growth). */
+export function stubMyUsage(): MyUsage {
+  return {
+    billingPeriod: stubCurrentPeriod(),
+    subscriptionTier: "growth",
+    docsGenerated: 64,
+    docsLimit: 75,
+  };
+}
