@@ -130,6 +130,8 @@ export interface DocumentItem {
   filePath: string;
   precedentVersionId?: string | null;
   uploadedBy?: string | null;
+  /** Refinement iteration this version belongs to (0 = original generation). */
+  iteration: number;
   createdAt: string;
 }
 
@@ -204,6 +206,25 @@ export interface CounselAssignment {
   isPrimary: boolean;
   counselEmail?: string | null;
   createdAt: string;
+}
+
+export type RefinementStatus = "pending" | "applied" | "failed";
+
+/**
+ * Iterative refinement of a generated document (refinements row): the client
+ * requests a targeted adjustment in natural language and the document is
+ * regenerated as a new iteration, keeping version history.
+ */
+export interface Refinement {
+  id: string;
+  requestId: string;
+  iteration: number;
+  instruction: string;
+  status: RefinementStatus;
+  /** Failure reason ([REFINEMENT-UNCLEAR] or job error); null unless failed. */
+  error?: string | null;
+  createdAt: string;
+  appliedAt?: string | null;
 }
 
 export type GenerationJobStatus = "queued" | "running" | "succeeded" | "failed";

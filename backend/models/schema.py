@@ -101,6 +101,12 @@ class GenerationJobStatus(str, Enum):
     failed = "failed"
 
 
+class RefinementStatus(str, Enum):
+    pending = "pending"
+    applied = "applied"
+    failed = "failed"
+
+
 # ---------------------------------------------------------------------------
 # Allowed workflow transitions (guardrail: enforced on every status change)
 # ---------------------------------------------------------------------------
@@ -111,7 +117,14 @@ STATUS_TRANSITIONS: dict[RequestStatus, set[RequestStatus]] = {
     # 'confirmed' = revert path after a generation job FINALLY fails, so the
     # client can re-trigger generation (services/jobs.py).
     RequestStatus.generating: {RequestStatus.review_pending, RequestStatus.confirmed},
-    RequestStatus.review_pending: {RequestStatus.counsel_review, RequestStatus.delivered},
+    # 'generating' = iterative refinement loop (api/refinements.py): the
+    # request re-enters generation and returns to 'review_pending' whether the
+    # refinement is applied or fails (the previous draft stays valid).
+    RequestStatus.review_pending: {
+        RequestStatus.counsel_review,
+        RequestStatus.delivered,
+        RequestStatus.generating,
+    },
     RequestStatus.counsel_review: {RequestStatus.validated},
     RequestStatus.validated: {RequestStatus.delivered},
     RequestStatus.delivered: set(),
@@ -274,6 +287,8 @@ class DocumentOut(BaseModel):
     file_path: str
     precedent_version_id: Optional[str] = None
     uploaded_by: Optional[str] = None
+    # Refinement iteration this version belongs to (0 = original generation).
+    iteration: int = 0
     created_at: Optional[datetime] = None
 
 
@@ -379,3 +394,22 @@ class GenerationJobOut(BaseModel):
     status: GenerationJobStatus
     attempts: int = 0
     last_error: Optional[str] = None
+
+
+class RefinementCreate(BaseModel):
+    # Mirrors the DB CHECK: char_length(instruction) between 5 and 1000.
+    instruction: str = Field(min_length=5, max_length=1000)
+
+
+class RefinementOut(BaseModel):
+    id: str
+    request_id: str
+    iteration: int
+    instruction: str
+    status: RefinementStatus = RefinementStatus.pending
+    # Failure reason surfaced to the client (unclear-instruction reason or
+    # final job error). NULL unless status='failed'.
+    error: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    applied_at: Optional[datetime] = None

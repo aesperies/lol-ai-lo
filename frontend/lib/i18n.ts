@@ -219,6 +219,25 @@ const es = {
   "viewer.requestMeta": "Detalle de la solicitud",
   "viewer.tabDraft": "Borrador",
   "viewer.tabRedline": "Redline vs. Precedente",
+  "viewer.versionLabel": "Versión",
+  "viewer.oldVersionBanner":
+    "Estás viendo una versión anterior del documento. Vuelve a la última versión para descargar, solicitar ajustes o continuar con la entrega.",
+
+  // Iterative refinements (Solicitar ajuste)
+  "refine.title": "Solicitar ajuste",
+  "refine.desc":
+    "Describe en lenguaje natural el cambio que necesitas (p. ej., «cambia el plazo de preaviso a 15 días»). Regeneraremos el documento aplicándolo y conservando el historial de versiones.",
+  "refine.placeholder":
+    "P. ej., cambia el plazo de preaviso a 15 días naturales…",
+  "refine.remaining": "Te quedan {count} ajustes",
+  "refine.submit": "Solicitar ajuste",
+  "refine.processing": "Aplicando ajuste…",
+  "refine.processingHint":
+    "Regenerando el documento con tu ajuste. Puede tardar hasta 60 segundos.",
+  "refine.applied": "Ajuste aplicado. Mostrando la nueva versión.",
+  "refine.failed": "No hemos podido aplicar el ajuste.",
+  "refine.limitReached":
+    "Has agotado los ajustes disponibles. Para más cambios, usa «Solicitar Validación» (validación por abogado).",
 
   // In-browser document viewer (HTML)
   "htmlViewer.loading": "Cargando documento…",
@@ -490,6 +509,23 @@ const en: Record<DictKey, string> = {
   "viewer.requestMeta": "Request details",
   "viewer.tabDraft": "Draft",
   "viewer.tabRedline": "Redline vs. Precedent",
+  "viewer.versionLabel": "Version",
+  "viewer.oldVersionBanner":
+    "You are viewing a previous version of the document. Go back to the latest version to download, request adjustments or continue with delivery.",
+
+  "refine.title": "Solicitar ajuste",
+  "refine.desc":
+    "Describe the change you need in plain language (e.g., “change the notice period to 15 days”). We will regenerate the document applying it, keeping the version history.",
+  "refine.placeholder": "E.g., change the notice period to 15 calendar days…",
+  "refine.remaining": "You have {count} adjustments left",
+  "refine.submit": "Solicitar ajuste",
+  "refine.processing": "Applying adjustment…",
+  "refine.processingHint":
+    "Regenerating the document with your adjustment. This can take up to 60 seconds.",
+  "refine.applied": "Adjustment applied. Showing the new version.",
+  "refine.failed": "We could not apply the adjustment.",
+  "refine.limitReached":
+    "You have used all available adjustments. For further changes, use “Solicitar Validación” (lawyer validation).",
 
   "htmlViewer.loading": "Loading document…",
   "htmlViewer.error": "The document could not be loaded. Please try again.",

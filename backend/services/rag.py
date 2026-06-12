@@ -107,6 +107,12 @@ def _load_text(file_path: str) -> Optional[str]:
         return None
 
 
+def load_version_text(version: dict[str, Any]) -> Optional[str]:
+    """Re-read a stored precedent version's text (refinement redlines diff
+    each new iteration against the SAME original precedent base)."""
+    return _load_text(version["file_path"])
+
+
 def _versions_for(db: dbmod.Database, precedent: dict[str, Any], statuses: dict[str, float]) -> list[Candidate]:
     candidates: list[Candidate] = []
     for version in db.select("precedent_versions", precedent_id=precedent["id"]):

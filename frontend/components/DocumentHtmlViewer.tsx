@@ -21,10 +21,16 @@ import type { DocumentHtml, DocumentVersionType } from "@/lib/types";
 export default function DocumentHtmlViewer({
   requestId,
   versionType,
+  iteration,
+  refreshToken,
   className,
 }: {
   requestId: string;
   versionType: DocumentVersionType;
+  /** Refinement iteration to view; latest when omitted (version history). */
+  iteration?: number;
+  /** Bump to force a re-fetch (e.g. after a refinement created a new iteration). */
+  refreshToken?: number;
   className?: string;
 }) {
   const { t } = useI18n();
@@ -35,7 +41,7 @@ export default function DocumentHtmlViewer({
     let cancelled = false;
     setDoc(null);
     setFailed(false);
-    getDocumentHtml(requestId, versionType)
+    getDocumentHtml(requestId, versionType, iteration)
       .then((data) => {
         if (!cancelled) setDoc(data);
       })
@@ -45,7 +51,7 @@ export default function DocumentHtmlViewer({
     return () => {
       cancelled = true;
     };
-  }, [requestId, versionType]);
+  }, [requestId, versionType, iteration, refreshToken]);
 
   if (failed) {
     return <Banner tone="danger">{t("htmlViewer.error")}</Banner>;

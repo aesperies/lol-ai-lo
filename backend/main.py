@@ -15,6 +15,7 @@ from api.counsel_assignments import router as counsel_assignments_router
 from api.documents import router as documents_router
 from api.notifications import router as notifications_router
 from api.precedents import router as precedents_router
+from api.refinements import router as refinements_router
 from api.requests import router as requests_router
 from config import ServiceNotConfiguredError, get_settings
 
@@ -36,6 +37,7 @@ async def service_not_configured_handler(request: Request, exc: ServiceNotConfig
 
 
 app.include_router(requests_router)
+app.include_router(refinements_router)
 app.include_router(documents_router)
 app.include_router(precedents_router)
 app.include_router(notifications_router)

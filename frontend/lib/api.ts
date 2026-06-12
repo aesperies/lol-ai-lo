@@ -30,9 +30,11 @@ import {
   stubPollGenerationJob,
   stubPrecedents,
   stubRedline,
+  stubRefinements,
   stubRequests,
   stubReviewBundle,
   stubStartGenerationJob,
+  stubStartRefinement,
 } from "@/lib/stub-data";
 import {
   getSupabaseBrowserClient,
@@ -52,6 +54,8 @@ import type {
   ParsedParams,
   Precedent,
   RedlineSegment,
+  Refinement,
+  RefinementStatus,
   RequestItem,
   ReviewBundle,
   Role,
@@ -73,10 +77,16 @@ export const apiPaths = {
   generationJob: (id: string) => `/api/requests/${id}/generation-job`,
   exitAAcknowledge: (id: string) => `/api/requests/${id}/exit-a/acknowledge`,
   exitB: (id: string) => `/api/requests/${id}/exit-b`,
-  documentDownload: (id: string, type: DocumentVersionType) =>
-    `/api/requests/${id}/documents/${type}/download`,
-  documentHtml: (id: string, type: DocumentVersionType) =>
-    `/api/requests/${id}/documents/${type}/html`,
+  refinements: (id: string) => `/api/requests/${id}/refinements`,
+  // iteration: refinement version history (latest served when omitted).
+  documentDownload: (id: string, type: DocumentVersionType, iteration?: number) =>
+    `/api/requests/${id}/documents/${type}/download${
+      iteration === undefined ? "" : `?iteration=${iteration}`
+    }`,
+  documentHtml: (id: string, type: DocumentVersionType, iteration?: number) =>
+    `/api/requests/${id}/documents/${type}/html${
+      iteration === undefined ? "" : `?iteration=${iteration}`
+    }`,
   reviewBundle: (id: string) => `/api/requests/${id}/review`,
   counselEdit: (id: string) => `/api/requests/${id}/counsel-edit`,
   counselUpload: (id: string) => `/api/requests/${id}/counsel-upload`,
@@ -287,6 +297,76 @@ export async function acknowledgeExitA(id: string): Promise<RequestItem> {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* Iterative refinements (improvement #4)                              */
+/* ------------------------------------------------------------------ */
+
+/** Mirrors the backend `max_refinements` setting (config.py, default 3). */
+export const MAX_REFINEMENTS = 3;
+
+interface RefinementWire {
+  id: string;
+  request_id: string;
+  iteration: number;
+  instruction: string;
+  status: RefinementStatus;
+  error?: string | null;
+  created_at?: string;
+  applied_at?: string | null;
+}
+
+function mapRefinement(wire: RefinementWire): Refinement {
+  return {
+    id: wire.id,
+    requestId: wire.request_id,
+    iteration: wire.iteration,
+    instruction: wire.instruction,
+    status: wire.status,
+    error: wire.error ?? null,
+    createdAt: wire.created_at ?? "",
+    appliedAt: wire.applied_at ?? null,
+  };
+}
+
+/**
+ * Requests one iterative refinement (202): the document is regenerated as a
+ * new iteration. Poll getGenerationJob, then re-read getRefinements for the
+ * applied/failed outcome.
+ */
+export async function createRefinement(
+  id: string,
+  instruction: string,
+): Promise<{ refinementId: string; jobId: string; iteration: number }> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    const req = findRequest(id);
+    if (!req) throw new ApiError(404, "Request not found");
+    return stubStartRefinement(req, instruction);
+  }
+  const res = await apiFetch<{
+    refinement_id: string;
+    job_id: string;
+    iteration: number;
+  }>(apiPaths.refinements(id), { method: "POST", body: { instruction } });
+  return {
+    refinementId: res.refinement_id,
+    jobId: res.job_id,
+    iteration: res.iteration,
+  };
+}
+
+/** Refinement history for a request (oldest first). */
+export async function getRefinements(id: string): Promise<Refinement[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 4);
+    return stubRefinements
+      .filter((r) => r.requestId === id)
+      .map((r) => ({ ...r }));
+  }
+  const rows = await apiFetch<RefinementWire[]>(apiPaths.refinements(id));
+  return rows.map(mapRefinement);
+}
+
 export async function requestExitB(id: string): Promise<RequestItem> {
   if (isStubMode()) {
     await delay(STUB_LATENCY);
@@ -318,10 +398,12 @@ export async function getRequest(id: string): Promise<RequestItem> {
   return apiFetch<RequestItem>(apiPaths.request(id));
 }
 
-/** Downloads a document version as a Blob (stub: plain-text .docx placeholder). */
+/** Downloads a document version as a Blob (stub: plain-text .docx placeholder).
+ * `iteration` selects an older refinement version; latest when omitted. */
 export async function downloadDocument(
   id: string,
   type: DocumentVersionType,
+  iteration?: number,
 ): Promise<Blob> {
   if (isStubMode()) {
     await delay(STUB_LATENCY / 2);
@@ -329,7 +411,7 @@ export async function downloadDocument(
     if (!req) throw new ApiError(404, "Request not found");
     const text =
       type === "redline"
-        ? stubRedline(req)
+        ? stubRedline(req, iteration)
             .map((s) =>
               s.type === "ins"
                 ? `[+${s.text}+]`
@@ -338,29 +420,32 @@ export async function downloadDocument(
                   : s.text,
             )
             .join("")
-        : stubDraftText(req);
+        : stubDraftText(req, iteration);
     return new Blob([text], { type: "text/plain;charset=utf-8" });
   }
   const headers = await authHeaders();
-  const res = await fetch(`${API_URL}${apiPaths.documentDownload(id, type)}`, {
-    headers,
-  });
+  const res = await fetch(
+    `${API_URL}${apiPaths.documentDownload(id, type, iteration)}`,
+    { headers },
+  );
   if (!res.ok) throw new ApiError(res.status, res.statusText);
   return res.blob();
 }
 
-/** Safe HTML rendering of a document version for the in-browser viewer. */
+/** Safe HTML rendering of a document version for the in-browser viewer.
+ * `iteration` selects an older refinement version; latest when omitted. */
 export async function getDocumentHtml(
   id: string,
   type: DocumentVersionType,
+  iteration?: number,
 ): Promise<DocumentHtml> {
   if (isStubMode()) {
     await delay(STUB_LATENCY / 2);
     const req = findRequest(id);
     if (!req) throw new ApiError(404, "Request not found");
-    return stubDocumentHtml(req, type);
+    return stubDocumentHtml(req, type, iteration);
   }
-  return apiFetch<DocumentHtml>(apiPaths.documentHtml(id, type));
+  return apiFetch<DocumentHtml>(apiPaths.documentHtml(id, type, iteration));
 }
 
 /* ------------------------------------------------------------------ */

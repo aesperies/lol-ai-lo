@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # Generation-job retry backoff base in seconds (delays: base*1, base*4).
     # The test suite pins JOB_BACKOFF_BASE=0 so retries are instant.
     job_backoff_base: float = 1.0
+    # Max iterative refinements per request; beyond this the client is
+    # directed to Exit B (counsel validation).
+    max_refinements: int = 3
 
     # -- readiness flags ---------------------------------------------------
     @property

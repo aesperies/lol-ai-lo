@@ -23,6 +23,7 @@ import type {
   ParsedParams,
   Precedent,
   RedlineSegment,
+  Refinement,
   RequestItem,
   ReviewBundle,
   UserProfile,
@@ -400,9 +401,15 @@ export function stubHasMissing(req: RequestItem): boolean {
 /** Include this marker in the freetext to demo a failed generation job. */
 export const STUB_FAIL_GENERATION_MARKER = "[demo:fail]";
 
+/** Include this marker in a refinement instruction to demo the
+ * [REFINEMENT-UNCLEAR] failure path (previous iteration stays intact). */
+export const STUB_UNCLEAR_REFINEMENT_MARKER = "[demo:unclear]";
+
 interface StubJob extends GenerationJob {
   requestId: string;
   polls: number;
+  /** Set when the job was started by a refinement (not the initial generation). */
+  refinementId?: string;
 }
 
 let jobSeq = 0;
@@ -427,6 +434,12 @@ export function stubStartGenerationJob(req: RequestItem): GenerationJob {
  * Each poll advances the simulated job: queued → running → succeeded after
  * ~2 polls (or failed when the freetext contains STUB_FAIL_GENERATION_MARKER,
  * mirroring the backend's final-failure revert to 'confirmed').
+ *
+ * Refinement jobs (job.refinementId set) instead resolve the refinement:
+ * applied → new iteration, or — instruction containing
+ * STUB_UNCLEAR_REFINEMENT_MARKER — failed with a surfaced reason while the
+ * previous iteration stays intact (the job itself succeeds, like the
+ * backend's handled [REFINEMENT-UNCLEAR] outcome).
  */
 export function stubPollGenerationJob(requestId: string): GenerationJob | undefined {
   const job = stubJobs.get(requestId);
@@ -438,7 +451,21 @@ export function stubPollGenerationJob(requestId: string): GenerationJob | undefi
     job.status = "running";
     job.attempts = 1;
   } else if (job.status === "running" && job.polls >= 2) {
-    if (req.freetext.includes(STUB_FAIL_GENERATION_MARKER)) {
+    const refinement = job.refinementId
+      ? stubRefinements.find((r) => r.id === job.refinementId)
+      : undefined;
+    if (refinement) {
+      job.status = "succeeded";
+      if (refinement.instruction.includes(STUB_UNCLEAR_REFINEMENT_MARKER)) {
+        refinement.status = "failed";
+        refinement.error =
+          "La instrucción es ambigua: especifica el cambio exacto que debe aplicarse (demo).";
+      } else {
+        refinement.status = "applied";
+        refinement.appliedAt = nowIso();
+      }
+      req.status = "review_pending"; // previous draft stays valid on failure
+    } else if (req.freetext.includes(STUB_FAIL_GENERATION_MARKER)) {
       job.status = "failed";
       job.attempts = 3;
       job.lastError = "Error simulado de generación (demo).";
@@ -454,8 +481,78 @@ export function stubPollGenerationJob(requestId: string): GenerationJob | undefi
   return { id: job.id, status: job.status, attempts: job.attempts, lastError: job.lastError };
 }
 
-export function stubDraftText(req: RequestItem): string {
+/* ------------------------------------------------------------------ */
+/* Simulated iterative refinements (improvement #4)                    */
+/* ------------------------------------------------------------------ */
+
+let refinementSeq = 0;
+
+export const stubRefinements: Refinement[] = [];
+
+function stubAppliedRefinements(requestId: string, upTo?: number): Refinement[] {
+  return stubRefinements.filter(
+    (r) =>
+      r.requestId === requestId &&
+      r.status === "applied" &&
+      (upTo === undefined || r.iteration <= upTo),
+  );
+}
+
+/** Highest applied iteration for a request (0 = original generation). */
+export function stubLatestIteration(requestId: string): number {
+  return stubAppliedRefinements(requestId).reduce(
+    (max, r) => Math.max(max, r.iteration),
+    0,
+  );
+}
+
+/**
+ * Starts a simulated refinement: creates the pending refinements row and an
+ * async job to poll (same 202 + poll contract as the initial generation).
+ */
+export function stubStartRefinement(
+  req: RequestItem,
+  instruction: string,
+): { refinementId: string; jobId: string; iteration: number } {
+  refinementSeq += 1;
+  const iteration =
+    stubRefinements
+      .filter((r) => r.requestId === req.id)
+      .reduce((max, r) => Math.max(max, r.iteration), 0) + 1;
+  const refinement: Refinement = {
+    id: `ref-${refinementSeq}`,
+    requestId: req.id,
+    iteration,
+    instruction,
+    status: "pending",
+    error: null,
+    createdAt: nowIso(),
+    appliedAt: null,
+  };
+  stubRefinements.push(refinement);
+  req.status = "generating";
+  req.updatedAt = nowIso();
+  const job = stubStartGenerationJob(req);
+  const stubJob = stubJobs.get(req.id);
+  if (stubJob) stubJob.refinementId = refinement.id;
+  return { refinementId: refinement.id, jobId: job.id, iteration };
+}
+
+/**
+ * Draft text for a given refinement iteration (default: latest applied).
+ * Refined iterations visibly change the SEGUNDA clause and append one
+ * "Ajuste vN" note per applied refinement, so the demo shows real diffs.
+ */
+export function stubDraftText(req: RequestItem, iteration?: number): string {
+  const upTo = iteration ?? stubLatestIteration(req.id);
+  const applied = stubAppliedRefinements(req.id, upTo);
   const label = req.docTypeLabel ?? docTypeLabel(req.docType);
+  const segunda =
+    applied.length > 0
+      ? "El plazo de preaviso será de quince (15) días naturales. [DEVIATION: ajuste solicitado por el cliente]"
+      : req.hasMissingFields
+        ? "[MISSING: importe]"
+        : "Según los términos confirmados en la solicitud.";
   return [
     `${label.toUpperCase()}`,
     ``,
@@ -473,15 +570,19 @@ export function stubDraftText(req: RequestItem): string {
     ``,
     `PRIMERA. Objeto. ${label} otorgado conforme a los estándares de mercado de venture capital europeo de 2026.`,
     ``,
-    `SEGUNDA. Plazos y condiciones. ${req.hasMissingFields ? "[MISSING: importe]" : "Según los términos confirmados en la solicitud."}`,
+    `SEGUNDA. Plazos y condiciones. ${segunda}`,
     ``,
     `TERCERA. Ley aplicable y jurisdicción. Este documento se rige por la ley española y las partes se someten a los juzgados y tribunales de Madrid.`,
+    ...applied.map((r) => [``, `— Ajuste v${r.iteration} aplicado: ${r.instruction} —`]).flat(),
     ``,
-    `— Documento generado por Lol-AI-lo (borrador) —`,
+    `— Documento generado por Lol-AI-lo (borrador${upTo > 0 ? ` v${upTo}` : ""}) —`,
   ].join("\n");
 }
 
-export function stubRedline(req: RequestItem): RedlineSegment[] {
+/** Redline vs the SAME original precedent base, cumulative per iteration. */
+export function stubRedline(req: RequestItem, iteration?: number): RedlineSegment[] {
+  const upTo = iteration ?? stubLatestIteration(req.id);
+  const applied = stubAppliedRefinements(req.id, upTo);
   return [
     { type: "eq", text: "CLÁUSULAS\n\nPRIMERA. Objeto. " },
     { type: "del", text: "Acuerdo de confidencialidad entre las partes identificadas en el precedente. " },
@@ -493,14 +594,23 @@ export function stubRedline(req: RequestItem): RedlineSegment[] {
     { type: "del", text: "El plazo de vigencia será de dos (2) años. " },
     {
       type: "ins",
-      text: req.hasMissingFields
-        ? "[MISSING: importe] "
-        : "Según los términos confirmados en la solicitud. ",
+      text:
+        applied.length > 0
+          ? "El plazo de preaviso será de quince (15) días naturales. "
+          : req.hasMissingFields
+            ? "[MISSING: importe] "
+            : "Según los términos confirmados en la solicitud. ",
     },
     {
       type: "eq",
       text: "\n\nTERCERA. Ley aplicable y jurisdicción. Este documento se rige por la ley española y las partes se someten a los juzgados y tribunales de Madrid.",
     },
+    ...applied.map(
+      (r): RedlineSegment => ({
+        type: "ins",
+        text: `\n\n— Ajuste v${r.iteration} aplicado: ${r.instruction} —`,
+      }),
+    ),
   ];
 }
 
@@ -532,9 +642,10 @@ function stubIsHeading(line: string): boolean {
 export function stubDocumentHtml(
   req: RequestItem,
   type: DocumentVersionType,
+  iteration?: number,
 ): DocumentHtml {
   if (type === "redline") {
-    const segments = stubRedline(req);
+    const segments = stubRedline(req, iteration);
     const inline = segments
       .map((s) => {
         const text = stubEscapeHtml(s.text).replaceAll("\n", "<br/>");
@@ -551,7 +662,7 @@ export function stubDocumentHtml(
       },
     };
   }
-  const blocks = stubDraftText(req)
+  const blocks = stubDraftText(req, iteration)
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)

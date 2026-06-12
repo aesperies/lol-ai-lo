@@ -45,6 +45,40 @@ NO_PRECEDENT_PLACEHOLDER = (
     "structure for this document type in this jurisdiction)"
 )
 
+# Iterative refinement prompt (improvement #4). Same conventions as
+# GENERATION_PROMPT: placeholders substituted via .replace() to avoid
+# clashing with literal braces in document text.
+REFINEMENT_PROMPT = """You are a senior European VC fund legal document drafter.
+A document you previously drafted needs a targeted revision.
+CURRENT DOCUMENT:
+{current_text}
+CLIENT REVISION REQUEST (apply ONLY this change and anything strictly required for consistency):
+{instruction}
+RULES:
+1. Apply the requested change precisely. Do NOT rewrite, reorder or
+   restyle unaffected clauses.
+2. Keep language, governing law, jurisdiction, defined terms and
+   numbering conventions unchanged unless the request requires it.
+3. Keep all existing [DEVIATION: ...] and [MISSING: ...] flags that
+   are still accurate; add new ones if your change introduces them;
+   remove ones the change resolves.
+4. If the request is ambiguous, contradictory, or would require
+   information you do not have, output exactly: [REFINEMENT-UNCLEAR: reason]
+   and nothing else.
+5. Output the full revised document text, ready for .docx conversion."""
+
+REFINEMENT_UNCLEAR_MARKER = "[REFINEMENT-UNCLEAR:"
+
+
+def refinement_unclear_reason(text: str) -> Optional[str]:
+    """The reason inside a [REFINEMENT-UNCLEAR: ...] output, or None when the
+    output is a real revised document."""
+    stripped = text.strip()
+    if not stripped.startswith(REFINEMENT_UNCLEAR_MARKER):
+        return None
+    reason = stripped[len(REFINEMENT_UNCLEAR_MARKER):].rsplit("]", 1)[0].strip()
+    return reason or "unclear"
+
 
 def _call_claude(prompt: str) -> str:
     settings = get_settings()
@@ -93,3 +127,25 @@ def generate_document(
     text = _call_claude(prompt).strip()
     # Mandatory on every generated document (SPEC corporate structure).
     return f"{text}\n\n{SLP_DISCLAIMER}"
+
+
+def refine_document(*, current_text: str, instruction: str) -> str:
+    """Apply one targeted client revision to a previously generated document.
+
+    Returns either the full revised document text or a verbatim
+    ``[REFINEMENT-UNCLEAR: reason]`` marker (check with
+    :func:`refinement_unclear_reason` — the caller must NOT create documents
+    from an unclear output)."""
+    prompt = (
+        REFINEMENT_PROMPT
+        .replace("{current_text}", current_text)
+        .replace("{instruction}", instruction)
+    )
+    text = _call_claude(prompt).strip()
+    if refinement_unclear_reason(text) is not None:
+        return text
+    # The disclaimer travels inside current_text; re-append if the model
+    # dropped it (mandatory on every generated document).
+    if SLP_DISCLAIMER not in text:
+        text = f"{text}\n\n{SLP_DISCLAIMER}"
+    return text

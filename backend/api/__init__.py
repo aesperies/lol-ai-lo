@@ -51,10 +51,23 @@ def require_status(request_row: dict[str, Any], *allowed: RequestStatus) -> None
 
 
 def latest_document(
-    db: dbmod.Database, request_id: str, version_type: DocumentVersionType
+    db: dbmod.Database,
+    request_id: str,
+    version_type: DocumentVersionType,
+    iteration: Optional[int] = None,
 ) -> Optional[dict[str, Any]]:
-    docs = db.select("documents", request_id=request_id, version_type=version_type.value)
-    return docs[-1] if docs else None
+    """The document to serve: highest refinement iteration by default, or the
+    exact ``iteration`` when given (version-history viewing)."""
+    filters: dict[str, Any] = {"request_id": request_id, "version_type": version_type.value}
+    if iteration is not None:
+        filters["iteration"] = iteration
+    docs = db.select("documents", **filters)
+    if not docs:
+        return None
+    # select() sorts by created_at; a stable sort on iteration keeps the most
+    # recent row last within the winning iteration.
+    docs.sort(key=lambda d: d.get("iteration") or 0)
+    return docs[-1]
 
 
 def load_draft_text(db: dbmod.Database, request_id: str) -> Optional[str]:

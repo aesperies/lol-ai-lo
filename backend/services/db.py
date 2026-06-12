@@ -46,6 +46,9 @@ class DevStore:
                 row.setdefault("updated_at", _now())
             if table == "audit_log":
                 row.setdefault("timestamp", _now())
+            if table == "documents":
+                # Mirrors the SQL DEFAULT 0 (003_refinements.sql).
+                row.setdefault("iteration", 0)
             self._table(table)[row["id"]] = row
             return dict(row)
 

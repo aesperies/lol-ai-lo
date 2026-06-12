@@ -282,6 +282,7 @@ async def exit_a_download(
             "file_path": draft["file_path"],
             "precedent_version_id": draft.get("precedent_version_id"),
             "uploaded_by": None,
+            "iteration": draft.get("iteration", 0),
         },
     )
     transition(db, row, RequestStatus.delivered)
@@ -455,6 +456,7 @@ async def counsel_validate(
             "file_path": source_doc["file_path"],
             "precedent_version_id": source_doc.get("precedent_version_id"),
             "uploaded_by": user.id,
+            "iteration": source_doc.get("iteration", 0),
         },
     )
     row = transition(db, row, RequestStatus.validated)

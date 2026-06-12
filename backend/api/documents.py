@@ -255,9 +255,14 @@ async def download_document(
     request_id: str,
     version_type: DocumentVersionType,
     http_request: Request,
+    iteration: Optional[int] = None,
     user: User = Depends(get_current_user),
 ) -> Response:
-    """Download draft / redline / final (.docx). counsel_edit is internal-only."""
+    """Download draft / redline / final (.docx). counsel_edit is internal-only.
+
+    Serves the LATEST refinement iteration by default; ?iteration=N serves an
+    older version (version history).
+    """
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
     gestora_id = assert_request_access(db, user, row)
@@ -267,7 +272,7 @@ async def download_document(
     if version_type == DocumentVersionType.final:
         require_status(row, RequestStatus.validated, RequestStatus.delivered)
 
-    doc = latest_document(db, request_id, version_type)
+    doc = latest_document(db, request_id, version_type, iteration=iteration)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"No {version_type.value} document for this request")
     data = storage.read(doc["file_path"])
@@ -279,7 +284,11 @@ async def download_document(
         resource_type=AuditResourceType.document,
         resource_id=doc["id"],
         gestora_id=gestora_id,
-        metadata={"request_id": request_id, "version_type": version_type.value},
+        metadata={
+            "request_id": request_id,
+            "version_type": version_type.value,
+            "iteration": doc.get("iteration", 0),
+        },
         ip_address=_ip(http_request),
     )
 
@@ -305,15 +314,17 @@ async def view_document_html(
     request_id: str,
     version_type: DocumentVersionType,
     http_request: Request,
+    iteration: Optional[int] = None,
     user: User = Depends(get_current_user),
 ) -> Any:
     """Render draft / redline / final as safe HTML for in-browser viewing.
 
     Same access checks and 404-isolation pattern as the download endpoint;
-    counsel_edit stays internal-only. Audited with the existing download
-    actions plus {"mode": "inline_view"} metadata. Unlike the download,
-    viewing the final inline does NOT close the workflow (no validated ->
-    delivered transition): delivery happens on actual download.
+    counsel_edit stays internal-only. Serves the LATEST refinement iteration
+    by default; ?iteration=N serves an older version. Audited with the
+    existing download actions plus {"mode": "inline_view"} metadata. Unlike
+    the download, viewing the final inline does NOT close the workflow (no
+    validated -> delivered transition): delivery happens on actual download.
     """
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
@@ -324,7 +335,7 @@ async def view_document_html(
     if version_type == DocumentVersionType.final:
         require_status(row, RequestStatus.validated, RequestStatus.delivered)
 
-    doc = latest_document(db, request_id, version_type)
+    doc = latest_document(db, request_id, version_type, iteration=iteration)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"No {version_type.value} document for this request")
     rendered = docx_html.docx_to_html(storage.read(doc["file_path"]))
@@ -339,6 +350,7 @@ async def view_document_html(
         metadata={
             "request_id": request_id,
             "version_type": version_type.value,
+            "iteration": doc.get("iteration", 0),
             "mode": "inline_view",
         },
         ip_address=_ip(http_request),
