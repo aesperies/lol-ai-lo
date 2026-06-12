@@ -32,6 +32,7 @@ import {
   stubRedline,
   stubRefinements,
   stubRequests,
+  stubDocFields,
   stubReviewBundle,
   stubStartGenerationJob,
   stubStartRefinement,
@@ -47,6 +48,7 @@ import type {
   CounselComment,
   DocumentHtml,
   DocumentVersionType,
+  FieldSpec,
   Fund,
   GenerationJob,
   GenerationJobStatus,
@@ -98,6 +100,9 @@ export const apiPaths = {
     `/api/counsel-assignments?gestora_id=${gestoraId}`,
   counselAssignmentCreate: "/api/counsel-assignments",
   counselAssignment: (id: string) => `/api/counsel-assignments/${id}`,
+  // Structured intake field specs per doc_type (improvement #5).
+  docFields: (docType: string) =>
+    `/api/doc-types/${encodeURIComponent(docType)}/fields`,
   funds: "/api/funds",
   gestoras: "/api/gestoras",
   precedents: "/api/precedents",
@@ -173,6 +178,9 @@ export interface CreateRequestInput {
   docTypeCustom?: string;
   freetext: string;
   requiresCounsel: boolean;
+  /** Structured intake values (registry keys of the selected doc_type);
+   * omit/undefined for freetext-only requests. */
+  structuredFields?: Record<string, string>;
 }
 
 export async function createRequest(
@@ -192,6 +200,7 @@ export async function createRequest(
       docTypeLabel: docTypeLabel(input.docType),
       docTypeCustom: input.docTypeCustom ?? null,
       freetext: input.freetext,
+      structuredFields: input.structuredFields ?? null,
       language: "es",
       status: "parsing",
       requiresCounsel: input.requiresCounsel,
@@ -203,8 +212,36 @@ export async function createRequest(
   }
   return apiFetch<RequestItem>(apiPaths.requests, {
     method: "POST",
-    body: input,
+    // snake_case key expected by the backend (RequestCreate.structured_fields).
+    body: { ...input, structured_fields: input.structuredFields },
   });
+}
+
+/** Structured intake field specs for a doc_type ([] = freetext-only). */
+export async function getDocFields(docType: string): Promise<FieldSpec[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubDocFields(docType);
+  }
+  const res = await apiFetch<{
+    doc_type: string;
+    fields: Array<{
+      key: string;
+      label_i18n_key: string;
+      type: FieldSpec["type"];
+      required: boolean;
+      options?: string[];
+      help?: string;
+    }>;
+  }>(apiPaths.docFields(docType));
+  return res.fields.map((f) => ({
+    key: f.key,
+    labelI18nKey: f.label_i18n_key,
+    type: f.type,
+    required: f.required,
+    options: f.options,
+    help: f.help,
+  }));
 }
 
 export async function parseRequest(id: string): Promise<ParsedParams> {

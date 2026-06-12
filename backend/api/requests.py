@@ -23,6 +23,7 @@ from auth import (
     require_counsel,
 )
 from config import get_settings
+from models import doc_fields
 from models.schema import (
     EXIT_A_CHECKBOX_TEXT,
     AuditAction,
@@ -71,6 +72,14 @@ async def submit_request(
         # 404 (not 403) so other gestoras' fund ids are not discoverable.
         raise HTTPException(status_code=404, detail="Fund not found")
 
+    # Structured intake values: unknown keys are rejected; required keys may
+    # be missing at submit time (the parser flags them as unclear).
+    if body.structured_fields:
+        try:
+            doc_fields.validate_structured_fields(body.doc_type, body.structured_fields)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
     row = db.insert(
         "requests",
         {
@@ -81,6 +90,7 @@ async def submit_request(
             "freetext": body.freetext,
             "language": None,
             "parsed_params": None,
+            "structured_fields": body.structured_fields or None,
             "status": RequestStatus.parsing.value,
             # "validación por abogado" toggle: counsel review requested upfront
             "requires_counsel": body.validation_requested,
@@ -99,6 +109,7 @@ async def submit_request(
             "fund_id": body.fund_id,
             "validation_requested": body.validation_requested,
             "freetext_length": len(body.freetext),
+            "structured_field_keys": sorted(body.structured_fields or {}),
         },
         ip_address=_ip(http_request),
     )
@@ -117,7 +128,11 @@ async def parse_request(
     assert_request_access(db, user, row)
     require_status(row, RequestStatus.parsing)
 
-    parsed = intake_parser.parse_intake(_effective_doc_type(row), row["freetext"])
+    parsed = intake_parser.parse_intake(
+        _effective_doc_type(row),
+        row["freetext"],
+        structured_fields=row.get("structured_fields") or None,
+    )
     row = db.update(
         "requests",
         request_id,

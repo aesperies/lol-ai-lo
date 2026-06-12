@@ -273,6 +273,9 @@ class RequestOut(BaseModel):
     freetext: str
     language: Optional[str] = None
     parsed_params: Optional[dict[str, Any]] = None
+    # Client-provided structured intake values (models/doc_fields.py registry);
+    # NULL for freetext-only requests.
+    structured_fields: Optional[dict[str, Any]] = None
     status: RequestStatus = RequestStatus.parsing
     requires_counsel: bool = False
     exit_a_acknowledged_at: Optional[datetime] = None
@@ -347,6 +350,10 @@ class RequestCreate(BaseModel):
     freetext: str = Field(min_length=50, max_length=2000)
     # "validación por abogado" intake toggle (default OFF per SPEC)
     validation_requested: bool = False
+    # Structured intake values keyed by the doc_type's registry field keys
+    # (models/doc_fields.py). Unknown keys -> 422; required keys MAY be
+    # missing at submit time (the parser flags them).
+    structured_fields: Optional[dict[str, Any]] = None
 
 
 class ConfirmParamsBody(BaseModel):

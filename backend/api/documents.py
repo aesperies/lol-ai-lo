@@ -15,6 +15,7 @@ from api import (
 )
 from auth import assert_request_access, get_current_user, require_counsel
 from config import ServiceNotConfiguredError, get_settings
+from models import doc_fields
 from models.schema import (
     AuditAction,
     AuditResourceType,
@@ -72,6 +73,9 @@ def _run_generation_pipeline(
     language = row.get("language") or params.get("language") or "es"
 
     # RAG: hard gestora_id + doc_type pre-filter, then fallback chain.
+    # Structured intake fields need no RAG change: retrieval is already keyed
+    # by doc_type (+ gestora/language/freetext); the structured values only
+    # affect the parser and the generation prompt below.
     retrieval = rag.retrieve(
         db,
         gestora_id=gestora_id,
@@ -84,6 +88,16 @@ def _run_generation_pipeline(
         db.update("requests", request_id, {"requires_counsel": True})
         row["requires_counsel"] = True
 
+    # Structured intake values travel inside {key_terms} marked as
+    # client-confirmed (source: 'client_confirmed'); they replace any
+    # conflicting parser-derived term. Idempotent when the parser merge
+    # already injected them into parsed_params.
+    key_terms = doc_fields.merge_structured_key_terms(
+        params.get("key_terms", []),
+        row["doc_type"],
+        row.get("structured_fields") or {},
+    )
+
     text = generator.generate_document(
         doc_type=row["doc_type"],
         language=language,
@@ -92,7 +106,7 @@ def _run_generation_pipeline(
         jurisdiction=params.get("jurisdiction") or fund.get("jurisdiction", ""),
         governing_law=params.get("governing_law", ""),
         parties=params.get("parties", []),
-        key_terms=params.get("key_terms", []),
+        key_terms=key_terms,
         freetext=row["freetext"],
         precedent_text=retrieval.base_text,
     )

@@ -104,7 +104,9 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     dict to steer behavior (missing markers, low confidence...)."""
     state: dict[str, Any] = {"missing": False, "ready": True, "confidence": 0.95}
 
-    def fake_parse(doc_type: str, freetext: str) -> dict[str, Any]:
+    def fake_parse(
+        doc_type: str, freetext: str, structured_fields: dict | None = None
+    ) -> dict[str, Any]:
         return {
             "language": "es",
             "doc_type_confirmed": doc_type,
@@ -179,14 +181,22 @@ def wf(client: TestClient, seed: dict[str, Any], fake_llm: dict[str, Any], anthr
             self.seed = seed
             self.llm = fake_llm
 
-        def create(self, user: dict | None = None, fund: dict | None = None) -> str:
+        def create(
+            self,
+            user: dict | None = None,
+            fund: dict | None = None,
+            structured_fields: dict | None = None,
+        ) -> str:
+            payload: dict[str, Any] = {
+                "fund_id": (fund or self.seed["fund_a"])["id"],
+                "doc_type": DOC_TYPE,
+                "freetext": FREETEXT,
+            }
+            if structured_fields is not None:
+                payload["structured_fields"] = structured_fields
             response = self.client.post(
                 "/api/requests",
-                json={
-                    "fund_id": (fund or self.seed["fund_a"])["id"],
-                    "doc_type": DOC_TYPE,
-                    "freetext": FREETEXT,
-                },
+                json=payload,
                 headers=auth(user or self.seed["client_a"]),
             )
             assert response.status_code == 201, response.text

@@ -49,6 +49,9 @@ class DevStore:
             if table == "documents":
                 # Mirrors the SQL DEFAULT 0 (003_refinements.sql).
                 row.setdefault("iteration", 0)
+            if table == "requests":
+                # Mirrors the nullable jsonb column (004_structured_fields.sql).
+                row.setdefault("structured_fields", None)
             self._table(table)[row["id"]] = row
             return dict(row)
 

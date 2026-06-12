@@ -12,6 +12,8 @@ import type { ParsedParams } from "@/lib/types";
  * - Fields listed in `unclearFields` are highlighted with the [UNCLEAR] badge.
  * - Editing an unclear field resolves it; the confirm button stays disabled
  *   until `generationReady` (i.e., no unclear fields remain).
+ * - Entries originating from structured intake fields (source:
+ *   'client_confirmed') are authoritative and carry a "confirmado" chip.
  * - If the parser could not classify the request, the verbatim
  *   unclassifiable message is shown instead.
  */
@@ -70,6 +72,13 @@ export default function ParsedParamsReview({
   const unclearBadge = (
     <Badge tone="amber" className="ml-2">
       {t("params.unclearBadge")}
+    </Badge>
+  );
+
+  /** Small chip on structured-origin values (authoritative client input). */
+  const confirmedChip = (
+    <Badge tone="emerald" className="text-[10px]">
+      {t("params.confirmedChip")}
     </Badge>
   );
 
@@ -134,8 +143,9 @@ export default function ParsedParamsReview({
                 }
               >
                 <div>
-                  <Label className="text-xs text-slate-500">
+                  <Label className="flex items-center gap-2 text-xs text-slate-500">
                     {t("params.partyRole")}
+                    {party.source === "client_confirmed" ? confirmedChip : null}
                   </Label>
                   <Input
                     value={party.role}
@@ -183,6 +193,9 @@ export default function ParsedParamsReview({
                       : "grid grid-cols-1 gap-2 sm:grid-cols-2"
                   }
                 >
+                  {kd.source === "client_confirmed" ? (
+                    <div className="sm:col-span-2">{confirmedChip}</div>
+                  ) : null}
                   <Input
                     value={kd.label}
                     onChange={(e) =>
@@ -251,6 +264,9 @@ export default function ParsedParamsReview({
             ) : (
               params.keyTerms.map((term, i) => (
                 <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {term.source === "client_confirmed" ? (
+                    <div className="sm:col-span-2">{confirmedChip}</div>
+                  ) : null}
                   <Input
                     value={term.field}
                     onChange={(e) =>

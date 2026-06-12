@@ -67,19 +67,26 @@ export interface UserProfile {
   name?: string;
 }
 
+/** Marker set by the backend post-merge on entries that originate from
+ * client-provided structured fields (authoritative, shown as "confirmado"). */
+export type ParsedSource = "client_confirmed";
+
 export interface ParsedParty {
   role: string;
   name: string;
+  source?: ParsedSource;
 }
 
 export interface ParsedDate {
   label: string;
   date: string;
+  source?: ParsedSource;
 }
 
 export interface ParsedTerm {
   field: string;
   value: string;
+  source?: ParsedSource;
 }
 
 /** Output of the Claude intake parser (SPEC.md, verbatim JSON contract). */
@@ -99,6 +106,28 @@ export interface ParsedParams {
   unclassifiable?: boolean;
 }
 
+/** Structured intake field types (backend models/doc_fields.py registry). */
+export type DocFieldType =
+  | "text"
+  | "date"
+  | "amount"
+  | "percent"
+  | "party"
+  | "select";
+
+/** One structured intake field spec for a doc_type
+ * (GET /api/doc-types/{doc_type}/fields). */
+export interface FieldSpec {
+  key: string;
+  /** i18n dictionary key for the field label (docfields.*). */
+  labelI18nKey: string;
+  type: DocFieldType;
+  required: boolean;
+  /** Allowed values when type === "select". */
+  options?: string[];
+  help?: string;
+}
+
 export interface RequestItem {
   id: string;
   fundId: string;
@@ -110,6 +139,9 @@ export interface RequestItem {
   docTypeLabel?: string;
   docTypeCustom?: string | null;
   freetext: string;
+  /** Client-provided structured intake values (key → value); null/absent for
+   * freetext-only requests. */
+  structuredFields?: Record<string, string> | null;
   language: AppLanguage;
   parsedParams?: ParsedParams | null;
   status: RequestStatus;

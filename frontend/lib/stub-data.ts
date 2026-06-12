@@ -10,6 +10,7 @@
  */
 
 import { docTypeLabel } from "@/lib/catalog";
+import { translate, type DictKey } from "@/lib/i18n";
 import type {
   AssignedCounsel,
   CounselAssignment,
@@ -17,10 +18,14 @@ import type {
   DocumentHtml,
   DocumentVersionType,
   FallbackLevel,
+  FieldSpec,
   Fund,
   GenerationJob,
   Gestora,
+  ParsedDate,
   ParsedParams,
+  ParsedParty,
+  ParsedTerm,
   Precedent,
   RedlineSegment,
   Refinement,
@@ -110,6 +115,81 @@ export const stubCounselAssignments: CounselAssignment[] = [
     createdAt: "2026-02-01T09:00:00Z",
   },
 ];
+
+/* ------------------------------------------------------------------ */
+/* Structured intake fields (mirror of backend/models/doc_fields.py)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Per-doc_type structured field registry, keyed by the frontend slugs of
+ * lib/catalog.ts (the backend additionally accepts the catalog labels).
+ * Doc types absent here are freetext-only.
+ */
+export const STUB_DOC_TYPE_FIELDS: Record<string, FieldSpec[]> = {
+  llamada_capital: [
+    { key: "importe_total", labelI18nKey: "docfields.importe_total", type: "amount", required: true },
+    { key: "fecha_limite_pago", labelI18nKey: "docfields.fecha_limite_pago", type: "date", required: true },
+    { key: "porcentaje_compromiso", labelI18nKey: "docfields.porcentaje_compromiso", type: "percent", required: true, help: "0-100" },
+    { key: "numero_llamada", labelI18nKey: "docfields.numero_llamada", type: "text", required: false },
+  ],
+  distribucion_inversores: [
+    { key: "importe", labelI18nKey: "docfields.importe", type: "amount", required: true },
+    { key: "fecha", labelI18nKey: "docfields.fecha", type: "date", required: true },
+    { key: "concepto", labelI18nKey: "docfields.concepto", type: "select", required: true, options: ["desinversión", "dividendos", "intereses", "otro"] },
+  ],
+  nda: [
+    { key: "contraparte", labelI18nKey: "docfields.contraparte", type: "party", required: true },
+    { key: "duracion_meses", labelI18nKey: "docfields.duracion_meses", type: "text", required: true },
+    { key: "modalidad", labelI18nKey: "docfields.modalidad", type: "select", required: true, options: ["unilateral", "recíproco"] },
+  ],
+  acta_reunion_consejo: [
+    { key: "fecha_reunion", labelI18nKey: "docfields.fecha_reunion", type: "date", required: true },
+    { key: "asistentes", labelI18nKey: "docfields.asistentes", type: "text", required: true },
+    { key: "acuerdos_principales", labelI18nKey: "docfields.acuerdos_principales", type: "text", required: true },
+  ],
+  nombramiento_cese_administrador: [
+    { key: "persona", labelI18nKey: "docfields.persona", type: "party", required: true },
+    { key: "cargo", labelI18nKey: "docfields.cargo", type: "text", required: true },
+    { key: "tipo", labelI18nKey: "docfields.tipo", type: "select", required: true, options: ["nombramiento", "cese"] },
+    { key: "fecha_efecto", labelI18nKey: "docfields.fecha_efecto", type: "date", required: true },
+  ],
+  poder_especial: [
+    { key: "apoderado", labelI18nKey: "docfields.apoderado", type: "party", required: true },
+    { key: "facultades", labelI18nKey: "docfields.facultades", type: "text", required: true },
+    { key: "vigencia", labelI18nKey: "docfields.vigencia", type: "date", required: false },
+  ],
+  term_sheet: [
+    { key: "compania_objetivo", labelI18nKey: "docfields.compania_objetivo", type: "party", required: true },
+    { key: "importe_inversion", labelI18nKey: "docfields.importe_inversion", type: "amount", required: true },
+    { key: "valoracion_premoney", labelI18nKey: "docfields.valoracion_premoney", type: "amount", required: false },
+    { key: "tipo_instrumento", labelI18nKey: "docfields.tipo_instrumento", type: "select", required: true, options: ["equity", "convertible", "SAFE"] },
+  ],
+  side_letter_inversor: [
+    { key: "inversor", labelI18nKey: "docfields.inversor", type: "party", required: true },
+    { key: "derechos_solicitados", labelI18nKey: "docfields.derechos_solicitados", type: "text", required: true },
+  ],
+  certificado_participacion_inversor: [
+    { key: "inversor", labelI18nKey: "docfields.inversor", type: "party", required: true },
+    { key: "fecha_referencia", labelI18nKey: "docfields.fecha_referencia", type: "date", required: true },
+  ],
+  extension_periodo_inversion: [
+    { key: "nueva_fecha", labelI18nKey: "docfields.nueva_fecha", type: "date", required: true },
+    { key: "justificacion", labelI18nKey: "docfields.justificacion", type: "text", required: false },
+  ],
+  extension_plazo_fondo: [
+    { key: "nueva_fecha", labelI18nKey: "docfields.nueva_fecha", type: "date", required: true },
+    { key: "justificacion", labelI18nKey: "docfields.justificacion", type: "text", required: false },
+  ],
+};
+
+/** Structured field specs for a doc_type ([] = freetext-only). */
+export function stubDocFields(docType: string): FieldSpec[] {
+  return STUB_DOC_TYPE_FIELDS[docType] ?? [];
+}
+
+function fieldLabelEs(spec: FieldSpec): string {
+  return translate("es", spec.labelI18nKey as DictKey);
+}
 
 /* ------------------------------------------------------------------ */
 /* Mutable in-memory store                                             */
@@ -326,6 +406,9 @@ export function nowIso(): string {
  * - doc_type 'other' + vague text → unclassifiable
  * - short freetext → low-confidence [UNCLEAR] fields, generation_ready false
  * - otherwise ready, with parties/dates/terms naively derived
+ * - structured fields filled → higher confidence, no [UNCLEAR], the values
+ *   merged as authoritative (source: 'client_confirmed'), mirroring the
+ *   backend deterministic post-merge.
  */
 export function stubParse(req: RequestItem): ParsedParams {
   const text = req.freetext;
@@ -347,8 +430,38 @@ export function stubParse(req: RequestItem): ParsedParams {
     };
   }
 
-  const lowConfidence = text.length < 80;
+  // Non-empty structured values, paired with their registry spec.
+  const structured = stubDocFields(req.docType)
+    .map((spec) => ({ spec, value: (req.structuredFields?.[spec.key] ?? "").trim() }))
+    .filter(({ value }) => value.length > 0);
+
+  const lowConfidence = text.length < 80 && structured.length === 0;
   const hasAmount = /\d/.test(text);
+
+  const parties: ParsedParty[] = [
+    { role: "Fondo", name: req.fundName ?? "Fondo" },
+    {
+      role: "Contraparte",
+      name: lowConfidence ? "" : "Según descripción de la solicitud",
+    },
+  ];
+  const keyDates: ParsedDate[] = [{ label: "Fecha de firma", date: "2026-07-01" }];
+  const keyTerms: ParsedTerm[] = hasAmount
+    ? [{ field: "Importe", value: "Según descripción" }]
+    : [];
+
+  // Authoritative merge (mirrors backend merge_structured_into_parsed):
+  // party → parties, date → key_dates, anything else → key_terms.
+  for (const { spec, value } of structured) {
+    const label = fieldLabelEs(spec);
+    if (spec.type === "party") {
+      parties.push({ role: label, name: value, source: "client_confirmed" });
+    } else if (spec.type === "date") {
+      keyDates.push({ label, date: value, source: "client_confirmed" });
+    } else {
+      keyTerms.push({ field: label, value, source: "client_confirmed" });
+    }
+  }
 
   return {
     language: "es",
@@ -356,25 +469,18 @@ export function stubParse(req: RequestItem): ParsedParams {
       req.docType === "other"
         ? (req.docTypeCustom ?? "other")
         : docTypeLabel(req.docType),
-    parties: [
-      { role: "Fondo", name: req.fundName ?? "Fondo" },
-      {
-        role: "Contraparte",
-        name: lowConfidence ? "" : "Según descripción de la solicitud",
-      },
-    ],
-    keyDates: [{ label: "Fecha de firma", date: "2026-07-01" }],
+    parties,
+    keyDates,
     jurisdiction: "España",
     governingLaw: "Ley española",
-    keyTerms: hasAmount
-      ? [{ field: "Importe", value: "Según descripción" }]
-      : [],
+    keyTerms,
     summary: `Solicitud de ${
       req.docType === "other"
         ? (req.docTypeCustom ?? "documento")
         : docTypeLabel(req.docType)
     } para ${req.fundName ?? "el fondo"}. ${text.slice(0, 140)}${text.length > 140 ? "…" : ""}`,
-    confidence: lowConfidence ? 0.55 : 0.92,
+    // Structured values are client-confirmed → demo shows higher confidence.
+    confidence: structured.length > 0 ? 0.97 : lowConfidence ? 0.55 : 0.92,
     unclearFields: lowConfidence ? ["parties", "key_dates"] : [],
     generationReady: !lowConfidence,
   };
