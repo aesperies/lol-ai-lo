@@ -29,6 +29,7 @@ from models.schema import (
 from services import (
     audit,
     db as dbmod,
+    docx_html,
     docx_renderer,
     generator,
     jobs,
@@ -297,6 +298,52 @@ async def download_document(
             "Content-Disposition": f'attachment; filename="{request_id}-{version_type.value}.docx"'
         },
     )
+
+
+@router.get("/requests/{request_id}/documents/{version_type}/html")
+async def view_document_html(
+    request_id: str,
+    version_type: DocumentVersionType,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Render draft / redline / final as safe HTML for in-browser viewing.
+
+    Same access checks and 404-isolation pattern as the download endpoint;
+    counsel_edit stays internal-only. Audited with the existing download
+    actions plus {"mode": "inline_view"} metadata. Unlike the download,
+    viewing the final inline does NOT close the workflow (no validated ->
+    delivered transition): delivery happens on actual download.
+    """
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    gestora_id = assert_request_access(db, user, row)
+
+    if version_type not in _DOWNLOAD_AUDIT:
+        raise HTTPException(status_code=404, detail="Version type not viewable")
+    if version_type == DocumentVersionType.final:
+        require_status(row, RequestStatus.validated, RequestStatus.delivered)
+
+    doc = latest_document(db, request_id, version_type)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"No {version_type.value} document for this request")
+    rendered = docx_html.docx_to_html(storage.read(doc["file_path"]))
+
+    audit.log_action(
+        db,
+        user=user,
+        action=_DOWNLOAD_AUDIT[version_type],
+        resource_type=AuditResourceType.document,
+        resource_id=doc["id"],
+        gestora_id=gestora_id,
+        metadata={
+            "request_id": request_id,
+            "version_type": version_type.value,
+            "mode": "inline_view",
+        },
+        ip_address=_ip(http_request),
+    )
+    return rendered
 
 
 # ---------------------------------------------------------------------------

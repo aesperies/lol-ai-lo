@@ -163,6 +163,15 @@ export interface RedlineSegment {
   text: string;
 }
 
+/** Safe HTML rendering of a stored .docx (GET .../documents/{type}/html). */
+export interface DocumentHtml {
+  html: string;
+  stats: {
+    insertions: number;
+    deletions: number;
+  };
+}
+
 export interface CounselComment {
   id: string;
   requestId: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import DocumentHtmlViewer from "@/components/DocumentHtmlViewer";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
 import { Banner, Button, Card, CardTitle, Textarea } from "@/components/ui";
@@ -12,7 +13,7 @@ import {
   uploadCounselDocx,
   validateRequest,
 } from "@/lib/api";
-import type { CounselComment, RedlineSegment, RequestItem, ReviewBundle } from "@/lib/types";
+import type { CounselComment, RequestItem, ReviewBundle } from "@/lib/types";
 
 function escapeHtml(text: string): string {
   return text
@@ -22,20 +23,9 @@ function escapeHtml(text: string): string {
     .replaceAll("\n", "<br/>");
 }
 
-function redlineToHtml(segments: RedlineSegment[]): string {
-  return segments
-    .map((s) => {
-      const text = escapeHtml(s.text);
-      if (s.type === "ins") return `<ins class="redline-ins">${text}</ins>`;
-      if (s.type === "del") return `<del class="redline-del">${text}</del>`;
-      return text;
-    })
-    .join("");
-}
-
 /**
  * Step 6 of the master workflow — COUNSEL REVIEW (Exit B):
- * - Draft + redline side by side
+ * - Draft + redline side by side (real rendered HTML via DocumentHtmlViewer)
  * - Rich-text inline editor (contentEditable, no heavy deps)
  * - .docx download / upload
  * - Comments / flags
@@ -50,7 +40,7 @@ export default function CounselReviewPanel({
   onValidated?: (req: RequestItem) => void;
 }) {
   const { t } = useI18n();
-  const { request, draftText, redline } = bundle;
+  const { request, draftText } = bundle;
 
   const editorRef = useRef<HTMLDivElement>(null);
   const [comments, setComments] = useState<CounselComment[]>(bundle.comments);
@@ -168,20 +158,15 @@ export default function CounselReviewPanel({
       {notice ? <Banner tone="success">{notice}</Banner> : null}
       {error ? <Banner tone="danger">{error}</Banner> : null}
 
-      {/* Draft + redline side by side */}
+      {/* Draft + redline side by side — real rendered HTML (view mode) */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardTitle className="mb-3">{t("counsel.draftPane")}</CardTitle>
-          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-4 font-serif text-sm leading-relaxed text-slate-800">
-            {draftText}
-          </pre>
+          <DocumentHtmlViewer requestId={request.id} versionType="draft" />
         </Card>
         <Card>
           <CardTitle className="mb-3">{t("counsel.redlinePane")}</CardTitle>
-          <div
-            className="max-h-[420px] overflow-auto rounded-md border border-slate-200 bg-slate-50 p-4 font-serif text-sm leading-relaxed text-slate-800"
-            dangerouslySetInnerHTML={{ __html: redlineToHtml(redline) }}
-          />
+          <DocumentHtmlViewer requestId={request.id} versionType="redline" />
         </Card>
       </div>
 

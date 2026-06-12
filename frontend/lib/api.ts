@@ -23,6 +23,7 @@ import {
   nowIso,
   stubAddComment,
   stubCounselAssignments,
+  stubDocumentHtml,
   stubDraftText,
   stubGestoras,
   stubParse,
@@ -42,6 +43,7 @@ import type {
   AssignedCounsel,
   CounselAssignment,
   CounselComment,
+  DocumentHtml,
   DocumentVersionType,
   Fund,
   GenerationJob,
@@ -73,6 +75,8 @@ export const apiPaths = {
   exitB: (id: string) => `/api/requests/${id}/exit-b`,
   documentDownload: (id: string, type: DocumentVersionType) =>
     `/api/requests/${id}/documents/${type}/download`,
+  documentHtml: (id: string, type: DocumentVersionType) =>
+    `/api/requests/${id}/documents/${type}/html`,
   reviewBundle: (id: string) => `/api/requests/${id}/review`,
   counselEdit: (id: string) => `/api/requests/${id}/counsel-edit`,
   counselUpload: (id: string) => `/api/requests/${id}/counsel-upload`,
@@ -343,6 +347,20 @@ export async function downloadDocument(
   });
   if (!res.ok) throw new ApiError(res.status, res.statusText);
   return res.blob();
+}
+
+/** Safe HTML rendering of a document version for the in-browser viewer. */
+export async function getDocumentHtml(
+  id: string,
+  type: DocumentVersionType,
+): Promise<DocumentHtml> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    const req = findRequest(id);
+    if (!req) throw new ApiError(404, "Request not found");
+    return stubDocumentHtml(req, type);
+  }
+  return apiFetch<DocumentHtml>(apiPaths.documentHtml(id, type));
 }
 
 /* ------------------------------------------------------------------ */

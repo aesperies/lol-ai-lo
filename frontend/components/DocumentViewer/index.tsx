@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import DocumentHtmlViewer from "@/components/DocumentHtmlViewer";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
 import { Banner, Button, Card, CardTitle } from "@/components/ui";
@@ -14,6 +15,8 @@ import type { RequestItem } from "@/lib/types";
 
 /**
  * Step 5 of the master workflow — CLIENT reviews the generated document:
+ * - In-browser viewer with "Borrador" | "Redline vs. Precedente" tabs
+ *   (rendered HTML, no download needed)
  * - [Descargar Borrador] + [Descargar Redline vs. Precedente]
  * - EXIT A "Me vale": verbatim acknowledgment checkbox (guardrail 9) +
  *   [Confirmar y Descargar]
@@ -36,6 +39,7 @@ export default function DocumentViewer({
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState<"exitA" | "exitB" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"draft" | "redline">("draft");
 
   const isLevel3 = request.fallbackLevel === 3;
   const missingBlocked = Boolean(request.hasMissingFields);
@@ -125,6 +129,34 @@ export default function DocumentViewer({
             {t("viewer.missingBlocksExitA")}
           </Banner>
         ) : null}
+
+        {/* In-browser viewer: Borrador | Redline vs. Precedente tabs */}
+        <div className="mt-6">
+          <div
+            role="tablist"
+            className="mb-3 inline-flex rounded-md border border-slate-200 bg-slate-100 p-1"
+          >
+            {(["draft", "redline"] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                role="tab"
+                aria-selected={tab === type}
+                onClick={() => setTab(type)}
+                className={
+                  tab === type
+                    ? "rounded px-3 py-1.5 text-sm font-medium bg-white text-slate-900 shadow-sm"
+                    : "rounded px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700"
+                }
+              >
+                {type === "draft"
+                  ? t("viewer.tabDraft")
+                  : t("viewer.tabRedline")}
+              </button>
+            ))}
+          </div>
+          <DocumentHtmlViewer requestId={request.id} versionType={tab} />
+        </div>
 
         {/* Draft + redline downloads */}
         <div className="mt-6 flex flex-wrap gap-3">

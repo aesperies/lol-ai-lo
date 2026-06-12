@@ -217,6 +217,14 @@ const es = {
   "viewer.notReadyYet": "El documento aún no está disponible.",
   "viewer.fallbackLevel": "Nivel de precedente",
   "viewer.requestMeta": "Detalle de la solicitud",
+  "viewer.tabDraft": "Borrador",
+  "viewer.tabRedline": "Redline vs. Precedente",
+
+  // In-browser document viewer (HTML)
+  "htmlViewer.loading": "Cargando documento…",
+  "htmlViewer.error":
+    "No se ha podido cargar el documento. Inténtalo de nuevo.",
+  "htmlViewer.legend": "{ins} inserciones · {del} eliminaciones",
 
   // Documents history
   "documents.title": "Historial de documentos",
@@ -480,6 +488,12 @@ const en: Record<DictKey, string> = {
   "viewer.notReadyYet": "The document is not available yet.",
   "viewer.fallbackLevel": "Precedent level",
   "viewer.requestMeta": "Request details",
+  "viewer.tabDraft": "Draft",
+  "viewer.tabRedline": "Redline vs. Precedent",
+
+  "htmlViewer.loading": "Loading document…",
+  "htmlViewer.error": "The document could not be loaded. Please try again.",
+  "htmlViewer.legend": "{ins} insertions · {del} deletions",
 
   "documents.title": "Document history",
   "documents.subtitle": "All your requests and generated documents.",

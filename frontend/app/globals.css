@@ -12,12 +12,51 @@
 }
 
 @layer components {
-  /* Redline rendering inside DocumentViewer / CounselReviewPanel */
-  .redline-ins {
-    @apply text-emerald-700 underline decoration-emerald-400;
+  /* In-browser document viewer (DocumentHtmlViewer) — legal-document
+     typography on a page-like white card. The HTML comes from the backend's
+     whitelisted converter (services/docx_html.py). */
+  .doc-html {
+    @apply font-serif text-[15px] leading-7 text-slate-800;
   }
-  .redline-del {
-    @apply text-red-600 line-through decoration-red-400;
+  .doc-html h1,
+  .doc-html h2,
+  .doc-html h3 {
+    @apply mb-3 mt-6 font-semibold tracking-wide text-slate-900 first:mt-0;
+  }
+  .doc-html h1 {
+    @apply text-center text-lg;
+  }
+  .doc-html h2 {
+    @apply text-base;
+  }
+  .doc-html h3 {
+    @apply text-[15px];
+  }
+  .doc-html p {
+    @apply mb-3 last:mb-0;
+  }
+  .doc-html ul,
+  .doc-html ol {
+    @apply mb-3 ml-6 list-outside;
+  }
+  .doc-html ul {
+    @apply list-disc;
+  }
+  .doc-html ol {
+    @apply list-decimal;
+  }
+  .doc-html table {
+    @apply mb-3 w-full border-collapse text-sm;
+  }
+  .doc-html td {
+    @apply border border-slate-300 px-3 py-1.5 align-top;
+  }
+  /* Redline revision marks (w:ins / w:del → ins.rl-ins / del.rl-del) */
+  .doc-html ins.rl-ins {
+    @apply rounded-sm bg-emerald-100 px-0.5 text-emerald-900 no-underline;
+  }
+  .doc-html del.rl-del {
+    @apply rounded-sm bg-red-50 px-0.5 text-red-700 line-through decoration-red-400;
   }
   /* contentEditable rich-text editor surface */
   .counsel-editor {

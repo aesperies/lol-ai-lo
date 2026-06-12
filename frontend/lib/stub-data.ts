@@ -14,6 +14,8 @@ import type {
   AssignedCounsel,
   CounselAssignment,
   CounselComment,
+  DocumentHtml,
+  DocumentVersionType,
   FallbackLevel,
   Fund,
   GenerationJob,
@@ -500,6 +502,65 @@ export function stubRedline(req: RequestItem): RedlineSegment[] {
       text: "\n\nTERCERA. Ley aplicable y jurisdicción. Este documento se rige por la ley española y las partes se someten a los juzgados y tribunales de Madrid.",
     },
   ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Simulated in-browser document HTML (mirrors services/docx_html.py)  */
+/* ------------------------------------------------------------------ */
+
+function stubEscapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+/** ALL-CAPS short lines become headings, like the backend heuristic. */
+function stubIsHeading(line: string): boolean {
+  return (
+    line.length > 0 &&
+    line.length <= 100 &&
+    line === line.toUpperCase() &&
+    /[A-ZÁÉÍÓÚÑ]/.test(line)
+  );
+}
+
+/**
+ * Demo HTML for the in-browser viewer (same whitelist + fixed class names as
+ * the backend converter: p/h2/ins.rl-ins/del.rl-del/br only, text escaped).
+ */
+export function stubDocumentHtml(
+  req: RequestItem,
+  type: DocumentVersionType,
+): DocumentHtml {
+  if (type === "redline") {
+    const segments = stubRedline(req);
+    const inline = segments
+      .map((s) => {
+        const text = stubEscapeHtml(s.text).replaceAll("\n", "<br/>");
+        if (s.type === "ins") return `<ins class="rl-ins">${text}</ins>`;
+        if (s.type === "del") return `<del class="rl-del">${text}</del>`;
+        return text;
+      })
+      .join("");
+    return {
+      html: `<h2>REDLINE VS. PRECEDENTE</h2>\n<p>${inline}</p>`,
+      stats: {
+        insertions: segments.filter((s) => s.type === "ins").length,
+        deletions: segments.filter((s) => s.type === "del").length,
+      },
+    };
+  }
+  const blocks = stubDraftText(req)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) =>
+      stubIsHeading(line)
+        ? `<h2>${stubEscapeHtml(line)}</h2>`
+        : `<p>${stubEscapeHtml(line)}</p>`,
+    );
+  return { html: blocks.join("\n"), stats: { insertions: 0, deletions: 0 } };
 }
 
 export function stubReviewBundle(req: RequestItem): ReviewBundle {
