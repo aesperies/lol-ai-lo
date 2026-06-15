@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
+from config import get_settings
 from models.schema import SLP_DISCLAIMER
 from services import llm
 
@@ -110,7 +111,7 @@ def generate_document(
         .replace("{freetext}", freetext)
         .replace("{precedent_text}", precedent_text or NO_PRECEDENT_PLACEHOLDER)
     )
-    text = llm.complete(prompt, max_tokens=8192).strip()
+    text = llm.complete(prompt, max_tokens=get_settings().max_generation_tokens).strip()
     # Mandatory on every generated document (SPEC corporate structure).
     return f"{text}\n\n{SLP_DISCLAIMER}"
 
@@ -127,7 +128,7 @@ def refine_document(*, current_text: str, instruction: str) -> str:
         .replace("{current_text}", current_text)
         .replace("{instruction}", instruction)
     )
-    text = llm.complete(prompt, max_tokens=8192).strip()
+    text = llm.complete(prompt, max_tokens=get_settings().max_generation_tokens).strip()
     if refinement_unclear_reason(text) is not None:
         return text
     # The disclaimer travels inside current_text; re-append if the model

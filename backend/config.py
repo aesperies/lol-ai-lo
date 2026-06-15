@@ -88,6 +88,18 @@ class Settings(BaseSettings):
     # directed to Exit B (counsel validation).
     max_refinements: int = 3
 
+    # ---------- Document generation / redline (improvement #3) ----------
+    # Upper bound on tokens for a full document generation (generator.py).
+    # Long legal documents (long-form agreements, fund side letters) need
+    # headroom beyond the LLM seam's per-call default; bump this — not the
+    # provider settings — to allow longer outputs.
+    max_generation_tokens: int = 8192
+    # Above this paragraph count on either side, the redline engine drops the
+    # expensive word-level intra-paragraph diff and falls back to a coarser
+    # paragraph-level diff so very large documents never blow up or hang
+    # (services/redline.py). Still produces a valid tracked-changes .docx.
+    redline_max_paragraphs: int = 1200
+
     # ---------- Billing (improvement #7) ----------
     # Per-doc overage prices in EUR once the tier's monthly doc allowance is
     # exhausted (SPEC PRICING STRUCTURE: Exit A €X < Exit B €Y).
