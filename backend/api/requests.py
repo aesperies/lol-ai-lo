@@ -25,6 +25,7 @@ from auth import (
 )
 from config import get_settings
 from models import doc_fields
+from models.doc_branches import branch_for
 from models.schema import (
     EXIT_A_CHECKBOX_TEXT,
     AuditAction,
@@ -32,8 +33,10 @@ from models.schema import (
     ConfirmParamsBody,
     DocumentVersionType,
     ExitAAcknowledgeBody,
+    GenerationReviewOut,
     PrecedentSource,
     PrecedentVersionStatus,
+    RequestBranchOut,
     RequestCreate,
     RequestOut,
     RequestStatus,
@@ -246,6 +249,47 @@ async def get_request(request_id: str, user: User = Depends(get_current_user)) -
     row = get_request_or_404(db, request_id)
     assert_request_access(db, user, row)
     return row
+
+
+@router.get("/{request_id}/branch", response_model=RequestBranchOut)
+async def get_request_branch(
+    request_id: str, user: User = Depends(get_current_user)
+) -> Any:
+    """The specialized drafting branch used for this request (Feature 1).
+
+    Derived from the request's effective doc_type via doc_branches.branch_for,
+    so the UI can show which agent drafted it. Same gestora-isolation 404 as
+    the other request endpoints."""
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    assert_request_access(db, user, row)
+    doc_type = _effective_doc_type(row)
+    return RequestBranchOut(doc_type=doc_type, branch=branch_for(doc_type).value)
+
+
+@router.get("/{request_id}/reviews", response_model=list[GenerationReviewOut])
+async def get_request_reviews(
+    request_id: str, user: User = Depends(get_current_user)
+) -> Any:
+    """The critic review trail for a request (Feature 2), one entry per round.
+
+    Read-only; same gestora-isolation 404 + access rules as the other request
+    endpoints (client only on own gestora; counsel/admin cross-gestora). When
+    the critic was skipped (LLM unreachable / disabled) the list is empty."""
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    assert_request_access(db, user, row)
+    rounds = db.select("generation_reviews", request_id=request_id)
+    rounds.sort(key=lambda r: r.get("round") or 0)
+    return [
+        GenerationReviewOut(
+            round=r.get("round", 0),
+            approved=bool(r.get("approved")),
+            issues=r.get("issues") or [],
+            created_at=r.get("created_at"),
+        )
+        for r in rounds
+    ]
 
 
 # ---------------------------------------------------------------------------

@@ -389,6 +389,7 @@ const es = {
   "precedentSource.validated_output": "Output validado",
   "precedentSource.slp_curated": "Curado SLP",
   "precedentSource.platform_base": "Base de plataforma",
+  "precedentSource.gestora_model": "Modelo de gestora",
 
   // Admin — users
   "admin.users.title": "Usuarios",
@@ -444,6 +445,104 @@ const es = {
   "dashboard.usageTitle": "Consumo del plan",
   "dashboard.usage": "Este mes: {used} de {limit} documentos",
   "dashboard.usageUnlimited": "Este mes: {used} documentos · plan sin límite",
+
+  // Nav — drafting-agents admin pages
+  "nav.playbooks": "Playbooks",
+  "nav.lessons": "Lecciones",
+
+  // Drafting branches (specialized drafter agents)
+  "branch.gobierno_corporativo": "Gobierno Corporativo",
+  "branch.operaciones_de_fondo": "Operaciones de Fondo",
+  "branch.gestion_de_portfolio": "Gestión de Portfolio",
+  "branch.cumplimiento_regulatorio": "Cumplimiento y Regulatorio",
+  "branch.contratos_terceros": "Contratos con Terceros",
+  "branch.generic": "General",
+  "branch.badge": "Agente: {branch}",
+
+  // Internal automated review (critic) — client + counsel
+  "review.title": "Revisión interna automática",
+  "review.loading": "Cargando revisión interna…",
+  "review.none": "Sin revisión automática.",
+  "review.error": "No se ha podido cargar la revisión interna.",
+  "review.approved": "Revisión interna: aprobada",
+  "review.fixed": "{count} observación corregida",
+  "review.fixedPlural": "{count} observaciones corregidas",
+  "review.forcedCounsel": "Revisión interna: derivado a abogado",
+  "review.round": "Ronda {n}",
+  "review.roundApproved": "Aprobada",
+  "review.roundIssues": "{count} observación",
+  "review.roundIssuesPlural": "{count} observaciones",
+  "review.showDetails": "Ver detalle",
+  "review.hideDetails": "Ocultar detalle",
+  "review.problem": "Problema",
+  "review.suggestedFix": "Corrección sugerida",
+  "review.location": "Ubicación",
+  "review.severity.blocking": "Bloqueante",
+  "review.severity.major": "Importante",
+  "review.severity.minor": "Menor",
+  "review.category.factual": "Factual",
+  "review.category.completeness": "Completitud",
+  "review.category.legal": "Legal",
+  "review.category.consistency": "Consistencia",
+
+  // Admin — Modelos (gestora master templates)
+  "admin.models.title": "Modelos",
+  "admin.models.subtitle":
+    "Plantillas maestras de la gestora (modelos). Tienen prioridad sobre los precedentes como base de generación.",
+  "admin.models.tabModels": "Modelos",
+  "admin.models.tabPrecedents": "Precedentes",
+  "admin.models.upload": "Subir modelo",
+  "admin.models.uploadHint":
+    "El modelo maestro de la gestora es la base preferente de generación (por encima de los precedentes).",
+  "admin.models.uploaded": "Modelo subido (versión en borrador).",
+  "admin.models.empty": "Esta gestora aún no tiene modelos maestros.",
+
+  // Admin — Playbooks (review rules CRUD)
+  "admin.playbooks.title": "Playbooks de revisión",
+  "admin.playbooks.subtitle":
+    "Reglas de revisión redactadas por humanos que el revisor automático aplica. Aisladas por gestora.",
+  "admin.playbooks.selectGestora": "Selecciona una gestora",
+  "admin.playbooks.create": "Nuevo playbook",
+  "admin.playbooks.edit": "Editar playbook",
+  "admin.playbooks.titleField": "Título",
+  "admin.playbooks.content": "Contenido (reglas)",
+  "admin.playbooks.contentHint":
+    "Este texto se inyecta literalmente en el revisor automático.",
+  "admin.playbooks.branch": "Rama (opcional)",
+  "admin.playbooks.docType": "Tipo de documento (opcional)",
+  "admin.playbooks.anyBranch": "Todas las ramas",
+  "admin.playbooks.anyDocType": "Todos los tipos",
+  "admin.playbooks.file": "Adjunto (opcional .docx / .pdf)",
+  "admin.playbooks.activeOnly": "Activos",
+  "admin.playbooks.inactive": "Inactivos",
+  "admin.playbooks.active": "Activo",
+  "admin.playbooks.scope": "Ámbito",
+  "admin.playbooks.scopeAll": "Toda la gestora",
+  "admin.playbooks.activate": "Activar",
+  "admin.playbooks.deactivate": "Desactivar",
+  "admin.playbooks.delete": "Eliminar",
+  "admin.playbooks.deleteConfirm": "¿Eliminar este playbook?",
+  "admin.playbooks.created": "Playbook creado.",
+  "admin.playbooks.updated": "Playbook actualizado.",
+  "admin.playbooks.empty": "Esta gestora aún no tiene playbooks.",
+  "admin.playbooks.save": "Guardar playbook",
+  "admin.playbooks.cancel": "Cancelar",
+  "admin.playbooks.hasFile": "Con adjunto",
+
+  // Admin — Lecciones (drafting lessons, read-only)
+  "admin.lessons.title": "Lecciones aprendidas",
+  "admin.lessons.subtitle":
+    "Reglas de redacción que el agente de cada gestora ha aprendido de los documentos validados.",
+  "admin.lessons.siloNote":
+    "Las lecciones están aisladas por gestora: nunca se comparten entre gestoras.",
+  "admin.lessons.selectGestora": "Selecciona una gestora",
+  "admin.lessons.filterBranch": "Filtrar por rama",
+  "admin.lessons.allBranches": "Todas las ramas",
+  "admin.lessons.branch": "Rama",
+  "admin.lessons.docType": "Tipo de documento",
+  "admin.lessons.weight": "Peso",
+  "admin.lessons.lesson": "Lección",
+  "admin.lessons.empty": "Esta gestora aún no ha aprendido lecciones.",
 } as const;
 
 export type DictKey = keyof typeof es;
@@ -759,6 +858,7 @@ const en: Record<DictKey, string> = {
   "precedentSource.validated_output": "Validated output",
   "precedentSource.slp_curated": "SLP curated",
   "precedentSource.platform_base": "Platform base",
+  "precedentSource.gestora_model": "Gestora model",
 
   "admin.users.title": "Users",
   "admin.users.subtitle": "Platform users and their roles.",
@@ -822,6 +922,104 @@ const en: Record<DictKey, string> = {
   "dashboard.usageTitle": "Plan consumption",
   "dashboard.usage": "This month: {used} of {limit} documents",
   "dashboard.usageUnlimited": "This month: {used} documents · unlimited plan",
+
+  // Nav — drafting-agents admin pages
+  "nav.playbooks": "Playbooks",
+  "nav.lessons": "Lessons",
+
+  // Drafting branches (specialized drafter agents)
+  "branch.gobierno_corporativo": "Corporate Governance",
+  "branch.operaciones_de_fondo": "Fund Operations",
+  "branch.gestion_de_portfolio": "Portfolio Management",
+  "branch.cumplimiento_regulatorio": "Compliance & Regulatory",
+  "branch.contratos_terceros": "Third-Party Contracts",
+  "branch.generic": "General",
+  "branch.badge": "Agent: {branch}",
+
+  // Internal automated review (critic) — client + counsel
+  "review.title": "Internal automated review",
+  "review.loading": "Loading internal review…",
+  "review.none": "No automated review.",
+  "review.error": "Could not load the internal review.",
+  "review.approved": "Internal review: approved",
+  "review.fixed": "{count} issue fixed",
+  "review.fixedPlural": "{count} issues fixed",
+  "review.forcedCounsel": "Internal review: referred to counsel",
+  "review.round": "Round {n}",
+  "review.roundApproved": "Approved",
+  "review.roundIssues": "{count} issue",
+  "review.roundIssuesPlural": "{count} issues",
+  "review.showDetails": "Show details",
+  "review.hideDetails": "Hide details",
+  "review.problem": "Problem",
+  "review.suggestedFix": "Suggested fix",
+  "review.location": "Location",
+  "review.severity.blocking": "Blocking",
+  "review.severity.major": "Major",
+  "review.severity.minor": "Minor",
+  "review.category.factual": "Factual",
+  "review.category.completeness": "Completeness",
+  "review.category.legal": "Legal",
+  "review.category.consistency": "Consistency",
+
+  // Admin — Models (gestora master templates)
+  "admin.models.title": "Models",
+  "admin.models.subtitle":
+    "Gestora master templates (models). They outrank precedents as the generation base.",
+  "admin.models.tabModels": "Models",
+  "admin.models.tabPrecedents": "Precedents",
+  "admin.models.upload": "Upload model",
+  "admin.models.uploadHint":
+    "The gestora master model is the preferred generation base (above precedents).",
+  "admin.models.uploaded": "Model uploaded (draft version).",
+  "admin.models.empty": "This gestora has no master models yet.",
+
+  // Admin — Playbooks (review rules CRUD)
+  "admin.playbooks.title": "Review playbooks",
+  "admin.playbooks.subtitle":
+    "Human-authored review rules the automated reviewer enforces. Siloed per gestora.",
+  "admin.playbooks.selectGestora": "Select a gestora",
+  "admin.playbooks.create": "New playbook",
+  "admin.playbooks.edit": "Edit playbook",
+  "admin.playbooks.titleField": "Title",
+  "admin.playbooks.content": "Content (rules)",
+  "admin.playbooks.contentHint":
+    "This text is injected verbatim into the automated reviewer.",
+  "admin.playbooks.branch": "Branch (optional)",
+  "admin.playbooks.docType": "Document type (optional)",
+  "admin.playbooks.anyBranch": "All branches",
+  "admin.playbooks.anyDocType": "All types",
+  "admin.playbooks.file": "Attachment (optional .docx / .pdf)",
+  "admin.playbooks.activeOnly": "Active",
+  "admin.playbooks.inactive": "Inactive",
+  "admin.playbooks.active": "Active",
+  "admin.playbooks.scope": "Scope",
+  "admin.playbooks.scopeAll": "Whole gestora",
+  "admin.playbooks.activate": "Activate",
+  "admin.playbooks.deactivate": "Deactivate",
+  "admin.playbooks.delete": "Delete",
+  "admin.playbooks.deleteConfirm": "Delete this playbook?",
+  "admin.playbooks.created": "Playbook created.",
+  "admin.playbooks.updated": "Playbook updated.",
+  "admin.playbooks.empty": "This gestora has no playbooks yet.",
+  "admin.playbooks.save": "Save playbook",
+  "admin.playbooks.cancel": "Cancel",
+  "admin.playbooks.hasFile": "Has attachment",
+
+  // Admin — Lessons (drafting lessons, read-only)
+  "admin.lessons.title": "Learned lessons",
+  "admin.lessons.subtitle":
+    "Drafting rules each gestora's agent has learned from validated documents.",
+  "admin.lessons.siloNote":
+    "Lessons are siloed per gestora: they are never shared across gestoras.",
+  "admin.lessons.selectGestora": "Select a gestora",
+  "admin.lessons.filterBranch": "Filter by branch",
+  "admin.lessons.allBranches": "All branches",
+  "admin.lessons.branch": "Branch",
+  "admin.lessons.docType": "Document type",
+  "admin.lessons.weight": "Weight",
+  "admin.lessons.lesson": "Lesson",
+  "admin.lessons.empty": "This gestora has not learned any lessons yet.",
 };
 
 /* ------------------------------------------------------------------ */

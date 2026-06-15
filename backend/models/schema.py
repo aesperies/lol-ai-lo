@@ -510,3 +510,40 @@ class ReviewPlaybookUpdate(BaseModel):
     branch: Optional[str] = None
     doc_type: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Critic review trail (generation_reviews) + drafting lessons surfacing
+# ---------------------------------------------------------------------------
+
+class GenerationReviewOut(BaseModel):
+    """One persisted critic round (services/critic.py ReviewRound), surfaced
+    read-only to client/counsel/admin for the request they may access. The
+    ``issues`` list mirrors the critic Issue shape (severity / category /
+    problem / suggested_fix / location)."""
+
+    round: int
+    approved: bool
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+
+
+class DraftingLessonOut(BaseModel):
+    """One accumulated, gestora-siloed drafting lesson (services/lessons.py).
+    Admin-only read; never exposed cross-gestora."""
+
+    id: str
+    gestora_id: str
+    branch: str
+    doc_type: Optional[str] = None
+    lesson: str
+    weight: float = 1.0
+    created_at: Optional[datetime] = None
+
+
+class RequestBranchOut(BaseModel):
+    """The specialized drafting branch a doc_type resolves to
+    (models/doc_branches.branch_for)."""
+
+    doc_type: str
+    branch: str

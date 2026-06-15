@@ -32,7 +32,10 @@ export type PrecedentSource =
   | "manual_upload"
   | "validated_output"
   | "slp_curated"
-  | "platform_base";
+  | "platform_base"
+  // Gestora master template (modelos/): gestora-scoped, versioned/activated
+  // exactly like a precedent, outranks regular precedents as generation base.
+  | "gestora_model";
 
 export type PrecedentVersionStatus = "draft" | "active" | "superseded";
 
@@ -40,6 +43,25 @@ export type PrecedentVersionStatus = "draft" | "active" | "superseded";
 export type FallbackLevel = 0 | 1 | 2 | 3;
 
 export type AppLanguage = "es" | "en" | "fr" | "de" | "other";
+
+/** Specialized drafting branch a doc_type resolves to (backend
+ * models/doc_branches.Branch). Each maps to a focused drafter persona. */
+export type Branch =
+  | "gobierno_corporativo"
+  | "operaciones_de_fondo"
+  | "gestion_de_portfolio"
+  | "cumplimiento_regulatorio"
+  | "contratos_terceros"
+  | "generic";
+
+export const BRANCHES: Branch[] = [
+  "gobierno_corporativo",
+  "operaciones_de_fondo",
+  "gestion_de_portfolio",
+  "cumplimiento_regulatorio",
+  "contratos_terceros",
+  "generic",
+];
 
 export interface Gestora {
   id: string;
@@ -167,6 +189,8 @@ export interface RequestItem {
   counselRequestedAt?: string | null;
   /** Counsel SLA clock: stamped when counsel validates. */
   counselValidatedAt?: string | null;
+  /** Specialized drafting branch used at generation time (GET .../branch). */
+  branch?: Branch;
   /** Precedent fallback chain level used at generation time. Level 3 forces Exit B. */
   fallbackLevel?: FallbackLevel;
   /** True when the generated document contains [MISSING: …] fields → blocks Exit A. */
@@ -240,6 +264,71 @@ export interface ReviewBundle {
   draftText: string;
   redline: RedlineSegment[];
   comments: CounselComment[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Internal critic review trail (Feature 2)                            */
+/* ------------------------------------------------------------------ */
+
+export type ReviewIssueSeverity = "blocking" | "major" | "minor";
+export type ReviewIssueCategory =
+  | "factual"
+  | "completeness"
+  | "legal"
+  | "consistency";
+
+/** One substantive defect raised by the automated critic
+ * (backend services/critic.py Issue). */
+export interface ReviewIssue {
+  severity: ReviewIssueSeverity;
+  category: ReviewIssueCategory;
+  problem: string;
+  suggestedFix?: string;
+  location?: string;
+}
+
+/** One persisted critic round (GET /api/requests/{id}/reviews). */
+export interface GenerationReview {
+  round: number;
+  approved: boolean;
+  issues: ReviewIssue[];
+  createdAt?: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drafting lessons (Feature 3) — admin-only, gestora-siloed           */
+/* ------------------------------------------------------------------ */
+
+/** One accumulated drafting lesson learned for a gestora
+ * (GET /api/admin/gestoras/{id}/lessons). */
+export interface DraftingLesson {
+  id: string;
+  gestoraId: string;
+  branch: Branch;
+  docType?: string | null;
+  lesson: string;
+  weight: number;
+  createdAt?: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Review playbooks — human-authored critic rules (admin CRUD)         */
+/* ------------------------------------------------------------------ */
+
+/** review_playbooks row: human-authored review rules injected into the
+ * critic, STRICTLY gestora-siloed (GET/POST/PATCH /api/playbooks). */
+export interface ReviewPlaybook {
+  id: string;
+  gestoraId: string;
+  branch?: Branch | null;
+  docType?: string | null;
+  title: string;
+  content: string;
+  filePath?: string | null;
+  isActive: boolean;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 /** Counsel assigned to the requesting client's gestora (GET /api/my/counsel). */
