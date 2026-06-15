@@ -30,6 +30,11 @@ TABLE_CLASS = "doc-table"
 
 _HEADING_MAX_CHARS = 100
 
+# Cap on rendered top-level blocks; pathologically large documents are
+# truncated with a clear note rather than producing unbounded HTML.
+_MAX_BLOCKS = 5000
+_TRUNCATION_NOTE = "<p>[…documento truncado para visualización…]</p>"
+
 
 def _run_text(r_el: Any) -> str:
     """Escaped text of one run (w:t + w:delText + w:br/w:tab)."""
@@ -164,6 +169,9 @@ def docx_to_html(docx_bytes: bytes) -> dict[str, Any]:
             pending_items = []
 
     for child in document.element.body.iterchildren():
+        if len(blocks) >= _MAX_BLOCKS:
+            blocks.append(_TRUNCATION_NOTE)
+            break
         if child.tag == qn("w:tbl"):
             flush_list()
             blocks.append(_render_table(child, stats))

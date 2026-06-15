@@ -1,0 +1,109 @@
+# ============================================================================
+# Lol-AI-lo — local-first Docker Compose stack
+# ============================================================================
+# Practical defaults for an Apple Silicon Mac with 16 GB RAM.
+#
+# Reads configuration from a root-level `.env` file (copy from .env.example).
+#
+# ---------------------------------------------------------------------------
+# CRITICAL — DO NOT run Ollama inside Docker on macOS.
+# ---------------------------------------------------------------------------
+# Docker Desktop on macOS runs containers in a Linux VM that CANNOT access the
+# Mac's Metal GPU. An Ollama container would fall back to CPU and be unusably
+# slow for a 7B–14B model. Run Ollama NATIVELY on the host instead:
+#
+#     brew install ollama        # or the ollama.com desktop app
+#     ollama serve
+#     ollama pull qwen2.5:14b-instruct
+#     ollama pull bge-m3
+#
+# The backend container reaches the host's native Ollama via the special DNS
+# name `host.docker.internal`. That is why this file sets:
+#     OLLAMA_BASE_URL=http://host.docker.internal:11434
+#     extra_hosts: ["host.docker.internal:host-gateway"]
+#
+# (When you run the backend WITHOUT Docker — bare `uvicorn` — Ollama is just
+#  http://localhost:11434, the .env.example default.)
+# ============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # Backend — FastAPI (uvicorn). Degrades gracefully with zero cloud services.
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # All config comes from the root .env (LLM_PROVIDER, OLLAMA_*, DEV_AUTH_STUB,
+    # ANTHROPIC_API_KEY, etc.). Copy .env.example -> .env first.
+    env_file:
+      - .env
+    environment:
+      # Override the Ollama URL for the container: reach the host's NATIVE
+      # Ollama (see the critical note above). This wins over whatever
+      # OLLAMA_BASE_URL is in .env, which targets bare-metal localhost.
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Generated docs / precedents live on the mounted ./storage volume.
+      LOCAL_STORAGE_DIR: /app/storage
+    # Lets the container resolve host.docker.internal -> the Mac host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the local-filesystem precedent store on the host.
+      - ./storage:/app/storage
+    # Only waits for `db` when the "supabase" profile is active; with
+    # DEV_AUTH_STUB=true no database is needed at all (see README).
+    depends_on:
+      db:
+        condition: service_started
+        required: false
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  # --------------------------------------------------------------------------
+  # Frontend — Next.js 14 production server (`next start`).
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* must be present at BUILD time (Next inlines them).
+        # Browser requests hit the backend on the host-published port 8000.
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  # --------------------------------------------------------------------------
+  # Postgres (OPTIONAL) — behind the "supabase" profile.
+  # --------------------------------------------------------------------------
+  # Start ONLY with:  docker compose --profile supabase up
+  #
+  # This is a MINIMAL postgres:16 for applying the SQL in supabase/migrations/.
+  # It is NOT full Supabase (no Auth/Storage/Realtime/PostgREST). For the full
+  # local Supabase experience use the official CLI:  `supabase start`.
+  #
+  # For a no-database demo, set DEV_AUTH_STUB=true in .env and skip this
+  # profile entirely — the backend runs without any Postgres.
+  db:
+    image: postgres:16
+    profiles: ["supabase"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      # 54322 matches the DATABASE_URL default in .env.example.
+      - "54322:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # Migrations run in lexical order on first init of an empty volume.
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  db_data:

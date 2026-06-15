@@ -84,6 +84,76 @@ class TestRedline:
         xml = _xml(build_redline("Cláusula que desaparece por completo.", "Texto totalmente distinto."))
         assert "<w:delText" in xml
 
+    def test_one_word_change_is_word_level_not_full_paragraph(self):
+        from docx.oxml.ns import qn
+
+        precedent = "El plazo del fondo será de diez años desde la fecha de cierre."
+        generated = "El plazo del fondo será de doce años desde la fecha de cierre."
+        document = Document(io.BytesIO(build_redline(precedent, generated)))
+        target = next(p for p in document.paragraphs if "plazo del fondo" in p._p.xml)
+
+        # Only the changed word is marked; the rest stays in plain runs.
+        del_text = "".join(
+            t.text or ""
+            for d in target._p.findall(qn("w:del"))
+            for t in d.iter(qn("w:delText"))
+        )
+        ins_text = "".join(
+            t.text or ""
+            for d in target._p.findall(qn("w:ins"))
+            for t in d.iter(qn("w:t"))
+        )
+        assert del_text.strip() == "diez"
+        assert ins_text.strip() == "doce"
+        # Shared words must NOT have been deleted+reinserted wholesale.
+        assert "plazo del fondo" not in del_text
+
+    def test_whitespace_only_change_produces_no_revisions(self):
+        original = "El consejo aprueba la operación por unanimidad."
+        whitespace = "El   consejo  aprueba la   operación por unanimidad."
+        xml = _xml(build_redline(original, whitespace))
+        assert "<w:ins " not in xml
+        assert "<w:del " not in xml
+
+    def test_large_input_falls_back_without_error(self, monkeypatch):
+        # Force the large-document path with a tiny threshold so the test stays
+        # fast; the coarse paragraph-level diff must still be a valid redline.
+        import services.redline as redline_mod
+
+        class _FakeSettings:
+            redline_max_paragraphs = 5
+
+        monkeypatch.setattr(redline_mod, "get_settings", lambda: _FakeSettings())
+
+        precedent = "\n".join(f"Cláusula {i} del precedente original." for i in range(50))
+        generated = "\n".join(f"Cláusula {i} del documento generado." for i in range(50))
+        redline_bytes = build_redline(precedent, generated)
+
+        # Valid .docx, tracked changes present, author preserved.
+        xml = _xml(redline_bytes)
+        assert "<w:ins " in xml and "<w:del " in xml
+        authors = set(re.findall(r'w:author="([^"]+)"', xml))
+        assert authors == {REDLINE_AUTHOR}
+        # Re-openable as a document.
+        assert Document(io.BytesIO(redline_bytes)).paragraphs
+
+    def test_added_and_removed_paragraphs_in_replace_block(self):
+        # An old clause with no good match becomes a clean deletion; a brand-new
+        # clause becomes a clean insertion (not a forced word-diff pairing).
+        precedent = (
+            "CLÁUSULA ÚNICA\n"
+            "El importe de la inversión asciende a 100.000 euros.\n"
+            "Texto antiguo completamente diferente que se elimina."
+        )
+        generated = (
+            "CLÁUSULA ÚNICA\n"
+            "El importe de la inversión asciende a 250.000 euros.\n"
+            "Una cláusula totalmente nueva sobre gobernanza."
+        )
+        xml = _xml(build_redline(precedent, generated))
+        assert "100.000" in xml and "250.000" in xml
+        assert "<w:ins " in xml and "<w:del " in xml
+
 
 class TestDocxRenderer:
     def test_render_and_extract_roundtrip(self):

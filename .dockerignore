@@ -1,0 +1,32 @@
+# Keep build contexts small and never ship secrets or local state into images.
+
+# secrets / env
+.env
+.env.local
+.env.*.local
+*.pem
+service-account*.json
+
+# node
+**/node_modules
+**/.next
+**/out
+
+# python
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+**/.pytest_cache
+**/.mypy_cache
+
+# local storage fallback / generated docs
+storage
+**/storage
+*.docx
+
+# vcs / misc
+.git
+.gitignore
+**/.DS_Store
+*.log

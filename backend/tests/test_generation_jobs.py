@@ -127,8 +127,11 @@ class TestIsolationAndGuardrails:
         assert wf.generate(request_id).status_code == 409
         assert jobs_for(db, request_id) == []
 
-        # Anthropic unconfigured -> 503, status untouched, no job row.
+        # Selected LLM provider unconfigured -> 503, status untouched, no job
+        # row. (Default ollama is always configured; switch to the cloud
+        # provider with no key to exercise the fail-fast gate.)
         wf.confirm(request_id)
+        monkeypatch.setattr(config.get_settings(), "llm_provider", "anthropic")
         monkeypatch.setattr(config.get_settings(), "anthropic_api_key", "")
         assert wf.generate(request_id).status_code == 503
         assert request_status(db, request_id) == "confirmed"
