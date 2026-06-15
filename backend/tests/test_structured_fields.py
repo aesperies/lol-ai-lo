@@ -121,11 +121,13 @@ class TestIntakeValidation:
 # ---------------------------------------------------------------------------
 
 def _fake_claude_response(monkeypatch, payload: dict, captured: dict) -> None:
-    def fake_call(prompt: str) -> str:
+    # Patch the LLM JSON seam the parser now uses (services/llm.py). The parser
+    # builds the prompt and post-processes the parsed dict identically.
+    def fake_complete_json(prompt: str, schema: dict, **kwargs) -> dict:
         captured["prompt"] = prompt
-        return json.dumps(payload, ensure_ascii=False)
+        return json.loads(json.dumps(payload, ensure_ascii=False))
 
-    monkeypatch.setattr(intake_parser, "_call_claude", fake_call)
+    monkeypatch.setattr(intake_parser.llm, "complete_json", fake_complete_json)
 
 
 class TestParserMerge:

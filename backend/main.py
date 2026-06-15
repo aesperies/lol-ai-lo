@@ -100,8 +100,13 @@ async def health() -> dict:
             "openai": settings.openai_configured,
             "google_drive": drive.is_configured(),
             "resend": settings.resend_configured,
+            "llm": settings.llm_configured,
+            "embeddings": settings.embeddings_configured,
         },
         "auth_mode": "dev-stub" if settings.dev_auth_stub else "supabase",
         "storage_mode": "drive" if drive.is_configured() else "local",
+        "llm_provider": settings.llm_provider,
+        "embedding_provider": settings.embedding_provider,
+        "ollama_base_url": settings.ollama_base_url,
         "claude_model": settings.claude_model,
     }

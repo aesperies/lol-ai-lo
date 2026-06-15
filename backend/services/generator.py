@@ -1,16 +1,19 @@
-"""Claude document generation (SPEC.md verbatim prompt).
+"""Document generation (SPEC.md verbatim prompt).
 
 Generates the full document text from the confirmed parameters plus the
 retrieved precedent, then appends the mandatory Lol-AI-lo Legal SLP
-disclaimer. Raises ServiceNotConfiguredError when Anthropic is unset.
+disclaimer. Text generation routes through the provider-agnostic seam
+(services/llm.py): local Ollama by default, Anthropic Claude as an optional
+cloud fallback. Raises ServiceNotConfiguredError when the selected provider is
+misconfigured or unreachable.
 """
 from __future__ import annotations
 
 import json
 from typing import Any, Optional
 
-from config import ServiceNotConfiguredError, get_settings
 from models.schema import SLP_DISCLAIMER
+from services import llm
 
 # Verbatim from docs/SPEC.md — do not edit. Placeholders substituted via
 # .replace() to avoid clashing with literal braces in client content.
@@ -80,23 +83,6 @@ def refinement_unclear_reason(text: str) -> Optional[str]:
     return reason or "unclear"
 
 
-def _call_claude(prompt: str) -> str:
-    settings = get_settings()
-    if not settings.anthropic_configured:
-        raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
-    # Lazy import: heavy optional dep; app must start without it.
-    import anthropic  # type: ignore[import-not-found]
-
-    # TODO: real Anthropic API key required (ANTHROPIC_API_KEY).
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    response = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=8192,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
-
-
 def generate_document(
     *,
     doc_type: str,
@@ -124,7 +110,7 @@ def generate_document(
         .replace("{freetext}", freetext)
         .replace("{precedent_text}", precedent_text or NO_PRECEDENT_PLACEHOLDER)
     )
-    text = _call_claude(prompt).strip()
+    text = llm.complete(prompt, max_tokens=8192).strip()
     # Mandatory on every generated document (SPEC corporate structure).
     return f"{text}\n\n{SLP_DISCLAIMER}"
 
@@ -141,7 +127,7 @@ def refine_document(*, current_text: str, instruction: str) -> str:
         .replace("{current_text}", current_text)
         .replace("{instruction}", instruction)
     )
-    text = _call_claude(prompt).strip()
+    text = llm.complete(prompt, max_tokens=8192).strip()
     if refinement_unclear_reason(text) is not None:
         return text
     # The disclaimer travels inside current_text; re-append if the model

@@ -39,9 +39,31 @@ from fastapi.testclient import TestClient
 import config
 from models.schema import LEVEL3_WARNING, SLP_DISCLAIMER, PrecedentVersionStatus
 from services import db as dbmod
-from services import docx_renderer, generator, intake_parser, storage
+from services import docx_renderer, generator, intake_parser, llm, storage
 
 config.get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_llm_network(monkeypatch: pytest.MonkeyPatch):
+    """Default test mode runs the local-first (ollama) provider, but no real
+    daemon exists in CI. Simulate an unreachable daemon at the HTTP layer so:
+
+    - RAG embeddings degrade to weight/recency ranking (the existing isolation
+      invariant — never a wider candidate pool), exactly as they did when
+      OpenAI was unconfigured before this refactor;
+    - any unmocked text-generation call surfaces a ServiceNotConfiguredError
+      (503) rather than silently reaching the network.
+
+    Tests that exercise the seam (test_llm_provider) override ``httpx.post``
+    per-test; the workflow tests mock the public ``generator``/``intake_parser``
+    seams via ``fake_llm`` so they never reach this layer for generation.
+    ``llm.httpx`` IS the httpx module, so this also covers rag.py's usage."""
+
+    def _unreachable(*_args, **_kwargs):
+        raise llm.httpx.ConnectError("no ollama daemon in tests")
+
+    monkeypatch.setattr(llm.httpx, "post", _unreachable)
 
 FREETEXT = (
     "Necesito un acta de reunión del consejo de administración aprobando una "

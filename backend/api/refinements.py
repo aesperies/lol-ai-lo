@@ -238,8 +238,12 @@ async def request_refinement(
         raise HTTPException(status_code=409, detail="No draft document available to refine")
 
     # Fail fast BEFORE mutating status so a 503 leaves the request untouched.
-    if not settings.anthropic_configured:
-        raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
+    # Under the default local-first Ollama provider this is always true; a 503
+    # then only surfaces at call time if the daemon is unreachable.
+    if not settings.llm_configured:
+        raise ServiceNotConfiguredError(
+            settings.llm_provider, "Configure the selected LLM provider."
+        )
 
     # Iterations are never reused (unique(request_id, iteration)), so a failed
     # refinement leaves a numbering gap by design.

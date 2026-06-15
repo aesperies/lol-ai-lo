@@ -189,13 +189,16 @@ class TestLimitAndStatusGating:
         assert refine(wf, request_id, "abc").status_code == 422
         assert refine(wf, request_id, "x" * 1001).status_code == 422
 
-    def test_503_when_anthropic_unconfigured_leaves_request_untouched(
+    def test_503_when_llm_unconfigured_leaves_request_untouched(
         self, wf, client, db, seed, fake_refine, monkeypatch
     ):
         import config
 
         seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PRECEDENTE ALFA")
         request_id, _ = wf.to_review_pending()
+        # Default ollama is always configured; switch to the cloud provider
+        # with no key to exercise the fail-fast 503 gate.
+        monkeypatch.setattr(config.get_settings(), "llm_provider", "anthropic")
         monkeypatch.setattr(config.get_settings(), "anthropic_api_key", "")
         assert refine(wf, request_id).status_code == 503
         assert db.get("requests", request_id)["status"] == "review_pending"

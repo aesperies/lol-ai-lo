@@ -29,12 +29,15 @@ class TestGenerationGuards:
         wf.parse(request_id)
         assert wf.confirm(request_id).status_code == 422
 
-    def test_generate_returns_503_when_anthropic_unconfigured(self, client, seed, fake_llm, wf, monkeypatch):
+    def test_generate_returns_503_when_llm_unconfigured(self, client, seed, fake_llm, wf, monkeypatch):
         import config
 
         request_id = wf.create()
         wf.parse(request_id)
         wf.confirm(request_id)
+        # Default ollama is always configured; switch to the cloud provider
+        # with no key to exercise the fail-fast 503 gate.
+        monkeypatch.setattr(config.get_settings(), "llm_provider", "anthropic")
         monkeypatch.setattr(config.get_settings(), "anthropic_api_key", "")
         response = wf.generate(request_id)
         assert response.status_code == 503

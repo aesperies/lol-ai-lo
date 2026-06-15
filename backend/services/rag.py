@@ -14,10 +14,11 @@ Fallback chain:
 Only .docx precedents may serve as generation bases; PDFs are indexed as
 read-only reference context (SPEC guardrail 7).
 
-Embeddings: OpenAI text-embedding-3-small via LlamaIndex, chunks ~512 tokens
-with 50 overlap, top-3 cosine. When OpenAI/LlamaIndex are unavailable the
-ranking degrades to rag_weight + recency (deterministic), never to a wider
-candidate pool.
+Embeddings are provider-agnostic (EMBEDDING_PROVIDER): local Ollama by default
+(bge-m3, multilingual) or OpenAI text-embedding-3-small via LlamaIndex. Chunks
+~512 tokens with 50 overlap, top-3 cosine. When the selected embedding
+provider is unavailable the ranking degrades to rag_weight + recency
+(deterministic), never to a wider candidate pool (isolation invariant).
 """
 from __future__ import annotations
 
@@ -155,9 +156,9 @@ def _chunk(text: str) -> list[str]:
     return [" ".join(words[i:i + CHUNK_TOKENS]) for i in range(0, len(words), step)]
 
 
-def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[float]]:
-    """Cosine similarity per candidate (max over chunks), or None if the
-    embedding stack is unavailable — caller falls back to weight/recency."""
+def _embed_openai(texts: list[str]) -> Optional[list[list[float]]]:
+    """Embed via OpenAI text-embedding through LlamaIndex, or None if the stack
+    is unavailable."""
     settings = get_settings()
     if not settings.openai_configured:
         return None
@@ -166,10 +167,60 @@ def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[f
         from llama_index.embeddings.openai import OpenAIEmbedding  # type: ignore[import-not-found]
     except ImportError:
         return None
-
     # TODO: real OpenAI API key required (OPENAI_API_KEY).
     embedder = OpenAIEmbedding(model=settings.embedding_model, api_key=settings.openai_api_key)
-    query_vector = embedder.get_text_embedding(query)
+    try:
+        return embedder.get_text_embedding_batch(texts)
+    except Exception:
+        # Network/auth failure: degrade to weight/recency (never a wider pool).
+        return None
+
+
+def _embed_ollama(texts: list[str]) -> Optional[list[list[float]]]:
+    """Embed via the local Ollama daemon's ``/api/embeddings`` endpoint, looping
+    per text. Returns None if Ollama is unreachable (caller degrades to
+    weight/recency ranking — never a wider candidate pool)."""
+    settings = get_settings()
+    import httpx  # hard dependency
+
+    url = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
+    vectors: list[list[float]] = []
+    for text in texts:
+        try:
+            response = httpx.post(
+                url,
+                json={"model": settings.ollama_embed_model, "prompt": text},
+                timeout=settings.ollama_timeout_seconds,
+            )
+        except httpx.HTTPError:
+            return None
+        if response.status_code != 200:
+            return None
+        vector = response.json().get("embedding")
+        if not vector:
+            return None
+        vectors.append(vector)
+    return vectors
+
+
+def _embed(texts: list[str]) -> Optional[list[list[float]]]:
+    """Embed ``texts`` via the configured provider, or None when unavailable."""
+    settings = get_settings()
+    if settings.embedding_provider == "ollama":
+        return _embed_ollama(texts)
+    if settings.embedding_provider == "openai":
+        return _embed_openai(texts)
+    return None
+
+
+def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[float]]:
+    """Cosine similarity per candidate (max over chunks), or None if the
+    selected embedding provider is unavailable — caller falls back to
+    weight/recency ranking (never a wider candidate pool)."""
+    query_vectors = _embed([query])
+    if not query_vectors:
+        return None
+    query_vector = query_vectors[0]
 
     def cosine(a: list[float], b: list[float]) -> float:
         dot = sum(x * y for x, y in zip(a, b))
@@ -178,7 +229,9 @@ def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[f
 
     scores: list[float] = []
     for candidate in candidates:
-        chunk_vectors = embedder.get_text_embedding_batch(_chunk(candidate.text)[:20])
+        chunk_vectors = _embed(_chunk(candidate.text)[:20])
+        if not chunk_vectors:
+            return None
         best = max((cosine(query_vector, v) for v in chunk_vectors), default=0.0)
         scores.append(best)
     return scores

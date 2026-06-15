@@ -1,17 +1,69 @@
-"""Claude intake parsing (SPEC.md verbatim prompt).
+"""Intake parsing (SPEC.md verbatim prompt).
 
-Extracts structured parameters from the client's free-text request. If
-Anthropic is not configured, raises ServiceNotConfiguredError (API -> 503).
+Extracts structured parameters from the client's free-text request. Parsing
+routes through the provider-agnostic seam (services/llm.py) using JSON mode:
+local Ollama by default (native ``format=json``), Anthropic Claude as an
+optional cloud fallback (prompt-driven JSON). Raises ServiceNotConfiguredError
+when the selected provider is misconfigured or unreachable (API -> 503).
 """
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Optional
 
-from config import ServiceNotConfiguredError, get_settings
 from models import doc_fields
 from models.schema import UNCLASSIFIABLE_MESSAGE
+from services import llm
+
+# JSON schema for the parser output (SPEC OUTPUT object). Passed to the LLM
+# seam so Ollama runs in JSON mode and the model knows the target shape.
+INTAKE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "language": {"type": "string", "enum": ["es", "en", "fr", "de", "other"]},
+        "doc_type_confirmed": {"type": "string"},
+        "parties": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"role": {"type": "string"}, "name": {"type": "string"}},
+            },
+        },
+        "key_dates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"label": {"type": "string"}, "date": {"type": "string"}},
+            },
+        },
+        "jurisdiction": {"type": "string"},
+        "governing_law": {"type": "string"},
+        "key_terms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"field": {"type": "string"}, "value": {"type": "string"}},
+            },
+        },
+        "summary": {"type": "string"},
+        "confidence": {"type": "number"},
+        "unclear_fields": {"type": "array", "items": {"type": "string"}},
+        "generation_ready": {"type": "boolean"},
+    },
+    "required": [
+        "language",
+        "doc_type_confirmed",
+        "parties",
+        "key_dates",
+        "jurisdiction",
+        "governing_law",
+        "key_terms",
+        "summary",
+        "confidence",
+        "unclear_fields",
+        "generation_ready",
+    ],
+}
 
 # Verbatim from docs/SPEC.md — do not edit. Placeholders substituted via
 # .replace() because the JSON braces would break str.format().
@@ -58,29 +110,6 @@ STRUCTURED_FIELDS_RULE = (
 _OUTPUT_MARKER = "OUTPUT (JSON only, no preamble):"
 
 
-def _call_claude(prompt: str) -> str:
-    settings = get_settings()
-    if not settings.anthropic_configured:
-        raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
-    # Lazy import: heavy optional dep; app must start without it.
-    import anthropic  # type: ignore[import-not-found]
-
-    # TODO: real Anthropic API key required (ANTHROPIC_API_KEY).
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    response = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
-
-
-def _extract_json(raw: str) -> dict[str, Any]:
-    """Parse the model output; tolerate stray code fences despite the prompt."""
-    cleaned = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-    return json.loads(cleaned)
-
-
 def parse_intake(
     doc_type: str,
     freetext: str,
@@ -103,7 +132,9 @@ def parse_intake(
         )
         prompt = prompt.replace(_OUTPUT_MARKER, section + _OUTPUT_MARKER, 1)
         prompt = f"{prompt}\n{STRUCTURED_FIELDS_RULE}"
-    parsed = _extract_json(_call_claude(prompt))
+    # JSON mode (native on Ollama, prompt-driven on Anthropic) with one repair
+    # retry on invalid output.
+    parsed = llm.complete_json(prompt, INTAKE_SCHEMA, max_tokens=2048)
 
     confidence = float(parsed.get("confidence") or 0.0)
     if confidence < 0.7 or parsed.get("unclear_fields"):

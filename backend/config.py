@@ -35,13 +35,34 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     database_url: str = ""
 
-    # ---------- Anthropic Claude ----------
-    # TODO: real credential required (console.anthropic.com -> API Keys)
+    # ---------- LLM provider (local-first) ----------
+    # Text generation + intake parsing route through a single seam
+    # (services/llm.py). "ollama" (default) runs fully local; "anthropic"
+    # falls back to the cloud Claude API.
+    llm_provider: str = "ollama"
+    # Embeddings provider for RAG (services/rag.py): "ollama" (default, local)
+    # or "openai" (cloud, via LlamaIndex).
+    embedding_provider: str = "ollama"
+
+    # ---------- Ollama (local LLM + embeddings) ----------
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_llm_model: str = "qwen2.5:14b-instruct"
+    # Multilingual embeddings (docs are ES/EN/FR/DE).
+    ollama_embed_model: str = "bge-m3"
+    # Big legal generations can be slow on local hardware.
+    ollama_timeout_seconds: float = 600.0
+    # Transient-network retry attempts in the LLM seam (delays ~0 under pytest).
+    llm_retry_attempts: int = 2
+
+    # ---------- Anthropic Claude (optional cloud fallback) ----------
+    # TODO: real credential required when LLM_PROVIDER=anthropic
+    # (console.anthropic.com -> API Keys)
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-20250514"
 
-    # ---------- OpenAI (RAG embeddings) ----------
-    # TODO: real credential required (platform.openai.com)
+    # ---------- OpenAI (optional cloud RAG embeddings) ----------
+    # TODO: real credential required when EMBEDDING_PROVIDER=openai
+    # (platform.openai.com)
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
@@ -114,6 +135,34 @@ class Settings(BaseSettings):
     @property
     def openai_configured(self) -> bool:
         return bool(self.openai_api_key)
+
+    @property
+    def llm_configured(self) -> bool:
+        """Whether the SELECTED text-generation provider is usable.
+
+        Ollama needs no credential (only a reachable daemon, checked at call
+        time); Anthropic needs ANTHROPIC_API_KEY. Reachability of a local
+        Ollama is surfaced as a 503 from services/llm.py, not here.
+        """
+        if self.llm_provider == "ollama":
+            return True
+        if self.llm_provider == "anthropic":
+            return self.anthropic_configured
+        return False
+
+    @property
+    def embeddings_configured(self) -> bool:
+        """Whether the SELECTED embeddings provider is usable.
+
+        Ollama needs no credential; OpenAI needs OPENAI_API_KEY. When the
+        provider is unreachable, RAG degrades to weight/recency ranking rather
+        than failing (see services/rag.py).
+        """
+        if self.embedding_provider == "ollama":
+            return True
+        if self.embedding_provider == "openai":
+            return self.openai_configured
+        return False
 
     @property
     def drive_configured(self) -> bool:
