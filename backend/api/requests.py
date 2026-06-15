@@ -46,6 +46,7 @@ from services import (
     db as dbmod,
     email_service,
     intake_parser,
+    lessons,
     quality,
     rag,
     signed_urls,
@@ -342,6 +343,21 @@ async def exit_a_download(
     except Exception:  # noqa: BLE001 — metrics are best-effort by design
         logger.exception("Quality metric failed for request %s (delivery continues)", request_id)
 
+    # Learning (Feature 3): Exit A accepted-as-is is a strong positive signal.
+    # final ≈ draft here, so the similarity short-circuit usually makes this a
+    # no-op; still enqueue (async + best-effort, NEVER blocks delivery).
+    try:
+        lessons.enqueue_extraction(
+            db,
+            gestora_id=gestora_id,
+            doc_type=row["doc_type"],
+            request_id=request_id,
+            ai_draft_path=draft["file_path"],
+            final_path=draft["file_path"],
+        )
+    except Exception:  # noqa: BLE001 — learning is best-effort by design
+        logger.exception("Lessons enqueue failed for request %s (delivery continues)", request_id)
+
     # Precedent candidate: NOT active until an admin approves (guardrail 8).
     precedent = db.insert(
         "precedents",
@@ -527,6 +543,22 @@ async def counsel_validate(
         )
     except Exception:  # noqa: BLE001 — metrics are best-effort by design
         logger.exception("Quality metric failed for request %s (validation continues)", request_id)
+
+    # Learning (Feature 3): distill gestora-siloed drafting lessons from the
+    # AI draft vs. the counsel-validated final. Async + best-effort: NEVER
+    # blocks delivery; failures are swallowed + logged inside the helper.
+    try:
+        draft_doc = latest_document(db, request_id, DocumentVersionType.draft)
+        lessons.enqueue_extraction(
+            db,
+            gestora_id=gestora_id,
+            doc_type=row["doc_type"],
+            request_id=request_id,
+            ai_draft_path=draft_doc["file_path"] if draft_doc else None,
+            final_path=source_doc["file_path"],
+        )
+    except Exception:  # noqa: BLE001 — learning is best-effort by design
+        logger.exception("Lessons enqueue failed for request %s (validation continues)", request_id)
 
     audit.log_action(
         db,

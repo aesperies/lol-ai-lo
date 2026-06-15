@@ -124,6 +124,24 @@ class Settings(BaseSettings):
     # Max accepted upload size (counsel .docx, admin precedents), in MiB.
     max_upload_mb: int = 15
 
+    # ---------- Specialized drafting agents + critic loop (drafting-agents) ----------
+    # The critic/reviewer is an extra LLM pass after the first draft (services/
+    # critic.py). When the LLM is unreachable the whole critic loop is SKIPPED
+    # (graceful degradation) and the original draft proceeds unchanged.
+    critic_enabled: bool = True
+    # Max revision rounds after the first draft (critic round 0 reviews the
+    # first draft; up to this many revise→re-review cycles follow).
+    critic_max_rounds: int = 2
+    # Lowest severity that triggers a revision: revise on this and anything
+    # more severe, ignore everything below it ('blocking' > 'major' > 'minor').
+    critic_min_severity_to_revise: str = "major"
+    # How many gestora-siloed lessons (services/lessons.py) the specialized
+    # drafter injects into the generation context (top-K by weight*recency).
+    drafting_lessons_top_k: int = 5
+    # Below this draft↔final similarity there is something to learn; at or above
+    # it the lesson-extraction pass short-circuits (little/nothing changed).
+    lessons_similarity_skip_threshold: float = 0.985
+
     # ---------- Counsel SLA (Exit B turnaround, improvement #8) ----------
     # Promised review turnaround for counsel validation (hours).
     sla_review_hours: float = 48.0

@@ -7,8 +7,9 @@ Covers the three attack surfaces:
 """
 from __future__ import annotations
 
+from models.doc_branches import Branch, branch_for
 from models.schema import PrecedentSource
-from services import rag
+from services import lessons, rag
 from tests.conftest import DOC_TYPE, auth, seed_precedent
 
 
@@ -172,3 +173,63 @@ class TestPrecedentIsolation:
             headers=auth(seed["client_a"]),
         )
         assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 4. Drafting lessons (drafting-agents Feature 3) — STRICTLY gestora-siloed
+# ---------------------------------------------------------------------------
+
+class TestLessonsIsolation:
+    def test_lessons_never_cross_gestora(self, db, seed):
+        """A lesson distilled from gestora A's validated documents must NEVER be
+        retrievable for gestora B (the inviolable isolation rule — no global
+        lesson pool exists)."""
+        branch = branch_for(DOC_TYPE)
+        db.insert(
+            "drafting_lessons",
+            {
+                "gestora_id": seed["gestora_a"]["id"],
+                "branch": branch.value,
+                "doc_type": DOC_TYPE,
+                "lesson": "LECCIÓN PRIVADA DE GESTORA ALFA",
+                "source_request_id": None,
+                "weight": 1.0,
+            },
+        )
+
+        for_a = lessons.lessons_for(
+            db, gestora_id=seed["gestora_a"]["id"], branch=branch, doc_type=DOC_TYPE
+        )
+        assert "LECCIÓN PRIVADA DE GESTORA ALFA" in for_a
+
+        for_b = lessons.lessons_for(
+            db, gestora_id=seed["gestora_b"]["id"], branch=branch, doc_type=DOC_TYPE
+        )
+        assert for_b == []
+        assert "LECCIÓN PRIVADA DE GESTORA ALFA" not in for_b
+
+    def test_extracted_lessons_are_anchored_to_their_gestora(self, db, seed, monkeypatch):
+        """Lessons extracted for gestora A carry A's gestora_id and never reach B."""
+        from services import llm
+
+        monkeypatch.setattr(
+            llm, "complete_json",
+            lambda prompt, schema, *, max_tokens=8192, system=None: {
+                "lessons": ["Regla generalizable de Alfa"]
+            },
+        )
+        lessons.extract_lessons(
+            gestora_id=seed["gestora_a"]["id"],
+            branch=Branch.OPERACIONES_DE_FONDO,
+            doc_type=DOC_TYPE,
+            ai_draft_text="borrador breve",
+            final_text="un documento final validado sustancialmente distinto y mas largo",
+            source_request_id=None,
+            db=db,
+        )
+        rows = db.select("drafting_lessons", gestora_id=seed["gestora_a"]["id"])
+        assert rows and all(r["gestora_id"] == seed["gestora_a"]["id"] for r in rows)
+        # None of them are visible to gestora B.
+        assert lessons.lessons_for(
+            db, gestora_id=seed["gestora_b"]["id"], branch=Branch.OPERACIONES_DE_FONDO
+        ) == []

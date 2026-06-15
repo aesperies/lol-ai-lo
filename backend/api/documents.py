@@ -28,12 +28,13 @@ from models.schema import (
     User,
     UserRole,
 )
+from models.doc_branches import branch_for
 from services import (
     audit,
     db as dbmod,
     docx_html,
     docx_renderer,
-    generator,
+    drafting_agents,
     jobs,
     rag,
     redline as redline_service,
@@ -101,7 +102,14 @@ def _run_generation_pipeline(
         row.get("structured_fields") or {},
     )
 
-    text = generator.generate_document(
+    # Specialized branch agent (Feature 1) + critic loop (Feature 2). The
+    # branch persona is passed as the LLM system message and the gestora's
+    # learned lessons (Feature 3, siloed) are injected as extra guidance — the
+    # verbatim GENERATION_PROMPT is never edited. The critic runs as extra LLM
+    # passes inside this async job and degrades to a no-op when the LLM is
+    # unreachable.
+    branch = branch_for(row["doc_type"])
+    review_result = drafting_agents.draft_with_review(
         doc_type=row["doc_type"],
         language=language,
         fund_name=fund.get("name", ""),
@@ -112,9 +120,31 @@ def _run_generation_pipeline(
         key_terms=key_terms,
         freetext=row["freetext"],
         precedent_text=retrieval.base_text,
+        parsed_params=params,
+        gestora_id=gestora_id,
+        db=db,
     )
+    text = review_result.text
     if retrieval.warning:
         text = f"{text}\n\n{retrieval.warning}"
+
+    # Persist the critic review trail (one row per round) and, if the critic
+    # could not get the draft approved within budget, force Exit B.
+    for review_round in review_result.rounds:
+        db.insert(
+            "generation_reviews",
+            {
+                "request_id": request_id,
+                "iteration": 0,
+                "round": review_round.round,
+                "approved": review_round.approved,
+                "issues": review_round.issues,
+                "model_note": review_round.model_note,
+            },
+        )
+    if review_result.forced_counsel:
+        db.update("requests", request_id, {"requires_counsel": True})
+        row["requires_counsel"] = True
 
     base_path = f"gestoras/{gestora_id}/funds/{row['fund_id']}/documents/{request_id}"
     draft_key = storage.save(f"{base_path}/draft.docx", docx_renderer.render_docx(text))
@@ -142,6 +172,14 @@ def _run_generation_pipeline(
             "rag_level": retrieval.level,
             "precedent_version_id": retrieval.base_version_id,
             "model": settings.claude_model,
+            # Specialized drafting branch (Feature 1).
+            "branch": branch.value,
+            # Critic loop outcome (Feature 2): only populated when the critic ran.
+            "critic": {
+                "rounds": len(review_result.rounds),
+                "approved": review_result.approved,
+                "forced_counsel": review_result.forced_counsel,
+            },
         },
         ip_address=ip_address,
     )

@@ -67,6 +67,37 @@ class JobRunner:
         task.add_done_callback(lambda _t: self._tasks.pop(job["id"], None))
         return job
 
+    def enqueue_background(
+        self,
+        coro_factory: CoroutineFactory,
+        *,
+        label: str = "background",
+    ) -> Optional[asyncio.Task]:
+        """Fire-and-forget a best-effort async task on the event loop.
+
+        Unlike :meth:`enqueue` this persists NO ``generation_jobs`` row and has
+        no retries — it is for off-the-request-thread work that must NEVER block
+        or affect delivery (e.g. lessons extraction, services/lessons.py). Any
+        exception is swallowed + logged. Returns the task (or None when there is
+        no running loop, in which case the work is silently skipped)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning("No running loop for background task %s; skipped.", label)
+            return None
+
+        async def _runner() -> None:
+            try:
+                await coro_factory()
+            except Exception:  # noqa: BLE001 — best-effort, never propagate
+                logger.exception("Background task %s failed (swallowed).", label)
+
+        task = loop.create_task(_runner())
+        key = f"bg:{label}:{id(task)}"
+        self._tasks[key] = task
+        task.add_done_callback(lambda _t: self._tasks.pop(key, None))
+        return task
+
     async def _run(
         self,
         db: dbmod.Database,
