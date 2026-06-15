@@ -1,7 +1,20 @@
 """Storage abstraction.
 
-Logical paths follow the SPEC Drive layout, e.g.
-``gestoras/{gestora_id}/funds/{fund_id}/documents/{request_id}/draft.docx``.
+Each gestora gets FOUR separate, siloed folders under ``gestoras/{gestora_id}/``::
+
+    gestoras/{gestora_id}/
+      ├── modelos/{precedent_id}-v{n}.docx      # gestora master templates (TOP-priority generation base)
+      ├── playbooks/{playbook_id}.{ext}         # human-authored review rules used by the critic
+      ├── precedentes/{precedent_id}-v{n}.docx  # past/validated documents
+      └── outputs/{fund_id}/{request_id}/...    # generated draft/redline/counsel_edit/final
+
+Global SLP / platform-base templates still live outside the gestora silo under
+``lol-ai-lo-templates/{slp-curated,platform-base}/{es,en,fr}/``.
+
+The four path-builder helpers below (:func:`modelos_path`,
+:func:`playbooks_path`, :func:`precedentes_path`, :func:`outputs_path`) are the
+single source of truth for these logical paths; callers must not hand-assemble
+the gestora-folder segments.
 
 If Google Drive is configured the file is uploaded there and the returned
 storage key is ``drive:{file_id}``; otherwise files live on the local
@@ -14,6 +27,26 @@ from pathlib import Path
 
 from config import get_settings
 from services import drive
+
+
+def modelos_path(gestora_id: str, filename: str) -> str:
+    """Logical path for a gestora master template (TOP-priority generation base)."""
+    return f"gestoras/{gestora_id}/modelos/{filename}"
+
+
+def playbooks_path(gestora_id: str, filename: str) -> str:
+    """Logical path for a human-authored review playbook attachment."""
+    return f"gestoras/{gestora_id}/playbooks/{filename}"
+
+
+def precedentes_path(gestora_id: str, filename: str) -> str:
+    """Logical path for a past/validated precedent document."""
+    return f"gestoras/{gestora_id}/precedentes/{filename}"
+
+
+def outputs_path(gestora_id: str, fund_id: str, request_id: str, filename: str) -> str:
+    """Logical path for a generated output (draft/redline/counsel_edit/final)."""
+    return f"gestoras/{gestora_id}/outputs/{fund_id}/{request_id}/{filename}"
 
 
 def _local_root() -> Path:

@@ -4,10 +4,12 @@ Lazy-imported and fully optional: if GOOGLE_SERVICE_ACCOUNT_FILE is unset (or
 the google packages are missing) callers fall back to the local filesystem via
 services.storage.
 
-Folder layout (SPEC):
+Folder layout (see services/storage.py for the authoritative path builders):
   /lol-ai-lo-templates/{slp-curated,platform-base}/{es,en,fr}/
-  /gestoras/{gestora_id}/precedents/
-  /gestoras/{gestora_id}/funds/{fund_id}/documents/
+  /gestoras/{gestora_id}/modelos/        (gestora master templates)
+  /gestoras/{gestora_id}/playbooks/      (human-authored review rules)
+  /gestoras/{gestora_id}/precedentes/    (past/validated documents)
+  /gestoras/{gestora_id}/outputs/{fund_id}/{request_id}/   (generated outputs)
 """
 from __future__ import annotations
 

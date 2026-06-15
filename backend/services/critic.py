@@ -30,7 +30,7 @@ from typing import Any, Callable, Optional
 
 from config import ServiceNotConfiguredError, get_settings
 from models.doc_branches import Branch
-from services import generator, llm
+from services import db as dbmod, generator, llm, playbooks
 
 logger = logging.getLogger("lolailo.critic")
 
@@ -85,10 +85,38 @@ PRECEDENT THE DRAFT WAS BASED ON (structural/stylistic reference; absence of a\
 
 DRAFT UNDER REVIEW:
 {draft}
-
+{playbook}
 Return JSON matching the schema. Set approved=false only if at least one\
  substantive (factual / completeness / legal / consistency) issue exists.\
  Otherwise approved=true with issues: []."""
+
+# Header for the gestora-authored review rules, injected only when the gestora
+# has active playbooks for this request (otherwise the placeholder is empty and
+# the critic behaves exactly as before).
+_PLAYBOOK_HEADER = (
+    "GESTORA REVIEW PLAYBOOK — enforce these rules (treat a violation as a "
+    "substantive issue of the most appropriate category):"
+)
+
+
+def _playbook_block(
+    db: Optional[dbmod.Database],
+    *,
+    gestora_id: Optional[str],
+    branch_value: str,
+    doc_type: str,
+) -> str:
+    """The gestora-siloed playbook block to inject, or "" when there is nothing
+    to enforce. HARD gestora_id filter lives in playbooks.playbooks_for."""
+    if db is None or not gestora_id:
+        return ""
+    rules = playbooks.playbooks_for(
+        db, gestora_id=gestora_id, branch=branch_value, doc_type=doc_type
+    )
+    if not rules:
+        return ""
+    body = "\n\n".join(rules)
+    return f"\n{_PLAYBOOK_HEADER}\n{body}\n"
 
 _REVISION_HEADER = (
     "A legal reviewer flagged the following SUBSTANTIVE issues in the current "
@@ -175,8 +203,16 @@ def review(
     branch: Branch,
     parsed_params: dict[str, Any],
     precedent_text: Optional[str],
+    gestora_id: Optional[str] = None,
+    db: Optional[dbmod.Database] = None,
 ) -> Verdict:
     """Run one critic pass over ``draft_text``.
+
+    When ``gestora_id`` (+ ``db``) is supplied, the gestora's ACTIVE review
+    playbooks (services/playbooks.py, hard gestora_id filter) are injected into
+    the prompt so the reviewer enforces them on top of its built-in checks. With
+    no playbooks the prompt is byte-for-byte what it was before, so the critic
+    behaves exactly as today.
 
     Returns a :class:`Verdict`. When the LLM is unreachable / misconfigured the
     verdict is ``approved=True, skipped=True`` (graceful degradation: the draft
@@ -185,6 +221,9 @@ def review(
     rather than blocking the pipeline.
     """
     branch_value = branch.value if isinstance(branch, Branch) else str(branch)
+    playbook = _playbook_block(
+        db, gestora_id=gestora_id, branch_value=branch_value, doc_type=doc_type
+    )
     prompt = (
         _CRITIC_PROMPT
         .replace("{branch}", branch_value)
@@ -192,6 +231,7 @@ def review(
         .replace("{parsed_params}", json.dumps(parsed_params, ensure_ascii=False))
         .replace("{precedent}", precedent_text or "(none — generated from scratch)")
         .replace("{draft}", draft_text)
+        .replace("{playbook}", playbook)
     )
     try:
         result = llm.complete_json(prompt, CRITIC_SCHEMA, system=_CRITIC_SYSTEM)
@@ -241,13 +281,17 @@ def draft_with_review(
     parsed_params: dict[str, Any],
     precedent_text: Optional[str],
     revise: Optional[ReviseFn] = None,
+    gestora_id: Optional[str] = None,
+    db: Optional[dbmod.Database] = None,
 ) -> DraftWithReviewResult:
     """Critic-driven revise loop over a first draft.
 
     ``revise(current_text, instruction) -> full_revised_text`` defaults to
     :func:`generator.refine_document`. Returns the best draft plus the review
     trail; ``forced_counsel`` is set when the draft is still not approved after
-    the revision budget (the caller forces Exit B).
+    the revision budget (the caller forces Exit B). ``gestora_id`` (+ ``db``)
+    is threaded into every review pass so the gestora's siloed playbooks are
+    enforced (no-op when absent or empty).
 
     Graceful degradation: if ``critic_enabled`` is false the loop is a no-op
     (no rounds, draft unchanged). If the LLM is unreachable the first review is
@@ -273,6 +317,8 @@ def draft_with_review(
             branch=branch,
             parsed_params=parsed_params,
             precedent_text=precedent_text,
+            gestora_id=gestora_id,
+            db=db,
         )
         if verdict.skipped:
             # LLM unreachable: degrade gracefully, ship the current draft.

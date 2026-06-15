@@ -23,10 +23,13 @@ router = APIRouter(prefix="/api/precedents", tags=["precedents"])
 
 _GLOBAL_SOURCES = {PrecedentSource.slp_curated.value, PrecedentSource.platform_base.value}
 
-# Active rag_weight per source (SPEC fallback chain).
+# Active rag_weight per source (SPEC fallback chain). gestora_model shares the
+# in-silo active weight (1.0); modelos outrank precedents by LEVEL (RAG Level 0a
+# vs 0b), not by rag_weight.
 _ACTIVE_WEIGHTS = {
     PrecedentSource.manual_upload.value: 1.0,
     PrecedentSource.validated_output.value: 1.0,
+    PrecedentSource.gestora_model.value: 1.0,
     PrecedentSource.slp_curated.value: 0.7,
     PrecedentSource.platform_base.value: 0.4,
 }
@@ -43,13 +46,14 @@ def _ip(http_request: Request) -> Optional[str]:
 
 def _version_path(precedent: dict[str, Any], version_number: int, filename: str) -> str:
     extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".docx"
+    versioned = f"{precedent['id']}-v{version_number}{extension}"
     if precedent["source"] in _GLOBAL_SOURCES:
         folder = _TEMPLATE_FOLDER[precedent["source"]]
-        return (
-            f"lol-ai-lo-templates/{folder}/{precedent['language']}/"
-            f"{precedent['id']}-v{version_number}{extension}"
-        )
-    return f"gestoras/{precedent['gestora_id']}/precedents/{precedent['id']}-v{version_number}{extension}"
+        return f"lol-ai-lo-templates/{folder}/{precedent['language']}/{versioned}"
+    # Gestora master templates go to modelos/; regular precedents to precedentes/.
+    if precedent["source"] == PrecedentSource.gestora_model.value:
+        return storage.modelos_path(precedent["gestora_id"], versioned)
+    return storage.precedentes_path(precedent["gestora_id"], versioned)
 
 
 # .docx = generation base; .pdf = RAG reference only (guardrail 7).
@@ -69,7 +73,13 @@ async def upload_precedent(
     fund_id: Optional[str] = Form(None),
     user: User = Depends(require_admin),
 ) -> Any:
-    """Admin uploads a precedent (creates the precedent + version 1, status draft)."""
+    """Admin uploads a precedent (creates the precedent + version 1, status draft).
+
+    ``source=gestora_model`` uploads a gestora MASTER TEMPLATE: gestora-scoped
+    (gestora_id required), stored under modelos/, versioned + activated exactly
+    like a precedent. In RAG it outranks regular precedents as the generation
+    base (Level 0a). Both kinds remain HARD-filtered by gestora_id (isolation).
+    """
     db = dbmod.get_db()
     if source.value not in _GLOBAL_SOURCES and not gestora_id:
         raise HTTPException(status_code=422, detail="gestora_id is required for non-global precedents")

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from models.doc_branches import Branch, branch_for
 from models.schema import PrecedentSource
-from services import lessons, rag
+from services import lessons, playbooks, rag
 from tests.conftest import DOC_TYPE, auth, seed_precedent
 
 
@@ -67,6 +67,29 @@ class TestRagIsolation:
             db, gestora_id=seed["gestora_a"]["id"], doc_type=DOC_TYPE, language="es", query_text="acta"
         )
         assert result.level == 3
+
+    def test_gestora_model_is_siloed(self, db, seed):
+        """A gestora master template (modelos/, source=gestora_model) is HARD
+        pre-filtered by gestora_id exactly like a precedent: gestora A's model is
+        NEVER used as the base (or context) for gestora B."""
+        _, model_a = seed_precedent(
+            db,
+            gestora_id=seed["gestora_a"]["id"],
+            source=PrecedentSource.gestora_model.value,
+            text="MODELO MAESTRO ALFA",
+        )
+        # B has only a regular precedent; A's model must never cross into B.
+        _, precedent_b = seed_precedent(
+            db, gestora_id=seed["gestora_b"]["id"], text="PRECEDENTE BETA"
+        )
+
+        result_b = rag.retrieve(
+            db, gestora_id=seed["gestora_b"]["id"], doc_type=DOC_TYPE, language="es", query_text="acta"
+        )
+        assert result_b.base_version_id == precedent_b["id"]
+        assert result_b.base_version_id != model_a["id"]
+        assert "ALFA" not in (result_b.base_text or "")
+        assert all("ALFA" not in text for text in result_b.context_texts)
 
     def test_pdf_precedent_never_generation_base(self, db, seed):
         seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PDF DE REFERENCIA", extension=".pdf")
@@ -233,3 +256,70 @@ class TestLessonsIsolation:
         assert lessons.lessons_for(
             db, gestora_id=seed["gestora_b"]["id"], branch=Branch.OPERACIONES_DE_FONDO
         ) == []
+
+
+# ---------------------------------------------------------------------------
+# 5. Review playbooks (drafting-agents) — STRICTLY gestora-siloed
+# ---------------------------------------------------------------------------
+
+class TestPlaybookIsolation:
+    def test_playbooks_never_cross_gestora(self, db, seed):
+        """A playbook authored for gestora A must NEVER be loaded into gestora
+        B's review (the inviolable isolation rule — no global playbook pool)."""
+        branch = branch_for(DOC_TYPE)
+        db.insert(
+            "review_playbooks",
+            {
+                "gestora_id": seed["gestora_a"]["id"],
+                "branch": branch.value,
+                "doc_type": DOC_TYPE,
+                "title": "Reglas privadas Alfa",
+                "content": "PLAYBOOK PRIVADO DE GESTORA ALFA",
+                "file_path": None,
+                "is_active": True,
+            },
+        )
+
+        for_a = playbooks.playbooks_for(
+            db, gestora_id=seed["gestora_a"]["id"], branch=branch, doc_type=DOC_TYPE
+        )
+        assert "PLAYBOOK PRIVADO DE GESTORA ALFA" in for_a
+
+        for_b = playbooks.playbooks_for(
+            db, gestora_id=seed["gestora_b"]["id"], branch=branch, doc_type=DOC_TYPE
+        )
+        assert for_b == []
+        assert "PLAYBOOK PRIVADO DE GESTORA ALFA" not in for_b
+
+    def test_client_cannot_read_other_gestora_playbook(self, client, db, seed):
+        pb = db.insert(
+            "review_playbooks",
+            {
+                "gestora_id": seed["gestora_b"]["id"],
+                "branch": None,
+                "doc_type": None,
+                "title": "Beta",
+                "content": "reglas beta",
+                "file_path": None,
+                "is_active": True,
+            },
+        )
+        # Client A cannot see B's playbook (404 no-leak); client B can.
+        assert client.get(f"/api/playbooks/{pb['id']}", headers=auth(seed["client_a"])).status_code == 404
+        assert client.get(f"/api/playbooks/{pb['id']}", headers=auth(seed["client_b"])).status_code == 200
+
+    def test_playbook_listing_is_siloed(self, client, db, seed):
+        pb_b = db.insert(
+            "review_playbooks",
+            {
+                "gestora_id": seed["gestora_b"]["id"],
+                "branch": None,
+                "doc_type": None,
+                "title": "Beta",
+                "content": "reglas beta",
+                "file_path": None,
+                "is_active": True,
+            },
+        )
+        listed_a = client.get("/api/playbooks", headers=auth(seed["client_a"])).json()
+        assert all(p["id"] != pb_b["id"] for p in listed_a)

@@ -129,4 +129,8 @@ def draft_with_review(
         branch=branch,
         parsed_params=parsed_params,
         precedent_text=precedent_text,
+        # Thread the gestora through so the critic enforces the gestora's siloed
+        # review playbooks (services/playbooks.py); no-op when none are active.
+        gestora_id=gestora_id,
+        db=db,
     )

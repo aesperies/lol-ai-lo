@@ -146,8 +146,10 @@ def _run_generation_pipeline(
         db.update("requests", request_id, {"requires_counsel": True})
         row["requires_counsel"] = True
 
-    base_path = f"gestoras/{gestora_id}/funds/{row['fund_id']}/documents/{request_id}"
-    draft_key = storage.save(f"{base_path}/draft.docx", docx_renderer.render_docx(text))
+    draft_key = storage.save(
+        storage.outputs_path(gestora_id, row["fund_id"], request_id, "draft.docx"),
+        docx_renderer.render_docx(text),
+    )
     draft_doc = db.insert(
         "documents",
         {
@@ -189,7 +191,7 @@ def _run_generation_pipeline(
 
     if retrieval.base_text is not None:
         redline_key = storage.save(
-            f"{base_path}/redline.docx",
+            storage.outputs_path(gestora_id, row["fund_id"], request_id, "redline.docx"),
             redline_service.build_redline(retrieval.base_text, text),
         )
         redline_doc = db.insert(
@@ -507,9 +509,8 @@ async def counsel_edit_inline(
     require_status(row, RequestStatus.counsel_review)
 
     edits = db.select("documents", request_id=request_id, version_type=DocumentVersionType.counsel_edit.value)
-    path = (
-        f"gestoras/{gestora_id}/funds/{row['fund_id']}/documents/{request_id}/"
-        f"counsel_edit_v{len(edits) + 1}.docx"
+    path = storage.outputs_path(
+        gestora_id, row["fund_id"], request_id, f"counsel_edit_v{len(edits) + 1}.docx"
     )
     key = storage.save(path, docx_renderer.render_docx(body.text))
     doc = db.insert(
@@ -553,9 +554,8 @@ async def counsel_edit_upload(
     validate_upload(file.filename or "", data, (".docx",))
 
     edits = db.select("documents", request_id=request_id, version_type=DocumentVersionType.counsel_edit.value)
-    path = (
-        f"gestoras/{gestora_id}/funds/{row['fund_id']}/documents/{request_id}/"
-        f"counsel_edit_v{len(edits) + 1}.docx"
+    path = storage.outputs_path(
+        gestora_id, row["fund_id"], request_id, f"counsel_edit_v{len(edits) + 1}.docx"
     )
     key = storage.save(path, data)
     doc = db.insert(
