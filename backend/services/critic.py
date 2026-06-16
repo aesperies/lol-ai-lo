@@ -54,6 +54,17 @@ CRITIC_SCHEMA: dict[str, Any] = {
                     "problem": {"type": "string"},
                     "suggested_fix": {"type": "string"},
                     "location": {"type": "string"},
+                    # Verifiable grounding (grounding Feature 2): the exact draft
+                    # text this issue is about, so "something is wrong" is
+                    # checkable. Same SHAPE as the tabular-review citation
+                    # ({where/quote} mirrors {page/quote}).
+                    "citation": {
+                        "type": "object",
+                        "properties": {
+                            "where": {"type": "string"},
+                            "quote": {"type": "string"},
+                        },
+                    },
                 },
                 "required": ["severity", "category", "problem"],
             },
@@ -68,9 +79,14 @@ _CRITIC_SYSTEM = (
     "Flag ONLY: factual errors versus the provided parameters; missing "
     "mandatory clauses or unresolved [MISSING] gaps; legal errors; internal "
     "inconsistencies. NEVER flag stylistic preferences, tone, or alternative "
-    "phrasings, and NEVER rewrite the document. If the draft is substantively "
-    "sound, return approved=true with an empty issues list. Output strictly "
-    "the requested JSON."
+    "phrasings, and NEVER rewrite the document. Every issue you raise MUST be "
+    'grounded with a "citation" object pointing to the exact draft text it is '
+    'about: {"where": "<clause/section ref or short locator in the DRAFT>", '
+    '"quote": "<verbatim excerpt from the draft, ≤25 words, copied exactly, '
+    'that is problematic>"}. For a MISSING-clause issue, quote the surrounding '
+    "draft text where the clause should appear (or the empty [MISSING] marker). "
+    "If the draft is substantively sound, return approved=true with an empty "
+    "issues list. Output strictly the requested JSON."
 )
 
 _CRITIC_PROMPT = """Review this {branch} draft (document type: {doc_type}).
@@ -88,6 +104,8 @@ DRAFT UNDER REVIEW:
 {playbook}
 Return JSON matching the schema. Set approved=false only if at least one\
  substantive (factual / completeness / legal / consistency) issue exists.\
+ Each issue MUST include a "citation" {where, quote} pointing to the exact\
+ DRAFT text it is about (quote verbatim, ≤25 words).\
  Otherwise approved=true with issues: []."""
 
 # Header for the gestora-authored review rules, injected only when the gestora
@@ -127,6 +145,27 @@ _REVISION_HEADER = (
 )
 
 
+# Verbatim draft-quote citations are kept short and checkable (mirrors the
+# tabular-review quote cap so the {where, quote} citation shape is consistent).
+_MAX_CITATION_QUOTE_WORDS = 25
+
+
+def _normalise_citation(raw: Any) -> Optional[dict[str, str]]:
+    """Coerce the critic's citation into {"where", "quote"} (quote word-capped),
+    or None when no usable citation was supplied. Same SHAPE as the tabular
+    {page, quote} citation, with ``where`` as the DRAFT locator."""
+    if not isinstance(raw, dict):
+        return None
+    where = str(raw.get("where", "")).strip()
+    quote = str(raw.get("quote", "")).strip()
+    if not where and not quote:
+        return None
+    words = quote.split()
+    if len(words) > _MAX_CITATION_QUOTE_WORDS:
+        quote = " ".join(words[:_MAX_CITATION_QUOTE_WORDS])
+    return {"where": where, "quote": quote}
+
+
 @dataclass
 class Issue:
     """One substantive defect raised by the critic."""
@@ -136,6 +175,9 @@ class Issue:
     problem: str
     suggested_fix: str = ""
     location: str = ""
+    # Verifiable grounding (grounding Feature 2): {where, quote} pointing to the
+    # exact problematic DRAFT text. None when the critic supplied no citation.
+    citation: Optional[dict[str, str]] = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "Issue":
@@ -145,6 +187,7 @@ class Issue:
             problem=str(raw.get("problem", "")),
             suggested_fix=str(raw.get("suggested_fix", "")),
             location=str(raw.get("location", "")),
+            citation=_normalise_citation(raw.get("citation")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -154,6 +197,7 @@ class Issue:
             "problem": self.problem,
             "suggested_fix": self.suggested_fix,
             "location": self.location,
+            "citation": self.citation,
         }
 
 
@@ -258,6 +302,14 @@ def build_revision_instruction(issues: list[Issue]) -> str:
         parts = [f"{idx}. [{issue.severity}/{issue.category}] {issue.problem}"]
         if issue.location:
             parts.append(f"(location: {issue.location})")
+        # Cite the exact problematic passage so the drafter can locate + fix it.
+        if issue.citation:
+            where = issue.citation.get("where")
+            quote = issue.citation.get("quote")
+            if where:
+                parts.append(f"(in: {where})")
+            if quote:
+                parts.append(f'Offending text: "{quote}"')
         if issue.suggested_fix:
             parts.append(f"Suggested fix: {issue.suggested_fix}")
         lines.append(" ".join(parts))

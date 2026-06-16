@@ -76,6 +76,20 @@ function IssueRow({ issue }: { issue: ReviewIssue }) {
           {issue.suggestedFix}
         </p>
       ) : null}
+      {issue.citation && (issue.citation.quote || issue.citation.where) ? (
+        <div className="mt-2 border-l-2 border-slate-300 pl-2.5">
+          {issue.citation.quote ? (
+            <p className="text-sm italic text-slate-600">
+              “{issue.citation.quote}”
+            </p>
+          ) : null}
+          {issue.citation.where ? (
+            <p className="mt-0.5 text-xs text-slate-400">
+              {t("review.citationWhere")}: {issue.citation.where}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </li>
   );
 }

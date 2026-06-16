@@ -10,13 +10,17 @@ safe HTML for in-browser viewing.
   frontend can style them green/red.
 - Injection-safe by construction: ALL text content goes through
   ``html.escape`` and only a fixed whitelist of tags is emitted
-  (p, h1-h3, strong, em, u, ins, del, table/tr/td, ul/ol/li, br) with fixed
-  class names — no attribute ever comes from document content.
+  (p, h1-h3, strong, em, u, ins, del, sup, table/tr/td, ul/ol/li, br) with
+  fixed class names — no attribute ever comes from document content.
+- Verifiable-citation markers (grounding Feature 1): inline ``[SOURCE: ...]``
+  markers emitted by the drafter are wrapped in ``<sup class="doc-source">`` so
+  the frontend can style them as subtle footnote-style citations.
 """
 from __future__ import annotations
 
 import html
 import io
+import re
 from typing import Any, Optional
 
 from docx import Document
@@ -27,6 +31,27 @@ from docx.text.paragraph import Paragraph
 INS_CLASS = "rl-ins"
 DEL_CLASS = "rl-del"
 TABLE_CLASS = "doc-table"
+SOURCE_CLASS = "doc-source"
+
+# Verifiable-citation marker (grounding Feature 1). Wrapped in a fixed-class
+# <sup> so the frontend can style it as a subtle footnote-style citation. Run
+# over ALREADY-ESCAPED text, so the literal quote (which the renderer stored as
+# plain text) is matched on its escaped form and never reopens an attribute. The
+# marker text itself is left intact inside the wrapper (verbatim citation).
+_SOURCE_MARKER_RE = re.compile(
+    r'\[SOURCE:[^\]]*?&quot;[^&]*?&quot;\s*\]'
+)
+
+
+def _wrap_source_markers(escaped: str) -> str:
+    """Wrap any ``[SOURCE: ...]`` marker in escaped text with a styled <sup>.
+
+    Operates on already-html-escaped text (so quotes appear as ``&quot;``); the
+    only tag/attribute emitted is the fixed ``<sup class="doc-source">`` —
+    injection-safe by construction."""
+    return _SOURCE_MARKER_RE.sub(
+        lambda m: f'<sup class="{SOURCE_CLASS}">{m.group(0)}</sup>', escaped
+    )
 
 _HEADING_MAX_CHARS = 100
 
@@ -66,6 +91,9 @@ def _render_run(r_el: Any) -> str:
     text = _run_text(r_el)
     if not text:
         return ""
+    # Footnote-style citation markers (grounding Feature 1): wrap in a styled
+    # <sup> so they read as subtle source references in the viewer.
+    text = _wrap_source_markers(text)
     if _run_flag(r_el, "u"):
         text = f"<u>{text}</u>"
     if _run_flag(r_el, "i"):

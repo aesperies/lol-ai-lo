@@ -584,6 +584,7 @@ interface ReviewIssueWire {
   problem: string;
   suggested_fix?: string | null;
   location?: string | null;
+  citation?: { where?: string | null; quote?: string | null } | null;
 }
 
 interface GenerationReviewWire {
@@ -594,12 +595,20 @@ interface GenerationReviewWire {
 }
 
 function mapReviewIssue(wire: ReviewIssueWire): ReviewIssue {
+  const citation =
+    wire.citation && (wire.citation.where || wire.citation.quote)
+      ? {
+          where: wire.citation.where ?? "",
+          quote: wire.citation.quote ?? "",
+        }
+      : undefined;
   return {
     severity: wire.severity,
     category: wire.category,
     problem: wire.problem,
     suggestedFix: wire.suggested_fix ?? undefined,
     location: wire.location ?? undefined,
+    citation,
   };
 }
 

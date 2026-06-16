@@ -50,6 +50,29 @@ def test_review_approved_no_issues(monkeypatch):
     assert verdict.issues == []
 
 
+def test_review_issue_carries_citation(monkeypatch):
+    _verdict_sequence(monkeypatch, [{
+        "approved": False,
+        "issues": [{
+            "severity": "major", "category": "factual",
+            "problem": "Amount contradicts the parameters",
+            "citation": {
+                "where": "clause 2",
+                "quote": "importe de 999.999 EUR",
+            },
+        }],
+    }])
+    verdict = critic.review(
+        draft_text="DOC", doc_type="Llamada de Capital (Capital Call Notice)",
+        branch=Branch.OPERACIONES_DE_FONDO, parsed_params=_params(), precedent_text="P",
+    )
+    assert verdict.issues[0].citation == {
+        "where": "clause 2", "quote": "importe de 999.999 EUR"
+    }
+    # to_dict carries the citation for jsonb persistence.
+    assert verdict.issues[0].to_dict()["citation"]["where"] == "clause 2"
+
+
 def test_review_skips_when_llm_unreachable(monkeypatch):
     # conftest already simulates an unreachable Ollama at the httpx layer, so a
     # real complete_json raises ServiceNotConfiguredError -> skipped verdict.
@@ -123,6 +146,38 @@ def test_blocking_issue_triggers_one_revision_then_reapproves(monkeypatch):
     assert result.approved is True
     assert result.forced_counsel is False
     assert len(result.rounds) == 2  # round 0 (blocking) + round 1 (approved)
+
+
+def test_revision_instruction_includes_issue_citation(monkeypatch):
+    blocking = {
+        "approved": False,
+        "issues": [{
+            "severity": "blocking", "category": "factual",
+            "problem": "Amount contradicts the parameters",
+            "suggested_fix": "Set the amount to 500.000 EUR",
+            "location": "clause 2",
+            "citation": {"where": "Cláusula Segunda", "quote": "importe de 999.999 EUR"},
+        }],
+    }
+    _verdict_sequence(monkeypatch, [blocking, {"approved": True, "issues": []}])
+
+    received: dict[str, Any] = {}
+
+    def revise(text, instruction):
+        received["instruction"] = instruction
+        return "REVISED DRAFT"
+
+    critic.draft_with_review(
+        first_draft="ORIGINAL DRAFT",
+        doc_type="Llamada de Capital (Capital Call Notice)",
+        branch=Branch.OPERACIONES_DE_FONDO,
+        parsed_params=_params(),
+        precedent_text="P",
+        revise=revise,
+    )
+    # The drafter is told WHERE and the exact offending quote so it can locate it.
+    assert "Cláusula Segunda" in received["instruction"]
+    assert "importe de 999.999 EUR" in received["instruction"]
 
 
 def test_still_failing_after_budget_forces_counsel(monkeypatch):
@@ -277,6 +332,46 @@ def test_pipeline_forces_counsel_when_critic_cannot_approve(wf, db, seed, monkey
     assert critic_meta["forced_counsel"] is True
     assert critic_meta["approved"] is False
     assert generated[-1]["metadata"]["branch"]  # branch recorded
+
+
+def test_pipeline_persists_and_surfaces_issue_citation(wf, db, seed, monkeypatch, client):
+    """An issue's {where, quote} citation rides into generation_reviews (jsonb)
+    and back out via GET /api/requests/{id}/reviews."""
+    from tests.conftest import auth
+
+    seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PRECEDENTE ALFA")
+
+    blocking = {
+        "approved": False,
+        "issues": [{
+            "severity": "blocking", "category": "factual",
+            "problem": "Invented amount not in parameters",
+            "suggested_fix": "Remove the invented amount", "location": "clause 3",
+            "citation": {"where": "Cláusula Tercera", "quote": "importe de 999.999 EUR"},
+        }],
+    }
+    monkeypatch.setattr(
+        llm, "complete_json",
+        lambda prompt, schema, *, max_tokens=8192, system=None: blocking,
+    )
+    from services import generator
+    monkeypatch.setattr(
+        generator, "refine_document",
+        lambda *, current_text, instruction: current_text + " [revised]",
+    )
+
+    request_id, _ = wf.to_review_pending()
+
+    # Persisted in generation_reviews jsonb.
+    reviews = db.select("generation_reviews", request_id=request_id)
+    citation = reviews[0]["issues"][0]["citation"]
+    assert citation == {"where": "Cláusula Tercera", "quote": "importe de 999.999 EUR"}
+
+    # Surfaced via the reviews endpoint DTO.
+    resp = client.get(f"/api/requests/{request_id}/reviews", headers=auth(seed["client_a"]))
+    assert resp.status_code == 200, resp.text
+    out_citation = resp.json()[0]["issues"][0]["citation"]
+    assert out_citation == {"where": "Cláusula Tercera", "quote": "importe de 999.999 EUR"}
 
 
 def test_pipeline_critic_approves_no_forced_counsel(wf, db, seed, monkeypatch):

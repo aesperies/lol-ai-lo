@@ -277,6 +277,13 @@ export type ReviewIssueCategory =
   | "legal"
   | "consistency";
 
+/** A verifiable {where, quote} pointer to the offending DRAFT text
+ * (grounding Feature 2; same shape as the tabular-review {page, quote}). */
+export interface ReviewIssueCitation {
+  where: string;
+  quote: string;
+}
+
 /** One substantive defect raised by the automated critic
  * (backend services/critic.py Issue). */
 export interface ReviewIssue {
@@ -285,6 +292,8 @@ export interface ReviewIssue {
   problem: string;
   suggestedFix?: string;
   location?: string;
+  /** Verifiable citation to the exact problematic draft text. */
+  citation?: ReviewIssueCitation;
 }
 
 /** One persisted critic round (GET /api/requests/{id}/reviews). */

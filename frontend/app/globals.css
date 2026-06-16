@@ -58,6 +58,11 @@
   .doc-html del.rl-del {
     @apply rounded-sm bg-red-50 px-0.5 text-red-700 line-through decoration-red-400;
   }
+  /* Verifiable-citation markers ([SOURCE: …] → sup.doc-source). A subtle
+     footnote-style reference back to the precedent. */
+  .doc-html sup.doc-source {
+    @apply ml-0.5 align-super text-[10px] font-normal not-italic text-slate-400;
+  }
   /* contentEditable rich-text editor surface */
   .counsel-editor {
     @apply min-h-[320px] w-full rounded-md border border-slate-300 bg-white p-4 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-500;

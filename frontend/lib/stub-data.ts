@@ -769,7 +769,7 @@ export function stubDraftText(req: RequestItem, iteration?: number): string {
     ``,
     `SEGUNDA. Plazos y condiciones. ${segunda}`,
     ``,
-    `TERCERA. Ley aplicable y jurisdicción. Este documento se rige por la ley española y las partes se someten a los juzgados y tribunales de Madrid.`,
+    `TERCERA. Ley aplicable y jurisdicción. Este documento se rige por la ley española y las partes se someten a los juzgados y tribunales de Madrid. [SOURCE: precedent "Cláusula Décima" | "se someten a los juzgados y tribunales de Madrid"]`,
     ...applied.map((r) => [``, `— Ajuste v${r.iteration} aplicado: ${r.instruction} —`]).flat(),
     ``,
     `— Documento generado por Lol-AI-lo (borrador${upTo > 0 ? ` v${upTo}` : ""}) —`,
@@ -822,6 +822,16 @@ function stubEscapeHtml(text: string): string {
     .replaceAll(">", "&gt;");
 }
 
+/** Wrap [SOURCE: …] citation markers in <sup class="doc-source">, mirroring
+ * the backend converter (services/docx_html.py) so the stub viewer styles the
+ * grounding citations the same way. Runs on already-escaped text. */
+function stubWrapSourceMarkers(escaped: string): string {
+  return escaped.replace(
+    /\[SOURCE:[^\]]*?"[^"]*?"\s*\]/g,
+    (m) => `<sup class="doc-source">${m}</sup>`,
+  );
+}
+
 /** ALL-CAPS short lines become headings, like the backend heuristic. */
 function stubIsHeading(line: string): boolean {
   return (
@@ -866,7 +876,7 @@ export function stubDocumentHtml(
     .map((line) =>
       stubIsHeading(line)
         ? `<h2>${stubEscapeHtml(line)}</h2>`
-        : `<p>${stubEscapeHtml(line)}</p>`,
+        : `<p>${stubWrapSourceMarkers(stubEscapeHtml(line))}</p>`,
     );
   return { html: blocks.join("\n"), stats: { insertions: 0, deletions: 0 } };
 }
@@ -944,6 +954,10 @@ const stubReviews: Record<string, GenerationReview[]> = {
           suggestedFix:
             "Recalcular el porcentaje de participación post-money y alinear la cláusula económica.",
           location: "Cláusula 2 (Economía)",
+          citation: {
+            where: "Cláusula 2 (Economía)",
+            quote: "valoración pre-money de 8.000.000 EUR",
+          },
         },
       ],
     },
@@ -969,6 +983,10 @@ const stubReviews: Record<string, GenerationReview[]> = {
           suggestedFix:
             "Citar el artículo 9 del reglamento y limitar la renuncia a la transmisión concreta descrita.",
           location: "Parte dispositiva",
+          citation: {
+            where: "Parte dispositiva",
+            quote: "se renuncia a los derechos derivados del reglamento del fondo",
+          },
         },
       ],
     },

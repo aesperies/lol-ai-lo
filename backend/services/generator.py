@@ -10,6 +10,7 @@ misconfigured or unreachable.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Optional
 
 from config import get_settings
@@ -56,6 +57,53 @@ EXTRA_GUIDANCE_HEADER = (
     "DRAFTING GUIDANCE — learned from THIS gestora's validated documents:"
 )
 
+# Verifiable-citation guidance (grounding Feature 1). Steered through the
+# additive ``extra_guidance`` channel — the verbatim GENERATION_PROMPT body is
+# never edited. When the drafter grounds a clause in the supplied precedent it
+# MAY annotate that clause with an inline ``[SOURCE: precedent §<ref> |
+# "<verbatim quote>"]`` marker (a sibling of the existing [DEVIATION:] /
+# [MISSING:] markers). The marker is OPTIONAL and additive: the document must
+# still read cleanly without it, and it survives extract_text verbatim exactly
+# like the other flag markers.
+SOURCE_GUIDANCE = (
+    "VERIFIABLE CITATIONS — when (and only when) you adapt a clause directly "
+    "from the PRECEDENT above, you MAY ground it with an inline source marker, "
+    "a sibling of the [DEVIATION: ...] / [MISSING: ...] markers, placed at the "
+    "end of that clause:\n"
+    '  [SOURCE: precedent §<ref> | "<verbatim quote, ≤20 words, copied '
+    'exactly from the precedent>"]\n'
+    "where <ref> is the precedent clause/section locator (e.g. §4.2, "
+    '"Cláusula Tercera", or a short heading). Rules: keep it OPTIONAL and '
+    "additive (never required for a clause to be valid); the document must read "
+    "cleanly with the markers removed; quote the precedent VERBATIM and never "
+    "invent a quote; do not cite anything not present in the precedent."
+)
+
+# Inline source-citation marker (grounding Feature 1). Parsed by
+# :func:`parse_source_markers`; rendered distinctly (footnote-style) by
+# services/docx_renderer.py + services/docx_html.py but kept verbatim by
+# docx_renderer.extract_text so the Exit-A [MISSING] gate and round-trip tests
+# are unaffected.
+#   [SOURCE: precedent §4.2 | "exact quote from the precedent"]
+_SOURCE_MARKER_RE = re.compile(
+    r'\[SOURCE:\s*(?P<ref>.*?)\s*\|\s*"(?P<quote>[^"]*)"\s*\]'
+)
+
+
+def parse_source_markers(text: str) -> list[dict[str, str]]:
+    """Extract every ``[SOURCE: <ref> | "<quote>"]`` citation from ``text``.
+
+    Returns a list of ``{"ref": ..., "quote": ...}`` dicts in document order
+    (empty when the drafter emitted no source markers). ``ref`` keeps the
+    locator as written (e.g. ``precedent §4.2``); ``quote`` is the verbatim
+    precedent excerpt. Reused by the renderers (to style markers distinctly) and
+    the tests (to assert the convention round-trips).
+    """
+    return [
+        {"ref": m.group("ref").strip(), "quote": m.group("quote").strip()}
+        for m in _SOURCE_MARKER_RE.finditer(text)
+    ]
+
 # Iterative refinement prompt (improvement #4). Same conventions as
 # GENERATION_PROMPT: placeholders substituted via .replace() to avoid
 # clashing with literal braces in document text.
@@ -70,9 +118,9 @@ RULES:
    restyle unaffected clauses.
 2. Keep language, governing law, jurisdiction, defined terms and
    numbering conventions unchanged unless the request requires it.
-3. Keep all existing [DEVIATION: ...] and [MISSING: ...] flags that
-   are still accurate; add new ones if your change introduces them;
-   remove ones the change resolves.
+3. Keep all existing [DEVIATION: ...], [MISSING: ...] and [SOURCE: ...]
+   markers that are still accurate; add new ones if your change introduces
+   them; remove ones the change resolves.
 4. If the request is ambiguous, contradictory, or would require
    information you do not have, output exactly: [REFINEMENT-UNCLEAR: reason]
    and nothing else.
@@ -136,6 +184,10 @@ def generate_document(
     )
     if extra_guidance:
         prompt = f"{prompt}\n\n{EXTRA_GUIDANCE_HEADER}\n{extra_guidance}"
+    # Verifiable-citation guidance: always appended (optional + additive for the
+    # model) AFTER the verbatim template body, so the drafter may ground adapted
+    # clauses with [SOURCE: ...] markers without ever editing GENERATION_PROMPT.
+    prompt = f"{prompt}\n\n{SOURCE_GUIDANCE}"
     text = llm.complete(
         prompt, max_tokens=get_settings().max_generation_tokens, system=system
     ).strip()

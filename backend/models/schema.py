@@ -574,7 +574,9 @@ class GenerationReviewOut(BaseModel):
     """One persisted critic round (services/critic.py ReviewRound), surfaced
     read-only to client/counsel/admin for the request they may access. The
     ``issues`` list mirrors the critic Issue shape (severity / category /
-    problem / suggested_fix / location)."""
+    problem / suggested_fix / location / citation), where ``citation`` is a
+    verifiable {where, quote} pointer to the offending DRAFT text (grounding
+    Feature 2)."""
 
     round: int
     approved: bool
