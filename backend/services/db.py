@@ -42,7 +42,8 @@ class DevStore:
             row = dict(row)
             row.setdefault("id", str(uuid.uuid4()))
             row.setdefault("created_at", _now())
-            if table in ("requests", "generation_jobs"):
+            # Mirror the SQL updated_at trigger for every table that has one.
+            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells"):
                 row.setdefault("updated_at", _now())
             if table == "audit_log":
                 row.setdefault("timestamp", _now())
@@ -77,7 +78,7 @@ class DevStore:
             if row is None:
                 raise KeyError(f"{table}/{row_id} not found")
             row.update(fields)
-            if table in ("requests", "generation_jobs"):
+            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells"):
                 row["updated_at"] = _now()
             return dict(row)
 

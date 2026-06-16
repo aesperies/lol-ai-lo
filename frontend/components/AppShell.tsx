@@ -20,6 +20,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: "/dashboard", labelKey: "nav.dashboard" },
     { href: "/new-request", labelKey: "nav.newRequest" },
     { href: "/documents", labelKey: "nav.documents" },
+    { href: "/tabular-reviews", labelKey: "nav.tabular" },
   ],
   counsel: [{ href: "/counsel", labelKey: "nav.counselQueue" }],
   admin: [

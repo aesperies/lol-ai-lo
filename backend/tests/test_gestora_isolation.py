@@ -8,8 +8,8 @@ Covers the three attack surfaces:
 from __future__ import annotations
 
 from models.doc_branches import Branch, branch_for
-from models.schema import PrecedentSource
-from services import lessons, playbooks, rag
+from models.schema import DocumentVersionType, PrecedentSource
+from services import db as dbmod, lessons, playbooks, rag, storage
 from tests.conftest import DOC_TYPE, auth, seed_precedent
 
 
@@ -323,3 +323,96 @@ class TestPlaybookIsolation:
         )
         listed_a = client.get("/api/playbooks", headers=auth(seed["client_a"])).json()
         assert all(p["id"] != pb_b["id"] for p in listed_a)
+
+
+# ---------------------------------------------------------------------------
+# 6. Tabular Review (010_tabular_reviews.sql) — STRICTLY gestora-siloed
+# ---------------------------------------------------------------------------
+
+class TestTabularReviewIsolation:
+    def test_cannot_reference_other_gestora_document_in_review(self, client, db, seed):
+        """A tabular review referencing gestora B's precedent version OR generated
+        document is rejected (404 no-leak); the same review built from gestora
+        A's own document succeeds."""
+        _, version_b = seed_precedent(db, gestora_id=seed["gestora_b"]["id"], text="PRECEDENTE BETA")
+        # Cross-gestora precedent_version reference → 404.
+        cross = client.post(
+            "/api/tabular-reviews",
+            json={
+                "title": "Fuga",
+                "columns": [{"name": "X", "question": "¿X?", "col_type": "text"}],
+                "documents": [{"source_kind": "precedent_version", "source_id": version_b["id"]}],
+            },
+            headers=auth(seed["client_a"]),
+        )
+        assert cross.status_code == 404
+
+        # Cross-gestora request_document reference → 404.
+        request_b = db.insert(
+            "requests",
+            {
+                "fund_id": seed["fund_b"]["id"],
+                "user_id": seed["client_b"]["id"],
+                "doc_type": DOC_TYPE,
+                "freetext": "x",
+                "language": "es",
+                "status": "review_pending",
+                "requires_counsel": False,
+            },
+        )
+        key_b = storage.save(
+            storage.outputs_path(
+                seed["gestora_b"]["id"], seed["fund_b"]["id"], request_b["id"], "draft.txt"
+            ),
+            b"DOCUMENTO BETA",
+        )
+        doc_b = db.insert(
+            "documents",
+            {
+                "request_id": request_b["id"],
+                "version_type": DocumentVersionType.draft.value,
+                "file_path": key_b,
+                "uploaded_by": None,
+            },
+        )
+        cross_doc = client.post(
+            "/api/tabular-reviews",
+            json={
+                "title": "Fuga",
+                "columns": [{"name": "X", "question": "¿X?", "col_type": "text"}],
+                "documents": [{"source_kind": "request_document", "source_id": doc_b["id"]}],
+            },
+            headers=auth(seed["client_a"]),
+        )
+        assert cross_doc.status_code == 404
+
+        # Own-gestora reference succeeds (control).
+        _, version_a = seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PRECEDENTE ALFA")
+        ok = client.post(
+            "/api/tabular-reviews",
+            json={
+                "title": "Propia",
+                "columns": [{"name": "X", "question": "¿X?", "col_type": "text"}],
+                "documents": [{"source_kind": "precedent_version", "source_id": version_a["id"]}],
+            },
+            headers=auth(seed["client_a"]),
+        )
+        assert ok.status_code == 201
+
+    def test_cells_never_expose_other_gestora_review(self, client, db, seed):
+        """Gestora B can never read gestora A's review, its grid, or its cells."""
+        _, version_a = seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PRECEDENTE ALFA")
+        review_id = client.post(
+            "/api/tabular-reviews",
+            json={
+                "title": "Privada Alfa",
+                "columns": [{"name": "X", "question": "¿X?", "col_type": "text"}],
+                "documents": [{"source_kind": "precedent_version", "source_id": version_a["id"]}],
+            },
+            headers=auth(seed["client_a"]),
+        ).json()["id"]
+
+        # B sees neither the review nor its grid/cells (404 no-leak).
+        assert client.get(f"/api/tabular-reviews/{review_id}", headers=auth(seed["client_b"])).status_code == 404
+        listed_b = client.get("/api/tabular-reviews", headers=auth(seed["client_b"])).json()
+        assert all(r["id"] != review_id for r in listed_b)

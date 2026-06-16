@@ -41,6 +41,13 @@ import type {
   ReviewBundle,
   ReviewPlaybook,
   SlaReport,
+  TabularColumn,
+  TabularColumnInput,
+  TabularDocumentOption,
+  TabularDocumentRef,
+  TabularReview,
+  TabularReviewDetail,
+  TabularReviewStatusInfo,
   UserProfile,
 } from "@/lib/types";
 import { RETENTION_MONTHS_DEFAULT } from "@/lib/types";
@@ -1421,4 +1428,458 @@ export function stubPutRetentionPolicy(
 ): RetentionPolicy {
   stubRetentionPolicies.set(gestoraId, months);
   return { gestoraId, months, isDefault: false, updatedAt: nowIso() };
+}
+
+/* ------------------------------------------------------------------ */
+/* Tabular Review (010_tabular_reviews.sql) — demo grid                  */
+/* ------------------------------------------------------------------ */
+
+/** Documents pickable into a new review (precedents + generated docs). */
+const STUB_TABULAR_DOC_OPTIONS: TabularDocumentOption[] = [
+  {
+    sourceKind: "precedent_version",
+    sourceId: "pv-demo-acta-1",
+    label: "Acta de Consejo — Iberia Fund I (2026-03)",
+  },
+  {
+    sourceKind: "precedent_version",
+    sourceId: "pv-demo-acta-2",
+    label: "Acta de Consejo — Iberia Fund I (2026-04)",
+  },
+  {
+    sourceKind: "request_document",
+    sourceId: "doc-demo-capcall-1",
+    label: "Llamada de Capital — Iberia Fund II (borrador)",
+  },
+  {
+    sourceKind: "request_document",
+    sourceId: "doc-demo-distrib-1",
+    label: "Distribución a Inversores — Iberia Fund II (final)",
+  },
+];
+
+export function stubTabularDocumentOptions(): TabularDocumentOption[] {
+  return STUB_TABULAR_DOC_OPTIONS.map((o) => ({ ...o }));
+}
+
+const stubTabularReviewStore: TabularReviewDetail[] = [
+  (() => {
+    const reviewId = "tr-demo-1";
+    const columns: TabularColumn[] = [
+      {
+        id: "trc-1",
+        reviewId,
+        position: 0,
+        name: "Importe",
+        question: "¿Cuál es el importe principal del documento?",
+        colType: "monetary",
+        options: null,
+      },
+      {
+        id: "trc-2",
+        reviewId,
+        position: 1,
+        name: "Fecha",
+        question: "¿Cuál es la fecha del acuerdo?",
+        colType: "date",
+        options: null,
+      },
+      {
+        id: "trc-3",
+        reviewId,
+        position: 2,
+        name: "¿Quórum?",
+        question: "¿Se alcanzó el quórum necesario?",
+        colType: "yes_no",
+        options: null,
+      },
+      {
+        id: "trc-4",
+        reviewId,
+        position: 3,
+        name: "Jurisdicción",
+        question: "¿Cuál es la jurisdicción aplicable?",
+        colType: "tag",
+        options: ["España", "Francia", "Alemania", "Luxemburgo"],
+      },
+    ];
+    const documents: TabularDocumentRef[] = [
+      {
+        id: "trd-1",
+        reviewId,
+        position: 0,
+        sourceKind: "precedent_version",
+        sourceId: "pv-demo-acta-1",
+        label: "Acta de Consejo — Iberia Fund I (2026-03)",
+      },
+      {
+        id: "trd-2",
+        reviewId,
+        position: 1,
+        sourceKind: "precedent_version",
+        sourceId: "pv-demo-acta-2",
+        label: "Acta de Consejo — Iberia Fund I (2026-04)",
+      },
+      {
+        id: "trd-3",
+        reviewId,
+        position: 2,
+        sourceKind: "request_document",
+        sourceId: "doc-demo-capcall-1",
+        label: "Llamada de Capital — Iberia Fund II (borrador)",
+      },
+    ];
+    const cells: TabularReviewDetail["cells"] = [
+      // Row 1
+      {
+        id: "trx-1",
+        documentId: "trd-1",
+        columnId: "trc-1",
+        value: "€500.000",
+        reasoning: "El acta aprueba una llamada de capital por ese importe.",
+        citation: {
+          page: 1,
+          quote: "se aprueba una llamada de capital por importe de 500.000 euros",
+        },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-2",
+        documentId: "trd-1",
+        columnId: "trc-2",
+        value: "2026-03-15",
+        reasoning: "La reunión del consejo se celebró en esa fecha.",
+        citation: { page: 1, quote: "reunido el consejo el 15 de marzo de 2026" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-3",
+        documentId: "trd-1",
+        columnId: "trc-3",
+        value: "yes",
+        reasoning: "Asistieron todos los consejeros.",
+        citation: { page: 1, quote: "con la asistencia de la totalidad de los consejeros" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-4",
+        documentId: "trd-1",
+        columnId: "trc-4",
+        value: "España",
+        reasoning: "El acta se rige por la legislación española.",
+        citation: { page: 2, quote: "de conformidad con la legislación española aplicable" },
+        status: "done",
+        error: null,
+      },
+      // Row 2
+      {
+        id: "trx-5",
+        documentId: "trd-2",
+        columnId: "trc-1",
+        value: "€750.000",
+        reasoning: "Segunda llamada de capital aprobada.",
+        citation: { page: 1, quote: "una segunda llamada de capital de 750.000 euros" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-6",
+        documentId: "trd-2",
+        columnId: "trc-2",
+        value: "2026-04-20",
+        reasoning: "Fecha de la reunión del consejo.",
+        citation: { page: 1, quote: "el 20 de abril de 2026" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-7",
+        documentId: "trd-2",
+        columnId: "trc-3",
+        value: "yes",
+        reasoning: "Quórum alcanzado por mayoría.",
+        citation: { page: 1, quote: "alcanzado el quórum reglamentario" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-8",
+        documentId: "trd-2",
+        columnId: "trc-4",
+        value: "España",
+        reasoning: "Misma jurisdicción que el acta anterior.",
+        citation: { page: 2, quote: "legislación española" },
+        status: "done",
+        error: null,
+      },
+      // Row 3 — includes one error cell to exercise the error state.
+      {
+        id: "trx-9",
+        documentId: "trd-3",
+        columnId: "trc-1",
+        value: "€1.200.000",
+        reasoning: "Importe total de la llamada de capital.",
+        citation: { page: null, quote: "importe total de 1.200.000 euros" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-10",
+        documentId: "trd-3",
+        columnId: "trc-2",
+        value: "2026-05-02",
+        reasoning: "Fecha de emisión de la notificación.",
+        citation: { page: null, quote: "con fecha 2 de mayo de 2026" },
+        status: "done",
+        error: null,
+      },
+      {
+        id: "trx-11",
+        documentId: "trd-3",
+        columnId: "trc-3",
+        value: null,
+        reasoning: null,
+        citation: null,
+        status: "error",
+        error: "El servicio de IA no pudo procesar esta celda.",
+      },
+      {
+        id: "trx-12",
+        documentId: "trd-3",
+        columnId: "trc-4",
+        value: "España",
+        reasoning: "Documento sujeto a derecho español.",
+        citation: { page: null, quote: "derecho español" },
+        status: "done",
+        error: null,
+      },
+    ];
+    return {
+      id: reviewId,
+      gestoraId: STUB_GESTORA.id,
+      fundId: STUB_FUNDS[0].id,
+      createdBy: "u-client-1",
+      title: "Comparativa de actas y llamadas de capital",
+      status: "complete",
+      createdAt: hoursAgoIso(30),
+      updatedAt: hoursAgoIso(29),
+      columns,
+      documents,
+      cells,
+    };
+  })(),
+];
+
+function cloneTabularDetail(r: TabularReviewDetail): TabularReviewDetail {
+  return {
+    ...r,
+    columns: r.columns.map((c) => ({ ...c })),
+    documents: r.documents.map((d) => ({ ...d })),
+    cells: r.cells.map((c) => ({ ...c })),
+  };
+}
+
+export function stubTabularReviews(): TabularReview[] {
+  return stubTabularReviewStore.map((r) => ({
+    id: r.id,
+    gestoraId: r.gestoraId,
+    fundId: r.fundId,
+    createdBy: r.createdBy,
+    title: r.title,
+    status: r.status,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }));
+}
+
+export function stubTabularReview(id: string): TabularReviewDetail | undefined {
+  const found = stubTabularReviewStore.find((r) => r.id === id);
+  return found ? cloneTabularDetail(found) : undefined;
+}
+
+function findStubReview(id: string): TabularReviewDetail {
+  const found = stubTabularReviewStore.find((r) => r.id === id);
+  if (!found) throw new Error("Tabular review not found");
+  return found;
+}
+
+export function stubCreateTabularReview(input: {
+  title: string;
+  fundId?: string | null;
+  columns: TabularColumnInput[];
+  documents: TabularDocumentOption[];
+}): TabularReviewDetail {
+  const reviewId = `tr-${Date.now()}`;
+  const columns: TabularColumn[] = input.columns.map((c, i) => ({
+    id: `trc-${Date.now()}-${i}`,
+    reviewId,
+    position: i,
+    name: c.name,
+    question: c.question,
+    colType: c.colType,
+    options: c.options ?? null,
+  }));
+  const documents: TabularDocumentRef[] = input.documents.map((d, i) => ({
+    id: `trd-${Date.now()}-${i}`,
+    reviewId,
+    position: i,
+    sourceKind: d.sourceKind,
+    sourceId: d.sourceId,
+    label: d.label,
+  }));
+  const cells: TabularReviewDetail["cells"] = [];
+  for (const d of documents) {
+    for (const c of columns) {
+      cells.push({
+        id: `trx-${d.id}-${c.id}`,
+        documentId: d.id,
+        columnId: c.id,
+        value: null,
+        reasoning: null,
+        citation: null,
+        status: "pending",
+        error: null,
+      });
+    }
+  }
+  const review: TabularReviewDetail = {
+    id: reviewId,
+    gestoraId: STUB_GESTORA.id,
+    fundId: input.fundId ?? null,
+    createdBy: "u-client-1",
+    title: input.title,
+    status: "draft",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    columns,
+    documents,
+    cells,
+  };
+  stubTabularReviewStore.unshift(review);
+  return cloneTabularDetail(review);
+}
+
+/** Demo "extraction": fills every pending cell with a plausible typed value. */
+export function stubRunTabularReview(id: string): void {
+  const review = findStubReview(id);
+  review.status = "running";
+  for (const cell of review.cells) {
+    if (cell.status !== "pending") continue;
+    const col = review.columns.find((c) => c.id === cell.columnId);
+    cell.status = "done";
+    cell.value =
+      col?.colType === "monetary"
+        ? "€500.000"
+        : col?.colType === "date"
+          ? "2026-06-01"
+          : col?.colType === "percent"
+            ? "12,5%"
+            : col?.colType === "number"
+              ? "3"
+              : col?.colType === "yes_no"
+                ? "yes"
+                : col?.colType === "tag"
+                  ? (col.options?.[0] ?? "N/D")
+                  : "Valor extraído de ejemplo";
+    cell.reasoning = "Valor extraído del documento (modo demostración).";
+    cell.citation = {
+      page: 1,
+      quote: "fragmento textual de ejemplo del documento",
+    };
+    cell.error = null;
+  }
+  review.status = "complete";
+  review.updatedAt = nowIso();
+}
+
+export function stubTabularReviewStatus(id: string): TabularReviewStatusInfo {
+  const review = findStubReview(id);
+  return {
+    id,
+    status: review.status,
+    cellTotal: review.cells.length,
+    cellDone: review.cells.filter((c) => c.status === "done").length,
+    cellError: review.cells.filter((c) => c.status === "error").length,
+  };
+}
+
+export function stubAddTabularColumn(
+  id: string,
+  column: TabularColumnInput,
+): TabularReviewDetail {
+  const review = findStubReview(id);
+  const position =
+    review.columns.reduce((max, c) => Math.max(max, c.position), -1) + 1;
+  const newColumn: TabularColumn = {
+    id: `trc-${Date.now()}`,
+    reviewId: id,
+    position,
+    name: column.name,
+    question: column.question,
+    colType: column.colType,
+    options: column.options ?? null,
+  };
+  review.columns.push(newColumn);
+  for (const d of review.documents) {
+    review.cells.push({
+      id: `trx-${d.id}-${newColumn.id}`,
+      documentId: d.id,
+      columnId: newColumn.id,
+      value: null,
+      reasoning: null,
+      citation: null,
+      status: "pending",
+      error: null,
+    });
+  }
+  review.updatedAt = nowIso();
+  return cloneTabularDetail(review);
+}
+
+export function stubDeleteTabularColumn(
+  id: string,
+  columnId: string,
+): TabularReviewDetail {
+  const review = findStubReview(id);
+  review.columns = review.columns.filter((c) => c.id !== columnId);
+  review.cells = review.cells.filter((c) => c.columnId !== columnId);
+  review.updatedAt = nowIso();
+  return cloneTabularDetail(review);
+}
+
+export function stubDeleteTabularDocument(
+  id: string,
+  documentId: string,
+): TabularReviewDetail {
+  const review = findStubReview(id);
+  review.documents = review.documents.filter((d) => d.id !== documentId);
+  review.cells = review.cells.filter((c) => c.documentId !== documentId);
+  review.updatedAt = nowIso();
+  return cloneTabularDetail(review);
+}
+
+export function stubTabularReviewCsv(id: string): string {
+  const review = findStubReview(id);
+  const byPos = new Map<string, string>();
+  for (const c of review.cells) {
+    byPos.set(`${c.documentId}:${c.columnId}`, c.value ?? "");
+  }
+  const escape = (s: string) =>
+    /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const lines: string[] = [];
+  lines.push("# Citas (página + cita textual) disponibles solo en la aplicación.");
+  lines.push(
+    ["Documento", ...review.columns.map((c) => c.name)].map(escape).join(","),
+  );
+  for (const d of review.documents) {
+    const row = [
+      d.label ?? d.sourceId,
+      ...review.columns.map((c) => byPos.get(`${d.id}:${c.id}`) ?? ""),
+    ];
+    lines.push(row.map(escape).join(","));
+  }
+  return lines.join("\n");
 }

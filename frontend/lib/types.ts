@@ -459,3 +459,116 @@ export interface MyUsage {
   /** null = unlimited (custom tier). */
   docsLimit: number | null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Tabular Review (010_tabular_reviews.sql) — extraction grid           */
+/* ------------------------------------------------------------------ */
+
+/** Answer type of a tabular column (mirrors backend TabularColType). */
+export type ColType =
+  | "text"
+  | "number"
+  | "percent"
+  | "monetary"
+  | "date"
+  | "yes_no"
+  | "tag";
+
+export const COL_TYPES: ColType[] = [
+  "text",
+  "number",
+  "percent",
+  "monetary",
+  "date",
+  "yes_no",
+  "tag",
+];
+
+export type TabularReviewStatus = "draft" | "running" | "complete" | "failed";
+
+export type TabularCellStatus = "pending" | "done" | "error";
+
+/** What a review document references; both live in the gestora silo. */
+export type TabularSourceKind = "precedent_version" | "request_document";
+
+/** A column = a question + an answer type (+ options for the 'tag' type). */
+export interface TabularColumn {
+  id: string;
+  reviewId: string;
+  position: number;
+  name: string;
+  question: string;
+  colType: ColType;
+  options: string[] | null;
+}
+
+/** A document row in the grid (a precedent version or a generated document). */
+export interface TabularDocumentRef {
+  id: string;
+  reviewId: string;
+  position: number;
+  sourceKind: TabularSourceKind;
+  sourceId: string;
+  label: string | null;
+}
+
+/** A verifiable citation: page (null for plain text) + verbatim quote. */
+export interface TabularCitation {
+  page: number | string | null;
+  quote: string | null;
+}
+
+/** One extracted cell: a typed value + reasoning + citation, or an error. */
+export interface TabularCell {
+  id: string;
+  documentId: string;
+  columnId: string;
+  value: string | null;
+  reasoning: string | null;
+  citation: TabularCitation | null;
+  status: TabularCellStatus;
+  error: string | null;
+}
+
+/** A tabular review header (list view). */
+export interface TabularReview {
+  id: string;
+  gestoraId: string;
+  fundId: string | null;
+  createdBy: string | null;
+  title: string;
+  status: TabularReviewStatus;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+/** A tabular review with its full grid (columns + documents + cells). */
+export interface TabularReviewDetail extends TabularReview {
+  columns: TabularColumn[];
+  documents: TabularDocumentRef[];
+  cells: TabularCell[];
+}
+
+/** Lightweight progress payload for the polling loop while a review runs. */
+export interface TabularReviewStatusInfo {
+  id: string;
+  status: TabularReviewStatus;
+  cellTotal: number;
+  cellDone: number;
+  cellError: number;
+}
+
+/** A document the user can pick into a new review (precedents / generated). */
+export interface TabularDocumentOption {
+  sourceKind: TabularSourceKind;
+  sourceId: string;
+  label: string;
+}
+
+/** Input column for the new-review flow (no ids yet). */
+export interface TabularColumnInput {
+  name: string;
+  question: string;
+  colType: ColType;
+  options?: string[] | null;
+}

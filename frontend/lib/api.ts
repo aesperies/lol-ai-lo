@@ -53,6 +53,16 @@ import {
   stubSetPlaybookActive,
   stubDeletePlaybook,
   stubUploadModel,
+  stubTabularReviews,
+  stubTabularReview,
+  stubCreateTabularReview,
+  stubRunTabularReview,
+  stubTabularReviewStatus,
+  stubAddTabularColumn,
+  stubDeleteTabularColumn,
+  stubDeleteTabularDocument,
+  stubTabularReviewCsv,
+  stubTabularDocumentOptions,
 } from "@/lib/stub-data";
 import {
   getSupabaseBrowserClient,
@@ -92,6 +102,11 @@ import type {
   SlaReport,
   SlaStats,
   SubscriptionTier,
+  TabularColumnInput,
+  TabularDocumentOption,
+  TabularReview,
+  TabularReviewDetail,
+  TabularReviewStatusInfo,
   UserProfile,
 } from "@/lib/types";
 
@@ -170,6 +185,17 @@ export const apiPaths = {
   adminRetention: (gestoraId: string) =>
     `/api/admin/gestoras/${gestoraId}/retention`,
   adminRetentionSweep: "/api/admin/retention/sweep",
+  // Tabular Review (010_tabular_reviews.sql) — gestora-siloed extraction grid.
+  tabularReviews: "/api/tabular-reviews",
+  tabularReview: (id: string) => `/api/tabular-reviews/${id}`,
+  tabularReviewRun: (id: string) => `/api/tabular-reviews/${id}/run`,
+  tabularReviewStatus: (id: string) => `/api/tabular-reviews/${id}/status`,
+  tabularReviewColumns: (id: string) => `/api/tabular-reviews/${id}/columns`,
+  tabularReviewColumn: (id: string, colId: string) =>
+    `/api/tabular-reviews/${id}/columns/${colId}`,
+  tabularReviewDocument: (id: string, docId: string) =>
+    `/api/tabular-reviews/${id}/documents/${docId}`,
+  tabularReviewExport: (id: string) => `/api/tabular-reviews/${id}/export.csv`,
 } as const;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -1415,6 +1441,293 @@ export async function getMyUsage(): Promise<MyUsage> {
     docsGenerated: res.docs_generated,
     docsLimit: res.docs_limit,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Tabular Review (010_tabular_reviews.sql) — gestora-siloed grid        */
+/* ------------------------------------------------------------------ */
+
+interface TabularColumnWire {
+  id: string;
+  review_id: string;
+  position: number;
+  name: string;
+  question: string;
+  col_type: TabularReviewDetail["columns"][number]["colType"];
+  options?: string[] | null;
+}
+
+interface TabularDocumentWire {
+  id: string;
+  review_id: string;
+  position: number;
+  source_kind: TabularDocumentOption["sourceKind"];
+  source_id: string;
+  label?: string | null;
+}
+
+interface TabularCellWire {
+  id: string;
+  document_id: string;
+  column_id: string;
+  value?: string | null;
+  reasoning?: string | null;
+  citation?: { page: number | string | null; quote: string | null } | null;
+  status: TabularReviewDetail["cells"][number]["status"];
+  error?: string | null;
+}
+
+interface TabularReviewWire {
+  id: string;
+  gestora_id: string;
+  fund_id?: string | null;
+  created_by?: string | null;
+  title: string;
+  status: TabularReview["status"];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+interface TabularReviewDetailWire extends TabularReviewWire {
+  columns: TabularColumnWire[];
+  documents: TabularDocumentWire[];
+  cells: TabularCellWire[];
+}
+
+function mapTabularReview(wire: TabularReviewWire): TabularReview {
+  return {
+    id: wire.id,
+    gestoraId: wire.gestora_id,
+    fundId: wire.fund_id ?? null,
+    createdBy: wire.created_by ?? null,
+    title: wire.title,
+    status: wire.status,
+    createdAt: wire.created_at ?? null,
+    updatedAt: wire.updated_at ?? null,
+  };
+}
+
+function mapTabularDetail(wire: TabularReviewDetailWire): TabularReviewDetail {
+  return {
+    ...mapTabularReview(wire),
+    columns: wire.columns.map((c) => ({
+      id: c.id,
+      reviewId: c.review_id,
+      position: c.position,
+      name: c.name,
+      question: c.question,
+      colType: c.col_type,
+      options: c.options ?? null,
+    })),
+    documents: wire.documents.map((d) => ({
+      id: d.id,
+      reviewId: d.review_id,
+      position: d.position,
+      sourceKind: d.source_kind,
+      sourceId: d.source_id,
+      label: d.label ?? null,
+    })),
+    cells: wire.cells.map((c) => ({
+      id: c.id,
+      documentId: c.document_id,
+      columnId: c.column_id,
+      value: c.value ?? null,
+      reasoning: c.reasoning ?? null,
+      citation: c.citation ?? null,
+      status: c.status,
+      error: c.error ?? null,
+    })),
+  };
+}
+
+export async function getTabularReviews(): Promise<TabularReview[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubTabularReviews();
+  }
+  const rows = await apiFetch<TabularReviewWire[]>(apiPaths.tabularReviews);
+  return rows.map(mapTabularReview);
+}
+
+export async function getTabularReview(
+  id: string,
+): Promise<TabularReviewDetail> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    const review = stubTabularReview(id);
+    if (!review) throw new ApiError(404, "Tabular review not found");
+    return review;
+  }
+  const wire = await apiFetch<TabularReviewDetailWire>(apiPaths.tabularReview(id));
+  return mapTabularDetail(wire);
+}
+
+export interface CreateTabularReviewInput {
+  title: string;
+  fundId?: string | null;
+  columns: TabularColumnInput[];
+  documents: TabularDocumentOption[];
+}
+
+export async function createTabularReview(
+  input: CreateTabularReviewInput,
+): Promise<TabularReviewDetail> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY);
+    return stubCreateTabularReview(input);
+  }
+  const wire = await apiFetch<TabularReviewDetailWire>(apiPaths.tabularReviews, {
+    method: "POST",
+    body: {
+      title: input.title,
+      fund_id: input.fundId ?? null,
+      columns: input.columns.map((c) => ({
+        name: c.name,
+        question: c.question,
+        col_type: c.colType,
+        options: c.options ?? null,
+      })),
+      documents: input.documents.map((d) => ({
+        source_kind: d.sourceKind,
+        source_id: d.sourceId,
+        label: d.label,
+      })),
+    },
+  });
+  return mapTabularDetail(wire);
+}
+
+/** Enqueues extraction (202): poll getTabularReviewStatus while 'running'. */
+export async function runTabularReview(id: string): Promise<void> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    stubRunTabularReview(id);
+    return;
+  }
+  await apiFetch(apiPaths.tabularReviewRun(id), { method: "POST" });
+}
+
+export async function getTabularReviewStatus(
+  id: string,
+): Promise<TabularReviewStatusInfo> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 4);
+    return stubTabularReviewStatus(id);
+  }
+  const res = await apiFetch<{
+    id: string;
+    status: TabularReviewStatusInfo["status"];
+    cell_total: number;
+    cell_done: number;
+    cell_error: number;
+  }>(apiPaths.tabularReviewStatus(id));
+  return {
+    id: res.id,
+    status: res.status,
+    cellTotal: res.cell_total,
+    cellDone: res.cell_done,
+    cellError: res.cell_error,
+  };
+}
+
+export async function addTabularColumn(
+  id: string,
+  column: TabularColumnInput,
+): Promise<TabularReviewDetail> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubAddTabularColumn(id, column);
+  }
+  const wire = await apiFetch<TabularReviewDetailWire>(
+    apiPaths.tabularReviewColumns(id),
+    {
+      method: "POST",
+      body: {
+        name: column.name,
+        question: column.question,
+        col_type: column.colType,
+        options: column.options ?? null,
+      },
+    },
+  );
+  return mapTabularDetail(wire);
+}
+
+export async function deleteTabularColumn(
+  id: string,
+  columnId: string,
+): Promise<TabularReviewDetail> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubDeleteTabularColumn(id, columnId);
+  }
+  const wire = await apiFetch<TabularReviewDetailWire>(
+    apiPaths.tabularReviewColumn(id, columnId),
+    { method: "DELETE" },
+  );
+  return mapTabularDetail(wire);
+}
+
+export async function deleteTabularDocument(
+  id: string,
+  documentId: string,
+): Promise<TabularReviewDetail> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubDeleteTabularDocument(id, documentId);
+  }
+  const wire = await apiFetch<TabularReviewDetailWire>(
+    apiPaths.tabularReviewDocument(id, documentId),
+    { method: "DELETE" },
+  );
+  return mapTabularDetail(wire);
+}
+
+/** CSV export of the grid (values only) as a Blob. */
+export async function downloadTabularReviewCsv(id: string): Promise<Blob> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return new Blob([stubTabularReviewCsv(id)], {
+      type: "text/csv;charset=utf-8",
+    });
+  }
+  const headers = await authHeaders();
+  const res = await fetch(`${API_URL}${apiPaths.tabularReviewExport(id)}`, {
+    headers,
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  return res.blob();
+}
+
+/** Documents the user can pick into a new review (precedents + generated). */
+export async function getTabularDocumentOptions(): Promise<
+  TabularDocumentOption[]
+> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubTabularDocumentOptions();
+  }
+  // Reuse the precedents list as the picker source; each active version is one
+  // selectable document. Generated documents can be added later via the same
+  // shape (source_kind=request_document).
+  const precedents = await apiFetch<
+    Array<{
+      id: string;
+      doc_type: string;
+      versions?: Array<{ id: string; status: string; version_number: number }>;
+    }>
+  >(apiPaths.precedents);
+  const options: TabularDocumentOption[] = [];
+  for (const p of precedents) {
+    for (const v of p.versions ?? []) {
+      options.push({
+        sourceKind: "precedent_version",
+        sourceId: v.id,
+        label: `${docTypeLabel(p.doc_type)} v${v.version_number}`,
+      });
+    }
+  }
+  return options;
 }
 
 /** Triggers a browser download for a Blob. */
