@@ -88,6 +88,49 @@ export const RETENTION_MONTHS_MIN = 6;
 export const RETENTION_MONTHS_MAX = 120;
 export const RETENTION_MONTHS_DEFAULT = 60;
 
+/* ---------- Account & security (011_account_security.sql) ------------- */
+
+/** The calling user's own profile, incl. the MFA status mirror (GET /api/me). */
+export interface AccountProfile {
+  id: string;
+  email: string;
+  role: Role;
+  gestoraId: string | null;
+  mfaEnabled: boolean;
+}
+
+/** A Supabase MFA factor (subset of @supabase/supabase-js Factor). */
+export interface MfaFactor {
+  id: string;
+  friendlyName: string | null;
+  status: string;
+}
+
+/** GDPR deletion mode (services/data_subject.py). */
+export type DeleteMode = "anonymize" | "erase";
+
+/** Exact confirmation phrase required to delete one's own data (backend
+ * DATA_DELETE_CONFIRMATION). */
+export const DATA_DELETE_CONFIRMATION = "ELIMINAR MIS DATOS";
+
+/** LLM provider options for the per-gestora model config. */
+export type LlmProvider = "ollama" | "anthropic";
+export type EmbeddingProvider = "ollama" | "openai";
+
+/** Per-gestora model configuration (no plaintext keys ever; *_key_set only). */
+export interface ModelConfig {
+  gestoraId: string;
+  llmProvider: string | null;
+  llmModel: string | null;
+  embeddingProvider: string | null;
+  embeddingModel: string | null;
+  ollamaBaseUrl: string | null;
+  anthropicKeySet: boolean;
+  openaiKeySet: boolean;
+  isDefault: boolean;
+  updatedAt: string | null;
+}
+
 export interface Fund {
   id: string;
   gestoraId: string;

@@ -153,6 +153,7 @@ def generate_document(
     precedent_text: Optional[str],
     system: Optional[str] = None,
     extra_guidance: Optional[str] = None,
+    gestora_id: Optional[str] = None,
 ) -> str:
     """Generate the document text and append the SLP disclaimer.
 
@@ -167,7 +168,9 @@ def generate_document(
       template itself is untouched.
 
     Both default to ``None``, keeping the existing call signature working for
-    legacy callers and tests.
+    legacy callers and tests. ``gestora_id`` (also optional) routes the call to
+    the gestora's BYO LLM provider/model/key when configured (account-security
+    feature C); None → global provider, so legacy callers are unaffected.
     """
     prompt = (
         GENERATION_PROMPT
@@ -189,25 +192,33 @@ def generate_document(
     # clauses with [SOURCE: ...] markers without ever editing GENERATION_PROMPT.
     prompt = f"{prompt}\n\n{SOURCE_GUIDANCE}"
     text = llm.complete(
-        prompt, max_tokens=get_settings().max_generation_tokens, system=system
+        prompt,
+        max_tokens=get_settings().max_generation_tokens,
+        system=system,
+        gestora_id=gestora_id,
     ).strip()
     # Mandatory on every generated document (SPEC corporate structure).
     return f"{text}\n\n{SLP_DISCLAIMER}"
 
 
-def refine_document(*, current_text: str, instruction: str) -> str:
+def refine_document(
+    *, current_text: str, instruction: str, gestora_id: Optional[str] = None
+) -> str:
     """Apply one targeted client revision to a previously generated document.
 
     Returns either the full revised document text or a verbatim
     ``[REFINEMENT-UNCLEAR: reason]`` marker (check with
     :func:`refinement_unclear_reason` — the caller must NOT create documents
-    from an unclear output)."""
+    from an unclear output). ``gestora_id`` (optional) routes to the gestora's
+    BYO LLM config when present; None → global."""
     prompt = (
         REFINEMENT_PROMPT
         .replace("{current_text}", current_text)
         .replace("{instruction}", instruction)
     )
-    text = llm.complete(prompt, max_tokens=get_settings().max_generation_tokens).strip()
+    text = llm.complete(
+        prompt, max_tokens=get_settings().max_generation_tokens, gestora_id=gestora_id
+    ).strip()
     if refinement_unclear_reason(text) is not None:
         return text
     # The disclaimer travels inside current_text; re-append if the model

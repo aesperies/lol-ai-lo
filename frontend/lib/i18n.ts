@@ -95,6 +95,65 @@ const es = {
   "nav.users": "Usuarios",
   "nav.quality": "Calidad y SLA",
   "nav.billing": "Facturación",
+  "nav.account": "Mi cuenta",
+  "nav.modelConfig": "Modelo por gestora",
+
+  // Account — security (MFA)
+  "account.security.title": "Seguridad de la cuenta",
+  "account.security.subtitle":
+    "Protege tu cuenta con verificación en dos pasos (TOTP).",
+  "account.security.mfaStatus": "Verificación en dos pasos",
+  "account.security.mfaOn": "Activada",
+  "account.security.mfaOff": "Desactivada",
+  "account.security.enable": "Activar 2FA",
+  "account.security.disable": "Desactivar 2FA",
+  "account.security.enroll":
+    "Escanea el código en tu app de autenticación e introduce el código de 6 dígitos.",
+  "account.security.code": "Código de 6 dígitos",
+  "account.security.verify": "Verificar y activar",
+  "account.security.devNotice":
+    "La verificación en dos pasos usa Supabase Auth y no está disponible en modo desarrollo. Aquí puedes alternar el estado de demostración.",
+  "account.security.demoToggle": "Estado de demostración",
+
+  // Account — privacy (GDPR subject rights)
+  "account.privacy.title": "Privacidad y mis datos",
+  "account.privacy.subtitle":
+    "Ejercita tus derechos de acceso y supresión (RGPD arts. 15, 17 y 20).",
+  "account.privacy.export": "Descargar mis datos",
+  "account.privacy.exportHint":
+    "Obtén una copia en JSON de tu perfil y tus solicitudes.",
+  "account.privacy.delete": "Eliminar mis datos",
+  "account.privacy.deleteHint":
+    "El registro de auditoría se conserva por obligación legal; el resto de tus datos se anonimiza o elimina.",
+  "account.privacy.mode": "Modo",
+  "account.privacy.modeAnonymize": "Anonimizar (conservar registros sin PII)",
+  "account.privacy.modeErase": "Eliminar mis solicitudes y documentos",
+  "account.privacy.confirmLabel":
+    'Escribe "{phrase}" para confirmar',
+  "account.privacy.confirmCta": "Eliminar definitivamente",
+  "account.privacy.deleted": "Solicitud de supresión registrada.",
+
+  // Admin — per-gestora model configuration
+  "modelconfig.title": "Modelo por gestora",
+  "modelconfig.subtitle":
+    "Sobrescribe el proveedor, el modelo y las claves (cifradas) por gestora. Por defecto se usan los valores globales de la plataforma.",
+  "modelconfig.gestora": "Gestora",
+  "modelconfig.llmProvider": "Proveedor LLM",
+  "modelconfig.llmModel": "Modelo LLM",
+  "modelconfig.embeddingProvider": "Proveedor de embeddings",
+  "modelconfig.embeddingModel": "Modelo de embeddings",
+  "modelconfig.ollamaBaseUrl": "URL de Ollama",
+  "modelconfig.anthropicKey": "Clave Anthropic",
+  "modelconfig.openaiKey": "Clave OpenAI",
+  "modelconfig.keySet": "Configurada",
+  "modelconfig.keyUnset": "No configurada",
+  "modelconfig.keyPlaceholderSet": "•••••••• (déjalo vacío para mantener)",
+  "modelconfig.keyClear": "Vaciar para borrar la clave",
+  "modelconfig.usingDefault": "Usando los valores globales de la plataforma",
+  "modelconfig.usingCustom": "Configuración personalizada",
+  "modelconfig.inherit": "(heredar global)",
+  "modelconfig.save": "Guardar configuración",
+  "modelconfig.saved": "Configuración guardada.",
 
   // Auth
   "auth.loginTitle": "Iniciar sesión",
@@ -665,6 +724,64 @@ const en: Record<DictKey, string> = {
   "nav.users": "Users",
   "nav.quality": "Quality & SLA",
   "nav.billing": "Billing",
+  "nav.account": "My account",
+  "nav.modelConfig": "Model per gestora",
+
+  // Account — security (MFA)
+  "account.security.title": "Account security",
+  "account.security.subtitle":
+    "Protect your account with two-factor authentication (TOTP).",
+  "account.security.mfaStatus": "Two-factor authentication",
+  "account.security.mfaOn": "Enabled",
+  "account.security.mfaOff": "Disabled",
+  "account.security.enable": "Enable 2FA",
+  "account.security.disable": "Disable 2FA",
+  "account.security.enroll":
+    "Scan the code in your authenticator app and enter the 6-digit code.",
+  "account.security.code": "6-digit code",
+  "account.security.verify": "Verify and enable",
+  "account.security.devNotice":
+    "Two-factor authentication uses Supabase Auth and is unavailable in development mode. You can toggle the demo state here.",
+  "account.security.demoToggle": "Demo state",
+
+  // Account — privacy (GDPR subject rights)
+  "account.privacy.title": "Privacy and my data",
+  "account.privacy.subtitle":
+    "Exercise your access and erasure rights (GDPR arts. 15, 17 and 20).",
+  "account.privacy.export": "Download my data",
+  "account.privacy.exportHint":
+    "Get a JSON copy of your profile and your requests.",
+  "account.privacy.delete": "Delete my data",
+  "account.privacy.deleteHint":
+    "The audit log is retained as legally required; the rest of your data is anonymised or erased.",
+  "account.privacy.mode": "Mode",
+  "account.privacy.modeAnonymize": "Anonymise (keep records without PII)",
+  "account.privacy.modeErase": "Erase my requests and documents",
+  "account.privacy.confirmLabel": 'Type "{phrase}" to confirm',
+  "account.privacy.confirmCta": "Delete permanently",
+  "account.privacy.deleted": "Erasure request recorded.",
+
+  // Admin — per-gestora model configuration
+  "modelconfig.title": "Model per gestora",
+  "modelconfig.subtitle":
+    "Override the provider, model and (encrypted) keys per gestora. Platform-wide defaults are used otherwise.",
+  "modelconfig.gestora": "Gestora",
+  "modelconfig.llmProvider": "LLM provider",
+  "modelconfig.llmModel": "LLM model",
+  "modelconfig.embeddingProvider": "Embedding provider",
+  "modelconfig.embeddingModel": "Embedding model",
+  "modelconfig.ollamaBaseUrl": "Ollama URL",
+  "modelconfig.anthropicKey": "Anthropic key",
+  "modelconfig.openaiKey": "OpenAI key",
+  "modelconfig.keySet": "Set",
+  "modelconfig.keyUnset": "Not set",
+  "modelconfig.keyPlaceholderSet": "•••••••• (leave blank to keep)",
+  "modelconfig.keyClear": "Clear to remove the key",
+  "modelconfig.usingDefault": "Using platform-wide defaults",
+  "modelconfig.usingCustom": "Custom configuration",
+  "modelconfig.inherit": "(inherit global)",
+  "modelconfig.save": "Save configuration",
+  "modelconfig.saved": "Configuration saved.",
 
   "auth.loginTitle": "Sign in",
   "auth.loginSubtitle": "Access your fund documentation workspace.",

@@ -237,7 +237,7 @@ class TestLessonsIsolation:
 
         monkeypatch.setattr(
             llm, "complete_json",
-            lambda prompt, schema, *, max_tokens=8192, system=None: {
+            lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: {
                 "lessons": ["Regla generalizable de Alfa"]
             },
         )
@@ -416,3 +416,44 @@ class TestTabularReviewIsolation:
         assert client.get(f"/api/tabular-reviews/{review_id}", headers=auth(seed["client_b"])).status_code == 404
         listed_b = client.get("/api/tabular-reviews", headers=auth(seed["client_b"])).json()
         assert all(r["id"] != review_id for r in listed_b)
+
+
+# ---------------------------------------------------------------------------
+# 7. Per-gestora model configuration (011_account_security.sql) — siloed
+# ---------------------------------------------------------------------------
+
+class TestModelConfigIsolation:
+    def test_config_never_crosses_gestora(self, client, db, seed):
+        """Gestora A's BYO model config (provider/model/encrypted key) is NEVER
+        applied to — nor visible for — gestora B. Admin-only by role; the
+        per-call LLM resolution is hard-keyed on gestora_id."""
+        from services import llm, secrets
+
+        # Admin sets a config (with a BYO key) for gestora A only.
+        res = client.put(
+            f"/api/admin/gestoras/{seed['gestora_a']['id']}/model-config",
+            json={"llm_provider": "anthropic", "anthropic_api_key": "sk-ant-solo-alfa"},
+            headers=auth(seed["admin"]),
+        )
+        assert res.status_code == 200
+        assert "sk-ant-solo-alfa" not in res.text  # plaintext never echoed
+
+        # B's config endpoint still reports the platform default (no row of its own).
+        res_b = client.get(
+            f"/api/admin/gestoras/{seed['gestora_b']['id']}/model-config",
+            headers=auth(seed["admin"]),
+        )
+        assert res_b.json()["is_default"] is True
+
+        # LLM resolution: A uses its override, B falls back to global — never A's.
+        config_a = llm.resolve_config(seed["gestora_a"]["id"])
+        config_b = llm.resolve_config(seed["gestora_b"]["id"])
+        assert config_a.anthropic_api_key == "sk-ant-solo-alfa"
+        assert config_b.anthropic_api_key != "sk-ant-solo-alfa"
+        assert config_b.llm_provider == "ollama"
+
+        # The stored key is encrypted at rest, scoped to A's row only.
+        rows_a = db.select("gestora_model_config", gestora_id=seed["gestora_a"]["id"])
+        rows_b = db.select("gestora_model_config", gestora_id=seed["gestora_b"]["id"])
+        assert rows_a and rows_b == []
+        assert secrets.decrypt(rows_a[-1]["anthropic_api_key_enc"]) == "sk-ant-solo-alfa"

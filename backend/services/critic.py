@@ -278,7 +278,9 @@ def review(
         .replace("{playbook}", playbook)
     )
     try:
-        result = llm.complete_json(prompt, CRITIC_SCHEMA, system=_CRITIC_SYSTEM)
+        result = llm.complete_json(
+            prompt, CRITIC_SCHEMA, system=_CRITIC_SYSTEM, gestora_id=gestora_id
+        )
     except ServiceNotConfiguredError:
         logger.info("Critic skipped: LLM unreachable; draft proceeds unreviewed.")
         return Verdict(approved=True, skipped=True)
@@ -325,6 +327,13 @@ def _default_revise(current_text: str, instruction: str) -> str:
     return generator.refine_document(current_text=current_text, instruction=instruction)
 
 
+def _make_default_revise(gestora_id: Optional[str]) -> ReviseFn:
+    """Default reviser bound to the gestora's LLM config (feature C)."""
+    return lambda current_text, instruction: generator.refine_document(
+        current_text=current_text, instruction=instruction, gestora_id=gestora_id
+    )
+
+
 def draft_with_review(
     *,
     first_draft: str,
@@ -350,7 +359,7 @@ def draft_with_review(
     ``skipped`` and the loop exits immediately with the original draft.
     """
     settings = get_settings()
-    revise = revise or _default_revise
+    revise = revise or _make_default_revise(gestora_id)
 
     if not settings.critic_enabled:
         return DraftWithReviewResult(

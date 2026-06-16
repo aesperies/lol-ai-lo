@@ -81,10 +81,34 @@ management companies (gestoras). The primary threats, in order of impact:
   re-reads the stored draft server-side so blockers cannot be bypassed with
   tampered client state.
 
-## NOT yet covered — production checklist
+### 2FA / MFA (Supabase TOTP)
+- Implemented via **Supabase Auth native TOTP MFA**, which is largely
+  client-side (`@supabase/supabase-js` `auth.mfa.enroll/challenge/verify/
+  unenroll/listFactors`). The account security page
+  (`app/(client)/account/security`) lets a logged-in user enroll a TOTP factor
+  (QR / otpauth URI + secret), verify the 6-digit code to activate, list
+  factors and unenroll. Supabase enforces the actual factor.
+- The backend **mirrors** the status for display + an admin overview: a
+  `users.mfa_enabled` column (`011_account_security.sql`), updated via
+  `POST /api/me/mfa {enabled}` after a successful Supabase verify/unenroll, and
+  surfaced on the profile (`GET /api/me`). The change is audited
+  (`mfa_status_changed`). The platform never stores the TOTP secret.
+- In dev-stub mode (no Supabase) the page shows a clear "no disponible en modo
+  desarrollo" state and never crashes.
+- `TODO`: require MFA for `admin` and `counsel` roles (policy enforcement) once
+  the production Supabase project is provisioned.
 
-- [ ] **2FA / MFA** — not implemented in-app. Enable via Supabase Auth MFA
-      settings (TOTP) and require it for `admin` and `counsel` roles.
+### Per-gestora model configuration & secrets at rest
+- Each gestora may optionally override the LLM provider/model and supply its own
+  API keys on top of the global `services/llm.py` defaults
+  (`gestora_model_config`, admin-only, `011_account_security.sql`). Keys are
+  stored **encrypted at rest** via `services/secrets.py` — a dependency-light,
+  stdlib-only authenticated scheme (HMAC-SHA256 keystream XOR, encrypt-then-MAC)
+  keyed on `SECRETS_ENCRYPTION_KEY` (process-stable random fallback + warning
+  when unset, mirroring `URL_SIGNING_SECRET`). The admin API never returns
+  decrypted keys (only `*_key_set` booleans); plaintext keys are never logged.
+
+## NOT yet covered — production checklist
 - [ ] **Penetration test** — pending; schedule before onboarding the first
       external gestora.
 - [ ] **Redis-based rate limiting** — the current limiter is per-process; N

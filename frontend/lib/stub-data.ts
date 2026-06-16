@@ -11,7 +11,11 @@
 
 import { DOC_TYPE_CATALOG, docTypeLabel } from "@/lib/catalog";
 import { translate, type DictKey } from "@/lib/i18n";
+import { readDevRoleCookie } from "@/lib/supabase/client";
 import type {
+  AccountProfile,
+  DeleteMode,
+  ModelConfig,
   AssignedCounsel,
   BillingReport,
   BillingRow,
@@ -1900,4 +1904,115 @@ export function stubTabularReviewCsv(id: string): string {
     lines.push(row.map(escape).join(","));
   }
   return lines.join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Account & security (dev stubs) — MFA mirror, GDPR export/delete     */
+/* ------------------------------------------------------------------ */
+
+const _stubMfaByUser: Record<string, boolean> = {};
+
+function stubCurrentUser(): UserProfile {
+  const role = (readDevRoleCookie() as string | null) ?? "client";
+  return STUB_USERS_BY_ROLE[role] ?? STUB_USERS_BY_ROLE.client;
+}
+
+export function stubAccountProfile(): AccountProfile {
+  const u = stubCurrentUser();
+  return {
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    gestoraId: u.gestoraId ?? null,
+    mfaEnabled: _stubMfaByUser[u.id] ?? false,
+  };
+}
+
+export function stubSetMfaEnabled(enabled: boolean): AccountProfile {
+  const u = stubCurrentUser();
+  _stubMfaByUser[u.id] = enabled;
+  return stubAccountProfile();
+}
+
+export function stubExportMyData(): string {
+  const u = stubCurrentUser();
+  const ownRequests = stubRequests.filter((r) => r.userId === u.id);
+  return JSON.stringify(
+    {
+      exported_at: new Date().toISOString(),
+      note: "Datos de demostración (modo desarrollo).",
+      profile: stubAccountProfile(),
+      requests: ownRequests,
+    },
+    null,
+    2,
+  );
+}
+
+export function stubDeleteMyData(input: { confirm: string; mode: DeleteMode }): void {
+  // Dev stub: validate the confirmation phrase shape; no real deletion.
+  if (!input.confirm) {
+    throw new Error("confirmation required");
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-gestora model configuration (dev stubs, admin-only)            */
+/* ------------------------------------------------------------------ */
+
+const _stubModelConfigByGestora: Record<string, ModelConfig> = {};
+
+function defaultStubModelConfig(gestoraId: string): ModelConfig {
+  return {
+    gestoraId,
+    llmProvider: null,
+    llmModel: null,
+    embeddingProvider: null,
+    embeddingModel: null,
+    ollamaBaseUrl: null,
+    anthropicKeySet: false,
+    openaiKeySet: false,
+    isDefault: true,
+    updatedAt: null,
+  };
+}
+
+export function stubGetModelConfig(gestoraId: string): ModelConfig {
+  return _stubModelConfigByGestora[gestoraId] ?? defaultStubModelConfig(gestoraId);
+}
+
+export function stubPutModelConfig(
+  gestoraId: string,
+  input: {
+    llmProvider?: string;
+    llmModel?: string;
+    embeddingProvider?: string;
+    embeddingModel?: string;
+    ollamaBaseUrl?: string;
+    anthropicApiKey?: string;
+    openaiApiKey?: string;
+  },
+): ModelConfig {
+  const prev = stubGetModelConfig(gestoraId);
+  const next: ModelConfig = {
+    ...prev,
+    gestoraId,
+    llmProvider: input.llmProvider ?? prev.llmProvider,
+    llmModel: input.llmModel ?? prev.llmModel,
+    embeddingProvider: input.embeddingProvider ?? prev.embeddingProvider,
+    embeddingModel: input.embeddingModel ?? prev.embeddingModel,
+    ollamaBaseUrl: input.ollamaBaseUrl ?? prev.ollamaBaseUrl,
+    anthropicKeySet:
+      input.anthropicApiKey === undefined
+        ? prev.anthropicKeySet
+        : input.anthropicApiKey.length > 0,
+    openaiKeySet:
+      input.openaiApiKey === undefined
+        ? prev.openaiKeySet
+        : input.openaiApiKey.length > 0,
+    isDefault: false,
+    updatedAt: new Date().toISOString(),
+  };
+  _stubModelConfigByGestora[gestoraId] = next;
+  return next;
 }

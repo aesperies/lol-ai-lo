@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -98,6 +98,14 @@ class AuditAction(str, Enum):
     tabular_review_column_deleted = "tabular_review_column_deleted"
     tabular_review_document_deleted = "tabular_review_document_deleted"
     tabular_review_exported = "tabular_review_exported"
+    # Account & security (011_account_security.sql).
+    # MFA status mirror (Supabase enforces the actual TOTP factor).
+    mfa_status_changed = "mfa_status_changed"
+    # GDPR data-subject rights (RGPD arts. 15/17).
+    data_exported = "data_exported"
+    data_subject_deleted = "data_subject_deleted"
+    # Per-gestora BYO model configuration.
+    model_config_updated = "model_config_updated"
 
 
 class AuditResourceType(str, Enum):
@@ -111,6 +119,9 @@ class AuditResourceType(str, Enum):
     playbook = "playbook"
     # Tabular Review (010_tabular_reviews.sql).
     tabular_review = "tabular_review"
+    # Account & security (011_account_security.sql).
+    user = "user"
+    model_config = "model_config"
 
 
 class UsageEventType(str, Enum):
@@ -306,6 +317,9 @@ class User(BaseModel):
     email: str
     role: UserRole = UserRole.client
     gestora_id: Optional[str] = None  # NULL for admin/counsel
+    # Status mirror only (011_account_security.sql): Supabase Auth enforces the
+    # actual TOTP factor; this reflects it for display + an admin overview.
+    mfa_enabled: bool = False
     created_at: Optional[datetime] = None
 
 
@@ -701,3 +715,80 @@ class TabularReviewStatusOut(BaseModel):
     cell_total: int
     cell_done: int
     cell_error: int
+
+
+# ---------------------------------------------------------------------------
+# Account & security (011_account_security.sql)
+# ---------------------------------------------------------------------------
+
+class UserProfileOut(BaseModel):
+    """The calling user's own profile (GET /api/me), incl. the MFA flag."""
+
+    id: str
+    email: str
+    role: UserRole
+    gestora_id: Optional[str] = None
+    mfa_enabled: bool = False
+    created_at: Optional[datetime] = None
+
+
+class MfaStatusBody(BaseModel):
+    """POST /api/me/mfa — the client mirrors its Supabase TOTP status here after
+    a successful enroll-verify / unenroll. Supabase enforces the real factor."""
+
+    enabled: bool
+
+
+class DataDeleteBody(BaseModel):
+    """POST /api/me/delete — self-service erasure/anonymisation.
+
+    ``confirm`` MUST be the literal string below (a safety interlock so a stray
+    request can never wipe data); ``mode`` defaults to the reversible-ish
+    'anonymize'. 'erase' permanently removes the user's own rows + files.
+    """
+
+    confirm: str
+    mode: Literal["anonymize", "erase"] = "anonymize"
+
+
+# The exact confirmation phrase the client must type/send for a self-service
+# deletion (also surfaced verbatim in the UI).
+DATA_DELETE_CONFIRMATION = "ELIMINAR MIS DATOS"
+
+
+class ModelConfigBody(BaseModel):
+    """PUT /api/admin/gestoras/{id}/model-config — partial update.
+
+    Provider/model/base-url fields: send a value to set, ``""`` to clear back to
+    the global default. API-key fields are WRITE-ONLY: send a non-empty string
+    to set (it is encrypted at rest), ``""`` to clear the stored key, or omit to
+    leave it unchanged. The GET response NEVER returns decrypted keys.
+    """
+
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+
+
+class ModelConfigOut(BaseModel):
+    """GET/PUT /api/admin/gestoras/{id}/model-config — never exposes key plaintext.
+
+    ``*_key_set`` booleans report whether an encrypted key is stored; the values
+    themselves are write-only. ``is_default`` is true when the gestora has no
+    override row (everything falls back to the global settings)."""
+
+    gestora_id: str
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    anthropic_key_set: bool = False
+    openai_key_set: bool = False
+    is_default: bool = False
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None

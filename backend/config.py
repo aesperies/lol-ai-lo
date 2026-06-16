@@ -115,6 +115,13 @@ class Settings(BaseSettings):
     url_signing_secret: str = ""
     # Lifetime of signed download links embedded in emails (hours).
     signed_url_ttl_hours: float = 72.0
+    # Symmetric secret for encrypting per-gestora BYO API keys at rest
+    # (services/secrets.py, gestora_model_config; account-security feature C).
+    # TODO: real secret required for production (openssl rand -hex 32) — when
+    # unset a process-stable random fallback is derived and a warning logged
+    # (stored ciphertext stops decrypting across restarts/workers), the same
+    # graceful-degradation pattern as url_signing_secret.
+    secrets_encryption_key: str = ""
     # Public base URL of THIS backend, used to build signed download links.
     backend_url: str = "http://localhost:8000"
     # In-process sliding-window rate limiting (services/rate_limit.py);

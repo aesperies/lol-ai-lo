@@ -98,9 +98,9 @@ ordinary personal data but high sensitivity in practice.
 
 | Right | How |
 |-------|-----|
-| Access / portability (Art. 15/20) | Existing endpoints already export everything per request: `GET /api/requests` (+ `parsed_params`/`structured_fields`), document downloads, and the audit trail filtered by `user_id`. `TODO`: a one-click admin export bundle. |
+| Access / portability (Art. 15/20) | **Implemented**: `GET /api/me/export` returns the requesting user's own data as a downloadable JSON bundle (profile + their requests + documents metadata + tabular reviews), gestora-scoped to what they can access — never another gestora's data (`services/data_subject.export_user_data`). Per-request views (`GET /api/requests` + `parsed_params`/`structured_fields`, document downloads, audit trail by `user_id`) remain available too. |
 | Rectification (Art. 16) | Account email via Supabase Auth; document content via the refinement / counsel-edit flow. |
-| Erasure (Art. 17) | Per-gestora retention sweep covers systematic deletion; **individual** erasure requests are a manual admin flow today: locate the requests, delete documents/files, anonymize the request freetext. `TODO`: scripted per-subject erasure helper. Note: erasure requests against audit/billing records can be refused on legal-obligation/defense grounds — `TODO (legal)` per-case assessment. |
+| Erasure (Art. 17) | **Implemented** (`services/data_subject.delete_user_data`, exposed as self-service `POST /api/me/delete` — confirmation field required — and admin-triggered `POST /api/admin/users/{id}/delete`). Two modes: `anonymize` (default — scrub PII on the user's own rows, keep tombstones) and `erase` (delete the user's own requests/documents/tabular reviews + storage files). The append-only `audit_log` is **never** touched in either mode (the immutability guardrail / legal-evidence trail); `usage_events` billing records are likewise retained. The per-gestora retention sweep still covers systematic deletion. Note: erasure against audit/billing records can be refused on legal-obligation/defense grounds — `TODO (legal)` per-case assessment. |
 | Objection / restriction (Art. 21/18) | Manual via the SLP. `TODO (legal)`: intake procedure + response templates (30-day clock). |
 
 Requests channel: `TODO (legal)`: designate the contact address (e.g.

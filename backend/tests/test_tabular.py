@@ -58,7 +58,7 @@ def _fake_extraction(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]) -
     monkeypatch.setattr(
         llm,
         "complete_json",
-        lambda prompt, schema, *, max_tokens=8192, system=None: dict(payload),
+        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: dict(payload),
     )
 
 
@@ -233,7 +233,7 @@ class TestTabularExtraction:
 
         captured: dict[str, str] = {}
 
-        def fake(prompt, schema, *, max_tokens=8192, system=None):
+        def fake(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None):
             captured["prompt"] = prompt
             return {
                 "value": "España",

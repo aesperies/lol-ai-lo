@@ -212,11 +212,14 @@ def extract_cell(
     col_type: TabularColType,
     document_text: str,
     options: Optional[list[str]] = None,
+    gestora_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Run one extraction. Returns {"value", "reasoning", "citation"}.
 
     Raises ServiceNotConfiguredError when the LLM provider is unreachable so
-    the caller can mark the cell 'error' and the review 'failed'.
+    the caller can mark the cell 'error' and the review 'failed'. ``gestora_id``
+    routes to the gestora's BYO LLM config when present (feature C); None →
+    global.
     """
     prompt = build_cell_prompt(
         question=question,
@@ -224,7 +227,7 @@ def extract_cell(
         document_text=_cap_text(document_text),
         options=options,
     )
-    result = llm.complete_json(prompt, CELL_SCHEMA, max_tokens=512)
+    result = llm.complete_json(prompt, CELL_SCHEMA, max_tokens=512, gestora_id=gestora_id)
     return {
         "value": str(result.get("value", "")).strip(),
         "reasoning": str(result.get("reasoning", "")).strip(),
@@ -329,6 +332,7 @@ async def run_review(db: dbmod.Database, review_id: str) -> None:
                     col_type=_coerce_col_type(col["col_type"]),
                     document_text=text,
                     options=col.get("options"),
+                    gestora_id=review.get("gestora_id"),
                 )
             except ServiceNotConfiguredError:
                 logger.warning(

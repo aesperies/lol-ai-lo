@@ -60,7 +60,7 @@ def _capture_complete(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Monkeypatch llm.complete and capture the prompt + system it received."""
     captured: dict[str, Any] = {}
 
-    def fake_complete(prompt: str, *, max_tokens: int = 8192, json_schema=None, system=None):
+    def fake_complete(prompt: str, *, max_tokens: int = 8192, json_schema=None, system=None, gestora_id=None):
         captured["prompt"] = prompt
         captured["system"] = system
         return "DOCUMENTO GENERADO"

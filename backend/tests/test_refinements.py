@@ -25,7 +25,7 @@ def fake_refine(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "calls": 0,
     }
 
-    def fake(*, current_text: str, instruction: str) -> str:
+    def fake(*, current_text: str, instruction: str, gestora_id=None) -> str:
         state["calls"] += 1
         if state["unclear"]:
             return f"[REFINEMENT-UNCLEAR: {state['unclear']}]"

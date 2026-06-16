@@ -43,7 +43,7 @@ class DevStore:
             row.setdefault("id", str(uuid.uuid4()))
             row.setdefault("created_at", _now())
             # Mirror the SQL updated_at trigger for every table that has one.
-            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells"):
+            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells", "gestora_model_config"):
                 row.setdefault("updated_at", _now())
             if table == "audit_log":
                 row.setdefault("timestamp", _now())
@@ -53,6 +53,9 @@ class DevStore:
             if table == "requests":
                 # Mirrors the nullable jsonb column (004_structured_fields.sql).
                 row.setdefault("structured_fields", None)
+            if table == "users":
+                # Mirrors the DEFAULT false (011_account_security.sql).
+                row.setdefault("mfa_enabled", False)
             self._table(table)[row["id"]] = row
             return dict(row)
 
@@ -78,7 +81,7 @@ class DevStore:
             if row is None:
                 raise KeyError(f"{table}/{row_id} not found")
             row.update(fields)
-            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells"):
+            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells", "gestora_model_config"):
                 row["updated_at"] = _now()
             return dict(row)
 

@@ -21,6 +21,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: "/new-request", labelKey: "nav.newRequest" },
     { href: "/documents", labelKey: "nav.documents" },
     { href: "/tabular-reviews", labelKey: "nav.tabular" },
+    { href: "/account/security", labelKey: "nav.account" },
   ],
   counsel: [{ href: "/counsel", labelKey: "nav.counselQueue" }],
   admin: [
@@ -31,6 +32,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: "/admin/users", labelKey: "nav.users" },
     { href: "/admin/quality", labelKey: "nav.quality" },
     { href: "/admin/billing", labelKey: "nav.billing" },
+    { href: "/admin/model-config", labelKey: "nav.modelConfig" },
   ],
 };
 

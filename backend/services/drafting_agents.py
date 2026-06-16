@@ -89,6 +89,9 @@ def draft(
         precedent_text=precedent_text,
         system=system,
         extra_guidance=extra_guidance,
+        # Route to the gestora's BYO LLM provider/model/key when configured
+        # (account-security feature C); None → global provider.
+        gestora_id=gestora_id,
     )
 
 
