@@ -59,7 +59,7 @@ export default function DocumentHtmlViewer({
 
   if (!doc) {
     return (
-      <div className="flex items-center justify-center gap-3 rounded-md border border-slate-200 bg-slate-50 py-12 text-sm text-slate-500">
+      <div className="flex items-center justify-center gap-3 rounded-md border border-ink-200 bg-ink-50 py-12 text-sm text-ink-500">
         <Spinner className="h-4 w-4" />
         {t("htmlViewer.loading")}
       </div>
@@ -70,7 +70,7 @@ export default function DocumentHtmlViewer({
     <div className={className}>
       {/* Redline legend: insertion / deletion counts */}
       {versionType === "redline" ? (
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-ink-200 bg-ink-50 px-3 py-2 text-xs text-ink-600">
           <span className="inline-flex items-center gap-1.5">
             <span
               className="h-2.5 w-2.5 rounded-sm bg-emerald-200 ring-1 ring-emerald-400"
@@ -93,7 +93,7 @@ export default function DocumentHtmlViewer({
       {/* Page-like white card. The HTML is server-rendered from a fixed tag
           whitelist with all text escaped — safe to inject. */}
       <article
-        className="doc-html max-h-[560px] overflow-auto rounded-md border border-slate-200 bg-white px-8 py-7 shadow-inner"
+        className="doc-html max-h-[560px] overflow-auto rounded-md border border-ink-200 bg-white px-8 py-7 shadow-inner"
         dangerouslySetInnerHTML={{ __html: doc.html }}
       />
     </div>

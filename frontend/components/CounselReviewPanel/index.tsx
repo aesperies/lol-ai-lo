@@ -142,10 +142,10 @@ export default function CounselReviewPanel({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle>{t("counsel.reviewTitle")}</CardTitle>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-ink-500">
               {request.docTypeLabel ?? request.docType} — {request.fundName}
             </p>
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-ink-400">
               {t("counsel.requestedBy")}: {request.requestedByName ?? request.userId}
             </p>
             <div className="mt-2">
@@ -184,7 +184,7 @@ export default function CounselReviewPanel({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle>{t("counsel.editorTitle")}</CardTitle>
-            <p className="mt-0.5 text-xs text-slate-500">{t("counsel.editorHint")}</p>
+            <p className="mt-0.5 text-xs text-ink-500">{t("counsel.editorHint")}</p>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" className="px-2 py-1 font-bold" onClick={() => exec("bold")}>
@@ -216,7 +216,7 @@ export default function CounselReviewPanel({
           <Button variant="secondary" onClick={() => void handleDownload()}>
             ⬇ {t("counsel.downloadDocx")}
           </Button>
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors hover:border-ink-300 hover:bg-ink-50">
             ⬆ {t("counsel.uploadDocx")}
             <input
               type="file"
@@ -236,13 +236,13 @@ export default function CounselReviewPanel({
       <Card>
         <CardTitle className="mb-3">{t("counsel.comments")}</CardTitle>
         {comments.length === 0 ? (
-          <p className="text-sm text-slate-400">{t("counsel.noComments")}</p>
+          <p className="text-sm text-ink-400">{t("counsel.noComments")}</p>
         ) : (
           <ul className="space-y-3">
             {comments.map((c) => (
-              <li key={c.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                <p className="text-sm text-slate-700">{c.text}</p>
-                <p className="mt-1 text-xs text-slate-400">
+              <li key={c.id} className="rounded-lg border border-ink-200 bg-ink-50 p-3">
+                <p className="text-sm text-ink-700">{c.text}</p>
+                <p className="mt-1 text-xs text-ink-400">
                   {c.author} — {new Date(c.createdAt).toLocaleString()}
                 </p>
               </li>

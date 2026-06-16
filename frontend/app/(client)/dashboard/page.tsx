@@ -19,10 +19,10 @@ function UsageWidget({ usage }: { usage: MyUsage }) {
   return (
     <Card className="mb-6 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <span className="text-xs font-medium uppercase tracking-wide text-ink-400">
           {t("dashboard.usageTitle")}
         </span>
-        <span className="text-sm text-slate-700">
+        <span className="text-sm text-ink-700">
           {usage.docsLimit === null
             ? t("dashboard.usageUnlimited", { used: usage.docsGenerated })
             : t("dashboard.usage", {
@@ -74,37 +74,37 @@ export default function ClientDashboardPage() {
           <Spinner />
         </div>
       ) : requests.length === 0 ? (
-        <Card className="text-center text-sm text-slate-500">
+        <Card className="text-center text-sm text-ink-500">
           {error ? t("common.error") : t("dashboard.empty")}
         </Card>
       ) : (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-6 py-3 font-medium">{t("common.docType")}</th>
-                <th className="px-6 py-3 font-medium">{t("common.fund")}</th>
-                <th className="px-6 py-3 font-medium">{t("common.status")}</th>
-                <th className="px-6 py-3 font-medium">{t("common.date")}</th>
-                <th className="px-6 py-3 font-medium" />
+              <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.docType")}</th>
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.fund")}</th>
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.status")}</th>
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.date")}</th>
+                <th scope="col" className="px-6 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
               {requests.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-6 py-4 font-medium text-slate-800">
+                <tr key={r.id} className="border-b border-ink-100 last:border-0 hover:bg-ink-50">
+                  <td className="px-6 py-4 font-medium text-ink-800">
                     {r.docTypeLabel ?? r.docType}
                     {r.docTypeCustom ? (
-                      <span className="block text-xs font-normal text-slate-400">
+                      <span className="block text-xs font-normal text-ink-400">
                         {r.docTypeCustom}
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-6 py-4 text-slate-600">{r.fundName ?? r.fundId}</td>
+                  <td className="px-6 py-4 text-ink-600">{r.fundName ?? r.fundId}</td>
                   <td className="px-6 py-4">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="px-6 py-4 text-slate-500">
+                  <td className="px-6 py-4 text-ink-500">
                     {new Date(r.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right">

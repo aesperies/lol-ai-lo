@@ -70,7 +70,7 @@ export default function AccountPrivacyPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardTitle className="mb-2">{t("account.privacy.export")}</CardTitle>
-          <p className="mb-4 text-sm text-slate-600">
+          <p className="mb-4 text-sm text-ink-600">
             {t("account.privacy.exportHint")}
           </p>
           <Button onClick={() => void handleExport()} disabled={busy}>
@@ -80,7 +80,7 @@ export default function AccountPrivacyPage() {
 
         <Card>
           <CardTitle className="mb-2">{t("account.privacy.delete")}</CardTitle>
-          <p className="mb-4 text-sm text-slate-600">
+          <p className="mb-4 text-sm text-ink-600">
             {t("account.privacy.deleteHint")}
           </p>
           <form className="space-y-4" onSubmit={handleDelete}>

@@ -138,7 +138,7 @@ export default function IntakeForm({
             value={value}
             onChange={onChange}
           />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-slate-400">
+          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-ink-400">
             {suffix}
           </span>
         </div>
@@ -238,11 +238,11 @@ export default function IntakeForm({
 
         {/* Structured fields per doc_type — between type select and freetext */}
         {docFields.length > 0 ? (
-          <fieldset className="rounded-md border border-slate-200 bg-slate-50 p-4">
-            <legend className="px-1 text-sm font-medium text-slate-800">
+          <fieldset className="rounded-md border border-ink-200 bg-ink-50 p-4">
+            <legend className="px-1 text-sm font-medium text-ink-800">
               {t("intake.structuredHeading")}
             </legend>
-            <p className="mb-3 text-xs text-slate-500">
+            <p className="mb-3 text-xs text-ink-500">
               {t("intake.structuredHint")}
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -255,14 +255,14 @@ export default function IntakeForm({
                         *
                       </span>
                     ) : (
-                      <span className="ml-1 text-xs font-normal text-slate-400">
+                      <span className="ml-1 text-xs font-normal text-ink-400">
                         ({t("common.optional")})
                       </span>
                     )}
                   </Label>
                   {structuredFieldInput(spec)}
                   {spec.help ? (
-                    <p className="mt-1 text-xs text-slate-400">{spec.help}</p>
+                    <p className="mt-1 text-xs text-ink-400">{spec.help}</p>
                   ) : null}
                 </div>
               ))}
@@ -287,7 +287,7 @@ export default function IntakeForm({
             required
           />
           <div className="mt-1.5 flex items-center justify-between text-xs">
-            <span className={belowMin && charCount > 0 ? "text-amber-600" : "text-slate-400"}>
+            <span className={belowMin && charCount > 0 ? "text-amber-600" : "text-ink-400"}>
               {belowMin ? t("intake.minChars", { min: FREETEXT_MIN }) : " "}
             </span>
             <span
@@ -296,7 +296,7 @@ export default function IntakeForm({
                   ? "font-medium text-red-600"
                   : belowMin
                     ? "text-amber-600"
-                    : "text-slate-400"
+                    : "text-ink-400"
               }
             >
               {t("intake.charCount", { count: charCount, max: FREETEXT_MAX })}
@@ -305,13 +305,13 @@ export default function IntakeForm({
         </div>
 
         {/* Counsel validation toggle (default OFF) */}
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-md border border-ink-200 bg-ink-50 p-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-slate-800">
+              <p className="text-sm font-medium text-ink-800">
                 {t("intake.counselToggle")}
               </p>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-ink-500">
                 {t("intake.counselHint")}
               </p>
             </div>
@@ -322,20 +322,20 @@ export default function IntakeForm({
             />
           </div>
           {requiresCounsel ? (
-            <div className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-700">
+            <div className="mt-3 border-t border-ink-200 pt-3 text-sm text-ink-700">
               {counsel ? (
                 <>
                   <p>
                     <span className="font-medium">{t("intake.assignedCounsel")}:</span>{" "}
                     {counsel.name} — {counsel.email}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-ink-500">
                     {t("intake.turnaround", { hours: counsel.turnaroundHours })}
                   </p>
                 </>
               ) : (
                 // No counsel assigned to this gestora (GET /api/my/counsel → null).
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-500">
                   {t("intake.noAssignedCounsel")}
                 </p>
               )}
