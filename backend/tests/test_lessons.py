@@ -20,7 +20,7 @@ from services import lessons, llm
 def _stub_complete_json(monkeypatch, payload):
     monkeypatch.setattr(
         llm, "complete_json",
-        lambda prompt, schema, *, max_tokens=8192, system=None: payload,
+        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: payload,
     )
 
 

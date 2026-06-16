@@ -84,7 +84,9 @@ def _run_refinement_pipeline(
         raise RuntimeError(f"No draft to refine for request {request_id}")
     current_text = docx_renderer.extract_text(storage.read(current_draft["file_path"]))
 
-    text = generator.refine_document(current_text=current_text, instruction=instruction)
+    text = generator.refine_document(
+        current_text=current_text, instruction=instruction, gestora_id=gestora_id
+    )
     unclear_reason = generator.refinement_unclear_reason(text)
     if unclear_reason is not None:
         # Handled (non-retryable) outcome: the previous iteration stays the

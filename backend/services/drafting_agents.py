@@ -64,7 +64,9 @@ def draft(
     checklist as the ``system`` message and injects the gestora's learned
     lessons (top-K, siloed) as ``extra_guidance`` — then delegates to
     :func:`generator.generate_document` (verbatim template untouched, SLP
-    disclaimer preserved).
+    disclaimer preserved). The generator additionally appends its
+    ``SOURCE_GUIDANCE`` so the drafter may ground adapted clauses with inline
+    ``[SOURCE: ...]`` citation markers (grounding Feature 1).
     """
     # Local import: avoid any import-time coupling with the verbatim generator.
     from services import generator
@@ -87,6 +89,9 @@ def draft(
         precedent_text=precedent_text,
         system=system,
         extra_guidance=extra_guidance,
+        # Route to the gestora's BYO LLM provider/model/key when configured
+        # (account-security feature C); None → global provider.
+        gestora_id=gestora_id,
     )
 
 

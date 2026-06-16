@@ -38,7 +38,19 @@ _MARGIN_CM = 2.5  # ~1 inch professional margins.
 # but we highlight them so counsel/client can spot them at a glance.
 _FLAG_MARKERS = ("[MISSING:", "[DEVIATION:", "[REFINEMENT-UNCLEAR:")
 _FLAG_HIGHLIGHT = RGBColor(0xB0, 0x00, 0x00)  # dark red run colour
-_FLAG_SPLIT_RE = re.compile(r"(\[(?:MISSING|DEVIATION|REFINEMENT-UNCLEAR):[^\]]*\])")
+# Verifiable-citation marker (grounding Feature 1). A sibling of the flag
+# markers but styled distinctly: small, muted, footnote-style (NOT the dark-red
+# defect highlight) — a citation, not a defect. Also survives extract_text
+# verbatim. The closing-bracket-aware pattern allows the literal ``]`` that may
+# appear inside the quoted excerpt (it matches up to the final ``]``).
+_SOURCE_MARKER = "[SOURCE:"
+_SOURCE_FOOTNOTE = RGBColor(0x66, 0x66, 0x66)  # muted grey run colour
+# All inline markers, used to split a line into runs. SOURCE is matched first
+# (its bracket may wrap a quote containing ']'); the others are bracket-bounded.
+_FLAG_SPLIT_RE = re.compile(
+    r'(\[SOURCE:[^\]]*"[^"]*"\s*\]'
+    r"|\[(?:MISSING|DEVIATION|REFINEMENT-UNCLEAR):[^\]]*\])"
+)
 
 # Structure recognition patterns (applied to a stripped line).
 #   "1." / "1.1" / "1.1.1" / "12.3."  -> numbered clause. Groups capped at two
@@ -93,12 +105,14 @@ def _apply_base_style(document: Document) -> None:
 
 
 def _add_flagged_runs(paragraph, text: str) -> None:
-    """Add ``text`` to ``paragraph`` as runs, highlighting any flag markers.
+    """Add ``text`` to ``paragraph`` as runs, styling any inline markers.
 
-    The marker text is emitted verbatim (so extract_text round-trips it) but in
-    a distinct dark-red, bold run; surrounding text is a plain run.
+    Every marker is emitted verbatim (so extract_text round-trips it) but in a
+    distinct run: defect flags ([MISSING:]/[DEVIATION:]/[REFINEMENT-UNCLEAR:])
+    in dark-red bold; verifiable-citation markers ([SOURCE:]) in a small, muted,
+    superscript footnote-style run. Surrounding text is a plain run.
     """
-    if not any(marker in text for marker in _FLAG_MARKERS):
+    if not any(marker in text for marker in (*_FLAG_MARKERS, _SOURCE_MARKER)):
         paragraph.add_run(text)
         return
     for segment in _FLAG_SPLIT_RE.split(text):
@@ -108,6 +122,12 @@ def _add_flagged_runs(paragraph, text: str) -> None:
         if segment.startswith(_FLAG_MARKERS):
             run.bold = True
             run.font.color.rgb = _FLAG_HIGHLIGHT
+        elif segment.startswith(_SOURCE_MARKER):
+            # Footnote-style citation: small, muted, superscript — distinct from
+            # the defect highlight, reads as a subtle source reference.
+            run.font.size = Pt(8)
+            run.font.color.rgb = _SOURCE_FOOTNOTE
+            run.font.superscript = True
 
 
 def _render_body_line(document: Document, line: str) -> None:

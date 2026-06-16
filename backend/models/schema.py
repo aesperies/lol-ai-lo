@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -90,6 +90,22 @@ class AuditAction(str, Enum):
     playbook_created = "playbook_created"
     playbook_updated = "playbook_updated"
     playbook_deleted = "playbook_deleted"
+    # Tabular Review (010_tabular_reviews.sql): multi-document extraction grid,
+    # gestora-siloed. Created/run/exported + column/document mutations.
+    tabular_review_created = "tabular_review_created"
+    tabular_review_run = "tabular_review_run"
+    tabular_review_column_added = "tabular_review_column_added"
+    tabular_review_column_deleted = "tabular_review_column_deleted"
+    tabular_review_document_deleted = "tabular_review_document_deleted"
+    tabular_review_exported = "tabular_review_exported"
+    # Account & security (011_account_security.sql).
+    # MFA status mirror (Supabase enforces the actual TOTP factor).
+    mfa_status_changed = "mfa_status_changed"
+    # GDPR data-subject rights (RGPD arts. 15/17).
+    data_exported = "data_exported"
+    data_subject_deleted = "data_subject_deleted"
+    # Per-gestora BYO model configuration.
+    model_config_updated = "model_config_updated"
 
 
 class AuditResourceType(str, Enum):
@@ -101,6 +117,11 @@ class AuditResourceType(str, Enum):
     gestora = "gestora"
     # Review playbooks (009_models_and_playbooks.sql).
     playbook = "playbook"
+    # Tabular Review (010_tabular_reviews.sql).
+    tabular_review = "tabular_review"
+    # Account & security (011_account_security.sql).
+    user = "user"
+    model_config = "model_config"
 
 
 class UsageEventType(str, Enum):
@@ -128,6 +149,50 @@ class SlaEventKind(str, Enum):
 
     reminder = "reminder"
     escalation = "escalation"
+
+
+# ---------------------------------------------------------------------------
+# Tabular Review (010_tabular_reviews.sql) — multi-document extraction grid.
+# ---------------------------------------------------------------------------
+
+class TabularReviewStatus(str, Enum):
+    """Mirrors tabular_reviews.status."""
+
+    draft = "draft"
+    running = "running"
+    complete = "complete"
+    failed = "failed"
+
+
+class TabularColType(str, Enum):
+    """Answer type of a tabular column (mirrors tabular_review_columns.col_type)."""
+
+    text = "text"
+    number = "number"
+    percent = "percent"
+    monetary = "monetary"
+    date = "date"
+    yes_no = "yes_no"
+    tag = "tag"
+
+
+class TabularSourceKind(str, Enum):
+    """What a review document references (mirrors tabular_review_documents.source_kind).
+
+    Both kinds already live in the gestora silo: a precedent VERSION
+    (precedent_versions.id) or a generated request DOCUMENT (documents.id).
+    """
+
+    precedent_version = "precedent_version"
+    request_document = "request_document"
+
+
+class TabularCellStatus(str, Enum):
+    """Mirrors tabular_review_cells.status."""
+
+    pending = "pending"
+    done = "done"
+    error = "error"
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +317,9 @@ class User(BaseModel):
     email: str
     role: UserRole = UserRole.client
     gestora_id: Optional[str] = None  # NULL for admin/counsel
+    # Status mirror only (011_account_security.sql): Supabase Auth enforces the
+    # actual TOTP factor; this reflects it for display + an admin overview.
+    mfa_enabled: bool = False
     created_at: Optional[datetime] = None
 
 
@@ -520,7 +588,9 @@ class GenerationReviewOut(BaseModel):
     """One persisted critic round (services/critic.py ReviewRound), surfaced
     read-only to client/counsel/admin for the request they may access. The
     ``issues`` list mirrors the critic Issue shape (severity / category /
-    problem / suggested_fix / location)."""
+    problem / suggested_fix / location / citation), where ``citation`` is a
+    verifiable {where, quote} pointer to the offending DRAFT text (grounding
+    Feature 2)."""
 
     round: int
     approved: bool
@@ -547,3 +617,178 @@ class RequestBranchOut(BaseModel):
 
     doc_type: str
     branch: str
+
+
+# ---------------------------------------------------------------------------
+# Tabular Review DTOs (010_tabular_reviews.sql)
+# ---------------------------------------------------------------------------
+
+class TabularColumnCreate(BaseModel):
+    """A column to extract: a question + the answer type (+ options for 'tag')."""
+
+    name: str
+    question: str
+    col_type: TabularColType
+    options: Optional[list[str]] = None
+
+
+class TabularDocumentCreate(BaseModel):
+    """A document to add as a grid row. ``source_id`` points to a
+    precedent_versions.id or documents.id depending on ``source_kind``; both
+    must belong to the caller's gestora silo (validated at create time)."""
+
+    source_kind: TabularSourceKind
+    source_id: str
+    label: Optional[str] = None
+
+
+class TabularReviewCreate(BaseModel):
+    """Create a tabular review with its columns and documents (status 'draft')."""
+
+    title: str
+    fund_id: Optional[str] = None
+    columns: list[TabularColumnCreate] = Field(default_factory=list)
+    documents: list[TabularDocumentCreate] = Field(default_factory=list)
+
+
+class TabularColumnOut(BaseModel):
+    id: str
+    review_id: str
+    position: int
+    name: str
+    question: str
+    col_type: str
+    options: Optional[list[str]] = None
+    created_at: Optional[datetime] = None
+
+
+class TabularDocumentOut(BaseModel):
+    id: str
+    review_id: str
+    position: int
+    source_kind: str
+    source_id: str
+    label: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class TabularCellOut(BaseModel):
+    """One extracted cell: a typed value + reasoning + verifiable citation
+    ({"page": ..., "quote": ...}) from the document, or an error message."""
+
+    id: str
+    document_id: str
+    column_id: str
+    value: Optional[str] = None
+    reasoning: Optional[str] = None
+    citation: Optional[dict[str, Any]] = None
+    status: str
+    error: Optional[str] = None
+
+
+class TabularReviewOut(BaseModel):
+    """A tabular review header (list view)."""
+
+    id: str
+    gestora_id: str
+    fund_id: Optional[str] = None
+    created_by: Optional[str] = None
+    title: str
+    status: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class TabularReviewDetailOut(TabularReviewOut):
+    """A tabular review with its columns, documents and cells (the full grid)."""
+
+    columns: list[TabularColumnOut] = Field(default_factory=list)
+    documents: list[TabularDocumentOut] = Field(default_factory=list)
+    cells: list[TabularCellOut] = Field(default_factory=list)
+
+
+class TabularReviewStatusOut(BaseModel):
+    """Lightweight status payload for the polling loop while a review runs."""
+
+    id: str
+    status: str
+    cell_total: int
+    cell_done: int
+    cell_error: int
+
+
+# ---------------------------------------------------------------------------
+# Account & security (011_account_security.sql)
+# ---------------------------------------------------------------------------
+
+class UserProfileOut(BaseModel):
+    """The calling user's own profile (GET /api/me), incl. the MFA flag."""
+
+    id: str
+    email: str
+    role: UserRole
+    gestora_id: Optional[str] = None
+    mfa_enabled: bool = False
+    created_at: Optional[datetime] = None
+
+
+class MfaStatusBody(BaseModel):
+    """POST /api/me/mfa — the client mirrors its Supabase TOTP status here after
+    a successful enroll-verify / unenroll. Supabase enforces the real factor."""
+
+    enabled: bool
+
+
+class DataDeleteBody(BaseModel):
+    """POST /api/me/delete — self-service erasure/anonymisation.
+
+    ``confirm`` MUST be the literal string below (a safety interlock so a stray
+    request can never wipe data); ``mode`` defaults to the reversible-ish
+    'anonymize'. 'erase' permanently removes the user's own rows + files.
+    """
+
+    confirm: str
+    mode: Literal["anonymize", "erase"] = "anonymize"
+
+
+# The exact confirmation phrase the client must type/send for a self-service
+# deletion (also surfaced verbatim in the UI).
+DATA_DELETE_CONFIRMATION = "ELIMINAR MIS DATOS"
+
+
+class ModelConfigBody(BaseModel):
+    """PUT /api/admin/gestoras/{id}/model-config — partial update.
+
+    Provider/model/base-url fields: send a value to set, ``""`` to clear back to
+    the global default. API-key fields are WRITE-ONLY: send a non-empty string
+    to set (it is encrypted at rest), ``""`` to clear the stored key, or omit to
+    leave it unchanged. The GET response NEVER returns decrypted keys.
+    """
+
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+
+
+class ModelConfigOut(BaseModel):
+    """GET/PUT /api/admin/gestoras/{id}/model-config — never exposes key plaintext.
+
+    ``*_key_set`` booleans report whether an encrypted key is stored; the values
+    themselves are write-only. ``is_default`` is true when the gestora has no
+    override row (everything falls back to the global settings)."""
+
+    gestora_id: str
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    anthropic_key_set: bool = False
+    openai_key_set: bool = False
+    is_default: bool = False
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None

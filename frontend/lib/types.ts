@@ -88,6 +88,49 @@ export const RETENTION_MONTHS_MIN = 6;
 export const RETENTION_MONTHS_MAX = 120;
 export const RETENTION_MONTHS_DEFAULT = 60;
 
+/* ---------- Account & security (011_account_security.sql) ------------- */
+
+/** The calling user's own profile, incl. the MFA status mirror (GET /api/me). */
+export interface AccountProfile {
+  id: string;
+  email: string;
+  role: Role;
+  gestoraId: string | null;
+  mfaEnabled: boolean;
+}
+
+/** A Supabase MFA factor (subset of @supabase/supabase-js Factor). */
+export interface MfaFactor {
+  id: string;
+  friendlyName: string | null;
+  status: string;
+}
+
+/** GDPR deletion mode (services/data_subject.py). */
+export type DeleteMode = "anonymize" | "erase";
+
+/** Exact confirmation phrase required to delete one's own data (backend
+ * DATA_DELETE_CONFIRMATION). */
+export const DATA_DELETE_CONFIRMATION = "ELIMINAR MIS DATOS";
+
+/** LLM provider options for the per-gestora model config. */
+export type LlmProvider = "ollama" | "anthropic";
+export type EmbeddingProvider = "ollama" | "openai";
+
+/** Per-gestora model configuration (no plaintext keys ever; *_key_set only). */
+export interface ModelConfig {
+  gestoraId: string;
+  llmProvider: string | null;
+  llmModel: string | null;
+  embeddingProvider: string | null;
+  embeddingModel: string | null;
+  ollamaBaseUrl: string | null;
+  anthropicKeySet: boolean;
+  openaiKeySet: boolean;
+  isDefault: boolean;
+  updatedAt: string | null;
+}
+
 export interface Fund {
   id: string;
   gestoraId: string;
@@ -277,6 +320,13 @@ export type ReviewIssueCategory =
   | "legal"
   | "consistency";
 
+/** A verifiable {where, quote} pointer to the offending DRAFT text
+ * (grounding Feature 2; same shape as the tabular-review {page, quote}). */
+export interface ReviewIssueCitation {
+  where: string;
+  quote: string;
+}
+
 /** One substantive defect raised by the automated critic
  * (backend services/critic.py Issue). */
 export interface ReviewIssue {
@@ -285,6 +335,8 @@ export interface ReviewIssue {
   problem: string;
   suggestedFix?: string;
   location?: string;
+  /** Verifiable citation to the exact problematic draft text. */
+  citation?: ReviewIssueCitation;
 }
 
 /** One persisted critic round (GET /api/requests/{id}/reviews). */
@@ -458,4 +510,117 @@ export interface MyUsage {
   docsGenerated: number;
   /** null = unlimited (custom tier). */
   docsLimit: number | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tabular Review (010_tabular_reviews.sql) — extraction grid           */
+/* ------------------------------------------------------------------ */
+
+/** Answer type of a tabular column (mirrors backend TabularColType). */
+export type ColType =
+  | "text"
+  | "number"
+  | "percent"
+  | "monetary"
+  | "date"
+  | "yes_no"
+  | "tag";
+
+export const COL_TYPES: ColType[] = [
+  "text",
+  "number",
+  "percent",
+  "monetary",
+  "date",
+  "yes_no",
+  "tag",
+];
+
+export type TabularReviewStatus = "draft" | "running" | "complete" | "failed";
+
+export type TabularCellStatus = "pending" | "done" | "error";
+
+/** What a review document references; both live in the gestora silo. */
+export type TabularSourceKind = "precedent_version" | "request_document";
+
+/** A column = a question + an answer type (+ options for the 'tag' type). */
+export interface TabularColumn {
+  id: string;
+  reviewId: string;
+  position: number;
+  name: string;
+  question: string;
+  colType: ColType;
+  options: string[] | null;
+}
+
+/** A document row in the grid (a precedent version or a generated document). */
+export interface TabularDocumentRef {
+  id: string;
+  reviewId: string;
+  position: number;
+  sourceKind: TabularSourceKind;
+  sourceId: string;
+  label: string | null;
+}
+
+/** A verifiable citation: page (null for plain text) + verbatim quote. */
+export interface TabularCitation {
+  page: number | string | null;
+  quote: string | null;
+}
+
+/** One extracted cell: a typed value + reasoning + citation, or an error. */
+export interface TabularCell {
+  id: string;
+  documentId: string;
+  columnId: string;
+  value: string | null;
+  reasoning: string | null;
+  citation: TabularCitation | null;
+  status: TabularCellStatus;
+  error: string | null;
+}
+
+/** A tabular review header (list view). */
+export interface TabularReview {
+  id: string;
+  gestoraId: string;
+  fundId: string | null;
+  createdBy: string | null;
+  title: string;
+  status: TabularReviewStatus;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+/** A tabular review with its full grid (columns + documents + cells). */
+export interface TabularReviewDetail extends TabularReview {
+  columns: TabularColumn[];
+  documents: TabularDocumentRef[];
+  cells: TabularCell[];
+}
+
+/** Lightweight progress payload for the polling loop while a review runs. */
+export interface TabularReviewStatusInfo {
+  id: string;
+  status: TabularReviewStatus;
+  cellTotal: number;
+  cellDone: number;
+  cellError: number;
+}
+
+/** A document the user can pick into a new review (precedents / generated). */
+export interface TabularDocumentOption {
+  sourceKind: TabularSourceKind;
+  sourceId: string;
+  label: string;
+}
+
+/** Input column for the new-review flow (no ids yet). */
+export interface TabularColumnInput {
+  name: string;
+  question: string;
+  colType: ColType;
+  options?: string[] | null;
 }

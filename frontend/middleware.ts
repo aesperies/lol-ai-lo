@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Role-based route protection:
- *   /dashboard, /new-request, /documents → client
+ *   /dashboard, /new-request, /documents, /tabular-reviews → client
  *   /review, /counsel                    → counsel
  *   /admin                               → admin
  * Unauthenticated → redirect to /login.
@@ -20,6 +20,8 @@ const ROUTE_ROLES: Array<{ prefix: string; role: Role }> = [
   { prefix: "/dashboard", role: "client" },
   { prefix: "/new-request", role: "client" },
   { prefix: "/documents", role: "client" },
+  { prefix: "/tabular-reviews", role: "client" },
+  { prefix: "/account", role: "client" },
   { prefix: "/review", role: "counsel" },
   { prefix: "/counsel", role: "counsel" },
   { prefix: "/admin", role: "admin" },
@@ -110,6 +112,10 @@ export const config = {
     "/new-request",
     "/documents/:path*",
     "/documents",
+    "/tabular-reviews/:path*",
+    "/tabular-reviews",
+    "/account/:path*",
+    "/account",
     "/review/:path*",
     "/review",
     "/counsel/:path*",
