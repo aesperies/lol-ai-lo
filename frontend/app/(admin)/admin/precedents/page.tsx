@@ -24,6 +24,7 @@ import {
   getGestoras,
   getPrecedents,
   supersedePrecedentVersion,
+  uploadModel,
   uploadPrecedent,
 } from "@/lib/api";
 import { DOC_TYPE_CATALOG, docTypeGroupLabel } from "@/lib/catalog";
@@ -37,6 +38,9 @@ export default function AdminPrecedentsPage() {
   const [gestoras, setGestoras] = useState<Gestora[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // "Modelos" (gestora master templates) vs "Precedentes" (everything else).
+  const [tab, setTab] = useState<"precedents" | "models">("precedents");
 
   // Upload form
   const [uploadGestora, setUploadGestora] = useState("");
@@ -60,13 +64,19 @@ export default function AdminPrecedentsPage() {
     setBusy(true);
     setNotice(null);
     try {
-      await uploadPrecedent({
+      const input = {
         gestoraId: uploadGestora,
         docType: uploadDocType,
         language: uploadLanguage,
         file: uploadFile,
-      });
-      setNotice(t("admin.precedents.uploaded"));
+      };
+      if (tab === "models") {
+        await uploadModel(input);
+        setNotice(t("admin.models.uploaded"));
+      } else {
+        await uploadPrecedent(input);
+        setNotice(t("admin.precedents.uploaded"));
+      }
       setUploadFile(null);
       await refresh();
     } catch {
@@ -96,28 +106,60 @@ export default function AdminPrecedentsPage() {
     }
   }
 
+  const isModelTab = tab === "models";
+  const visible = (precedents ?? []).filter((p) =>
+    isModelTab ? p.source === "gestora_model" : p.source !== "gestora_model",
+  );
+
   return (
     <div>
       <PageHeader
-        title={t("admin.precedents.title")}
-        subtitle={t("admin.precedents.subtitle")}
+        title={
+          isModelTab ? t("admin.models.title") : t("admin.precedents.title")
+        }
+        subtitle={
+          isModelTab
+            ? t("admin.models.subtitle")
+            : t("admin.precedents.subtitle")
+        }
       />
+
+      {/* Modelos | Precedentes tabs */}
+      <div className="mb-6 inline-flex rounded-md border border-slate-200 bg-slate-100 p-1">
+        {(["precedents", "models"] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={tab === key}
+            onClick={() => setTab(key)}
+            className={
+              tab === key
+                ? "rounded px-3 py-1.5 text-sm font-medium bg-white text-slate-900 shadow-sm"
+                : "rounded px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700"
+            }
+          >
+            {key === "models"
+              ? t("admin.models.tabModels")
+              : t("admin.models.tabPrecedents")}
+          </button>
+        ))}
+      </div>
 
       {notice ? <Banner tone="info" className="mb-6">{notice}</Banner> : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Precedent list with versions */}
+        {/* Precedent / model list with versions */}
         <div className="space-y-4 lg:col-span-2">
           {precedents === null ? (
             <div className="flex justify-center py-16">
               <Spinner />
             </div>
-          ) : precedents.length === 0 ? (
+          ) : visible.length === 0 ? (
             <Card className="text-center text-sm text-slate-500">
-              {t("common.empty")}
+              {isModelTab ? t("admin.models.empty") : t("common.empty")}
             </Card>
           ) : (
-            precedents.map((p) => (
+            visible.map((p) => (
               <Card key={p.id}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -188,9 +230,15 @@ export default function AdminPrecedentsPage() {
 
         {/* Upload */}
         <Card className="self-start">
-          <CardTitle className="mb-1">{t("admin.precedents.upload")}</CardTitle>
+          <CardTitle className="mb-1">
+            {isModelTab
+              ? t("admin.models.upload")
+              : t("admin.precedents.upload")}
+          </CardTitle>
           <p className="mb-4 text-xs text-slate-500">
-            {t("admin.precedents.uploadHint")}
+            {isModelTab
+              ? t("admin.models.uploadHint")
+              : t("admin.precedents.uploadHint")}
           </p>
           <form className="space-y-4" onSubmit={handleUpload}>
             <div>

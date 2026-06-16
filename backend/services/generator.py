@@ -49,6 +49,13 @@ NO_PRECEDENT_PLACEHOLDER = (
     "structure for this document type in this jurisdiction)"
 )
 
+# Header for the optional, gestora-siloed lessons block (drafting-agents
+# Feature 1/3). Appended AFTER the verbatim GENERATION_PROMPT body so the
+# template itself is never altered.
+EXTRA_GUIDANCE_HEADER = (
+    "DRAFTING GUIDANCE — learned from THIS gestora's validated documents:"
+)
+
 # Iterative refinement prompt (improvement #4). Same conventions as
 # GENERATION_PROMPT: placeholders substituted via .replace() to avoid
 # clashing with literal braces in document text.
@@ -96,8 +103,24 @@ def generate_document(
     key_terms: list[dict[str, Any]],
     freetext: str,
     precedent_text: Optional[str],
+    system: Optional[str] = None,
+    extra_guidance: Optional[str] = None,
 ) -> str:
-    """Generate the document text and append the SLP disclaimer."""
+    """Generate the document text and append the SLP disclaimer.
+
+    The verbatim ``GENERATION_PROMPT`` body is NEVER edited. Specialized
+    drafting agents (services/drafting_agents.py) steer generation through two
+    additive seams:
+
+    - ``system``: an optional system persona (e.g. a branch persona +
+      checklist) passed straight through to ``llm.complete(system=...)``.
+    - ``extra_guidance``: an optional, clearly-labelled block (e.g. the
+      gestora-siloed learned lessons) appended AFTER the template body so the
+      template itself is untouched.
+
+    Both default to ``None``, keeping the existing call signature working for
+    legacy callers and tests.
+    """
     prompt = (
         GENERATION_PROMPT
         .replace("{doc_type}", doc_type)
@@ -111,7 +134,11 @@ def generate_document(
         .replace("{freetext}", freetext)
         .replace("{precedent_text}", precedent_text or NO_PRECEDENT_PLACEHOLDER)
     )
-    text = llm.complete(prompt, max_tokens=get_settings().max_generation_tokens).strip()
+    if extra_guidance:
+        prompt = f"{prompt}\n\n{EXTRA_GUIDANCE_HEADER}\n{extra_guidance}"
+    text = llm.complete(
+        prompt, max_tokens=get_settings().max_generation_tokens, system=system
+    ).strip()
     # Mandatory on every generated document (SPEC corporate structure).
     return f"{text}\n\n{SLP_DISCLAIMER}"
 

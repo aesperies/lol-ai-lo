@@ -37,7 +37,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import config
-from models.schema import LEVEL3_WARNING, SLP_DISCLAIMER, PrecedentVersionStatus
+from models.schema import LEVEL3_WARNING, SLP_DISCLAIMER, PrecedentSource, PrecedentVersionStatus
 from services import db as dbmod
 from services import docx_renderer, generator, intake_parser, llm, storage
 
@@ -176,8 +176,13 @@ def seed_precedent(
         {"gestora_id": gestora_id, "fund_id": None, "doc_type": doc_type, "language": language, "source": source},
     )
     data = docx_renderer.render_docx(text) if extension == ".docx" else text.encode("utf-8")
-    prefix = f"gestoras/{gestora_id}/precedents" if gestora_id else f"lol-ai-lo-templates/{source}/{language}"
-    key = storage.save(f"{prefix}/{precedent['id']}-v1{extension}", data)
+    filename = f"{precedent['id']}-v1{extension}"
+    if gestora_id is None:
+        key = storage.save(f"lol-ai-lo-templates/{source}/{language}/{filename}", data)
+    elif source == PrecedentSource.gestora_model.value:
+        key = storage.save(storage.modelos_path(gestora_id, filename), data)
+    else:
+        key = storage.save(storage.precedentes_path(gestora_id, filename), data)
     weight = {"active": 1.0, "superseded": 0.3}.get(status, 0.0)
     version = db.insert(
         "precedent_versions",

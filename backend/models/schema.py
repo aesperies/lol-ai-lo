@@ -49,6 +49,10 @@ class PrecedentSource(str, Enum):
     validated_output = "validated_output"
     slp_curated = "slp_curated"
     platform_base = "platform_base"
+    # Gestora master template (009_models_and_playbooks.sql): gestora-scoped,
+    # versioned/activated exactly like a precedent, but stored under modelos/
+    # and outranks regular precedents as the generation base (RAG Level 0a).
+    gestora_model = "gestora_model"
 
 
 class PrecedentVersionStatus(str, Enum):
@@ -81,6 +85,11 @@ class AuditAction(str, Enum):
     # GDPR data retention (improvement #10, 007_data_retention.sql).
     retention_policy_updated = "retention_policy_updated"
     retention_sweep = "retention_sweep"
+    # Review playbooks (009_models_and_playbooks.sql): human-authored review
+    # rules injected into the critic. Admin-only CRUD, gestora-siloed.
+    playbook_created = "playbook_created"
+    playbook_updated = "playbook_updated"
+    playbook_deleted = "playbook_deleted"
 
 
 class AuditResourceType(str, Enum):
@@ -90,6 +99,8 @@ class AuditResourceType(str, Enum):
     precedent_version = "precedent_version"
     # GDPR data retention (improvement #10, 007_data_retention.sql).
     gestora = "gestora"
+    # Review playbooks (009_models_and_playbooks.sql).
+    playbook = "playbook"
 
 
 class UsageEventType(str, Enum):
@@ -452,3 +463,87 @@ class RefinementOut(BaseModel):
     created_by: Optional[str] = None
     created_at: Optional[datetime] = None
     applied_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# Review playbooks (009_models_and_playbooks.sql) — human-authored review rules
+# ---------------------------------------------------------------------------
+
+class ReviewPlaybook(BaseModel):
+    """A human-authored set of review rules the critic enforces, STRICTLY
+    gestora-siloed (gestora_id NOT NULL is the hard pre-filter on every read,
+    services/playbooks.py). Optionally scoped to a branch and/or doc_type."""
+
+    id: str
+    gestora_id: str
+    branch: Optional[str] = None
+    doc_type: Optional[str] = None
+    title: str
+    content: str
+    file_path: Optional[str] = None
+    is_active: bool = True
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ReviewPlaybookOut(BaseModel):
+    id: str
+    gestora_id: str
+    branch: Optional[str] = None
+    doc_type: Optional[str] = None
+    title: str
+    content: str
+    file_path: Optional[str] = None
+    is_active: bool = True
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ReviewPlaybookUpdate(BaseModel):
+    """Partial update of a playbook (admin-only). Any omitted field is left
+    unchanged; ``branch``/``doc_type`` are settable to null to widen scope."""
+
+    title: Optional[str] = Field(default=None, min_length=1)
+    content: Optional[str] = Field(default=None, min_length=1)
+    branch: Optional[str] = None
+    doc_type: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Critic review trail (generation_reviews) + drafting lessons surfacing
+# ---------------------------------------------------------------------------
+
+class GenerationReviewOut(BaseModel):
+    """One persisted critic round (services/critic.py ReviewRound), surfaced
+    read-only to client/counsel/admin for the request they may access. The
+    ``issues`` list mirrors the critic Issue shape (severity / category /
+    problem / suggested_fix / location)."""
+
+    round: int
+    approved: bool
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+
+
+class DraftingLessonOut(BaseModel):
+    """One accumulated, gestora-siloed drafting lesson (services/lessons.py).
+    Admin-only read; never exposed cross-gestora."""
+
+    id: str
+    gestora_id: str
+    branch: str
+    doc_type: Optional[str] = None
+    lesson: str
+    weight: float = 1.0
+    created_at: Optional[datetime] = None
+
+
+class RequestBranchOut(BaseModel):
+    """The specialized drafting branch a doc_type resolves to
+    (models/doc_branches.branch_for)."""
+
+    doc_type: str
+    branch: str

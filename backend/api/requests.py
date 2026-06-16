@@ -25,6 +25,7 @@ from auth import (
 )
 from config import get_settings
 from models import doc_fields
+from models.doc_branches import branch_for
 from models.schema import (
     EXIT_A_CHECKBOX_TEXT,
     AuditAction,
@@ -32,8 +33,10 @@ from models.schema import (
     ConfirmParamsBody,
     DocumentVersionType,
     ExitAAcknowledgeBody,
+    GenerationReviewOut,
     PrecedentSource,
     PrecedentVersionStatus,
+    RequestBranchOut,
     RequestCreate,
     RequestOut,
     RequestStatus,
@@ -46,6 +49,7 @@ from services import (
     db as dbmod,
     email_service,
     intake_parser,
+    lessons,
     quality,
     rag,
     signed_urls,
@@ -247,6 +251,47 @@ async def get_request(request_id: str, user: User = Depends(get_current_user)) -
     return row
 
 
+@router.get("/{request_id}/branch", response_model=RequestBranchOut)
+async def get_request_branch(
+    request_id: str, user: User = Depends(get_current_user)
+) -> Any:
+    """The specialized drafting branch used for this request (Feature 1).
+
+    Derived from the request's effective doc_type via doc_branches.branch_for,
+    so the UI can show which agent drafted it. Same gestora-isolation 404 as
+    the other request endpoints."""
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    assert_request_access(db, user, row)
+    doc_type = _effective_doc_type(row)
+    return RequestBranchOut(doc_type=doc_type, branch=branch_for(doc_type).value)
+
+
+@router.get("/{request_id}/reviews", response_model=list[GenerationReviewOut])
+async def get_request_reviews(
+    request_id: str, user: User = Depends(get_current_user)
+) -> Any:
+    """The critic review trail for a request (Feature 2), one entry per round.
+
+    Read-only; same gestora-isolation 404 + access rules as the other request
+    endpoints (client only on own gestora; counsel/admin cross-gestora). When
+    the critic was skipped (LLM unreachable / disabled) the list is empty."""
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    assert_request_access(db, user, row)
+    rounds = db.select("generation_reviews", request_id=request_id)
+    rounds.sort(key=lambda r: r.get("round") or 0)
+    return [
+        GenerationReviewOut(
+            round=r.get("round", 0),
+            approved=bool(r.get("approved")),
+            issues=r.get("issues") or [],
+            created_at=r.get("created_at"),
+        )
+        for r in rounds
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Exit A — "Me vale" (no counsel review; explicit acknowledgment required)
 # ---------------------------------------------------------------------------
@@ -341,6 +386,21 @@ async def exit_a_download(
         quality.record_exit_a_metric(db, request_row=row, gestora_id=gestora_id, draft_doc=draft)
     except Exception:  # noqa: BLE001 — metrics are best-effort by design
         logger.exception("Quality metric failed for request %s (delivery continues)", request_id)
+
+    # Learning (Feature 3): Exit A accepted-as-is is a strong positive signal.
+    # final ≈ draft here, so the similarity short-circuit usually makes this a
+    # no-op; still enqueue (async + best-effort, NEVER blocks delivery).
+    try:
+        lessons.enqueue_extraction(
+            db,
+            gestora_id=gestora_id,
+            doc_type=row["doc_type"],
+            request_id=request_id,
+            ai_draft_path=draft["file_path"],
+            final_path=draft["file_path"],
+        )
+    except Exception:  # noqa: BLE001 — learning is best-effort by design
+        logger.exception("Lessons enqueue failed for request %s (delivery continues)", request_id)
 
     # Precedent candidate: NOT active until an admin approves (guardrail 8).
     precedent = db.insert(
@@ -527,6 +587,22 @@ async def counsel_validate(
         )
     except Exception:  # noqa: BLE001 — metrics are best-effort by design
         logger.exception("Quality metric failed for request %s (validation continues)", request_id)
+
+    # Learning (Feature 3): distill gestora-siloed drafting lessons from the
+    # AI draft vs. the counsel-validated final. Async + best-effort: NEVER
+    # blocks delivery; failures are swallowed + logged inside the helper.
+    try:
+        draft_doc = latest_document(db, request_id, DocumentVersionType.draft)
+        lessons.enqueue_extraction(
+            db,
+            gestora_id=gestora_id,
+            doc_type=row["doc_type"],
+            request_id=request_id,
+            ai_draft_path=draft_doc["file_path"] if draft_doc else None,
+            final_path=source_doc["file_path"],
+        )
+    except Exception:  # noqa: BLE001 — learning is best-effort by design
+        logger.exception("Lessons enqueue failed for request %s (validation continues)", request_id)
 
     audit.log_action(
         db,

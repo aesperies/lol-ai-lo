@@ -116,9 +116,9 @@ def _run_refinement_pipeline(
     # so every redline diffs against the SAME original precedent.
     base_version_id = current_draft.get("precedent_version_id")
 
-    base_path = f"gestoras/{gestora_id}/funds/{row['fund_id']}/documents/{request_id}"
     draft_key = storage.save(
-        f"{base_path}/draft_v{iteration}.docx", docx_renderer.render_docx(text)
+        storage.outputs_path(gestora_id, row["fund_id"], request_id, f"draft_v{iteration}.docx"),
+        docx_renderer.render_docx(text),
     )
     draft_doc = db.insert(
         "documents",
@@ -156,7 +156,7 @@ def _run_refinement_pipeline(
     base_text = rag.load_version_text(base_version) if base_version else None
     if base_text is not None:
         redline_key = storage.save(
-            f"{base_path}/redline_v{iteration}.docx",
+            storage.outputs_path(gestora_id, row["fund_id"], request_id, f"redline_v{iteration}.docx"),
             redline_service.build_redline(base_text, text),
         )
         redline_doc = db.insert(

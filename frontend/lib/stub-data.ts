@@ -9,20 +9,23 @@
  * In-memory only: state resets on full page reload (good enough for dev).
  */
 
-import { docTypeLabel } from "@/lib/catalog";
+import { DOC_TYPE_CATALOG, docTypeLabel } from "@/lib/catalog";
 import { translate, type DictKey } from "@/lib/i18n";
 import type {
   AssignedCounsel,
   BillingReport,
   BillingRow,
+  Branch,
   CounselAssignment,
   CounselComment,
   DocumentHtml,
   DocumentVersionType,
+  DraftingLesson,
   FallbackLevel,
   FieldSpec,
   Fund,
   GenerationJob,
+  GenerationReview,
   Gestora,
   MyUsage,
   ParsedDate,
@@ -36,6 +39,7 @@ import type {
   RequestItem,
   RetentionPolicy,
   ReviewBundle,
+  ReviewPlaybook,
   SlaReport,
   UserProfile,
 } from "@/lib/types";
@@ -408,6 +412,30 @@ export const stubPrecedents: Precedent[] = [
         filePath: "/lol-ai-lo-templates/slp-curated/es/term_sheet.docx",
         status: "draft",
         ragWeight: 0.7,
+        createdBy: "u-admin-1",
+      },
+    ],
+  },
+  // Gestora master template (modelos/): outranks regular precedents as the
+  // generation base. Shown in the admin "Modelos" tab, distinct from precedents.
+  {
+    id: "p-4",
+    gestoraId: STUB_GESTORA.id,
+    fundId: null,
+    docType: "nda",
+    docTypeLabel: docTypeLabel("nda"),
+    language: "es",
+    source: "gestora_model",
+    createdAt: "2026-02-01T09:00:00Z",
+    versions: [
+      {
+        id: "pv-4a",
+        precedentId: "p-4",
+        versionNumber: 1,
+        filePath: "/gestoras/g-demo-1/modelos/nda_modelo_v1.docx",
+        status: "active",
+        ragWeight: 1.0,
+        activatedAt: "2026-02-01T09:05:00Z",
         createdBy: "u-admin-1",
       },
     ],
@@ -859,6 +887,290 @@ export function stubAddComment(
   };
   stubComments.push(comment);
   return comment;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drafting-agents demo data: critic trail, branches, lessons, playbooks */
+/* ------------------------------------------------------------------ */
+
+/** Resolve a doc_type to its drafting branch the way the backend does:
+ * match the catalog group label against the known branch substrings. */
+const GROUP_LABEL_TO_BRANCH: Array<[string, Branch]> = [
+  ["Gobierno Corporativo", "gobierno_corporativo"],
+  ["Operaciones de Fondo", "operaciones_de_fondo"],
+  ["Gestión de Portfolio", "gestion_de_portfolio"],
+  ["Cumplimiento y Regulatorio", "cumplimiento_regulatorio"],
+  ["Contratos con Terceros", "contratos_terceros"],
+];
+
+export function stubBranchForDocType(docType: string): Branch {
+  for (const group of DOC_TYPE_CATALOG) {
+    if (!group.options.some((o) => o.value === docType)) continue;
+    for (const [needle, branch] of GROUP_LABEL_TO_BRANCH) {
+      if (group.label.includes(needle)) return branch;
+    }
+  }
+  return "generic";
+}
+
+export function stubRequestBranch(id: string): Branch {
+  const req = findRequest(id);
+  return stubBranchForDocType(req?.docType ?? "other");
+}
+
+/** Per-request critic review trails. r-3 (term sheet, review_pending) has a
+ * fixed major issue in round 0 then an approved round 1 — so the client
+ * DocumentViewer demo shows a populated InternalReviewPanel. r-2 was derived
+ * to counsel (forced_counsel demo). */
+const stubReviews: Record<string, GenerationReview[]> = {
+  "r-3": [
+    {
+      round: 0,
+      approved: false,
+      createdAt: "2026-06-10T16:01:00Z",
+      issues: [
+        {
+          severity: "major",
+          category: "consistency",
+          problem:
+            "La valoración pre-money (8.000.000 EUR) no coincide con el porcentaje de participación implícito por la inversión de 2.000.000 EUR.",
+          suggestedFix:
+            "Recalcular el porcentaje de participación post-money y alinear la cláusula económica.",
+          location: "Cláusula 2 (Economía)",
+        },
+      ],
+    },
+    {
+      round: 1,
+      approved: true,
+      createdAt: "2026-06-10T16:02:00Z",
+      issues: [],
+    },
+  ],
+  // Waiver derived to counsel: critic exhausted its budget (forced_counsel).
+  "r-6": [
+    {
+      round: 0,
+      approved: false,
+      createdAt: hoursAgoIso(56),
+      issues: [
+        {
+          severity: "blocking",
+          category: "legal",
+          problem:
+            "El waiver no identifica la cláusula del reglamento del fondo que se renuncia ni el alcance temporal de la renuncia.",
+          suggestedFix:
+            "Citar el artículo 9 del reglamento y limitar la renuncia a la transmisión concreta descrita.",
+          location: "Parte dispositiva",
+        },
+      ],
+    },
+    {
+      round: 1,
+      approved: false,
+      createdAt: hoursAgoIso(56),
+      issues: [
+        {
+          severity: "major",
+          category: "completeness",
+          problem: "Sigue faltando la firma del órgano de gobierno competente.",
+          suggestedFix: "Añadir el bloque de firma del consejo.",
+          location: "Cierre",
+        },
+      ],
+    },
+  ],
+};
+
+export function stubRequestReviews(id: string): GenerationReview[] {
+  return (stubReviews[id] ?? []).map((r) => ({
+    ...r,
+    issues: r.issues.map((i) => ({ ...i })),
+  }));
+}
+
+/** Accumulated drafting lessons (gestora-siloed) across several branches. */
+export const stubLessons: DraftingLesson[] = [
+  {
+    id: "l-1",
+    gestoraId: STUB_GESTORA.id,
+    branch: "operaciones_de_fondo",
+    docType: "llamada_capital",
+    lesson:
+      "En las llamadas de capital, expresar siempre el plazo de pago en días hábiles y anclarlo a la cláusula de drawdown del LPA.",
+    weight: 1.0,
+    createdAt: "2026-05-02T10:00:00Z",
+  },
+  {
+    id: "l-2",
+    gestoraId: STUB_GESTORA.id,
+    branch: "gestion_de_portfolio",
+    docType: "term_sheet",
+    lesson:
+      "En term sheets no vinculantes, marcar explícitamente las carve-outs vinculantes (confidencialidad, exclusividad, ley aplicable y costes).",
+    weight: 1.2,
+    createdAt: "2026-05-18T14:30:00Z",
+  },
+  {
+    id: "l-3",
+    gestoraId: STUB_GESTORA.id,
+    branch: "cumplimiento_regulatorio",
+    docType: "notificacion_aifmd",
+    lesson:
+      "En notificaciones AIFMD, citar el artículo de pasaporte aplicable y la autoridad competente de cada jurisdicción de comercialización.",
+    weight: 1.0,
+    createdAt: "2026-05-25T09:15:00Z",
+  },
+  {
+    id: "l-4",
+    gestoraId: STUB_GESTORA.id,
+    branch: "contratos_terceros",
+    docType: "side_letter_inversor",
+    lesson:
+      "En side letters, vincular cada disposición a la cláusula del LPA que modifica y confirmar la consistencia MFN.",
+    weight: 1.0,
+    createdAt: "2026-06-01T11:00:00Z",
+  },
+  {
+    id: "l-5",
+    gestoraId: STUB_GESTORA.id,
+    branch: "gobierno_corporativo",
+    docType: "acta_reunion_consejo",
+    lesson:
+      "En actas de consejo, recoger siempre el quórum de constitución y de votación y la mayoría con la que se aprueba cada acuerdo.",
+    weight: 0.9,
+    createdAt: "2026-06-05T08:45:00Z",
+  },
+];
+
+export function stubGestoraLessons(
+  gestoraId: string,
+  branch?: string,
+): DraftingLesson[] {
+  return stubLessons
+    .filter((l) => l.gestoraId === gestoraId)
+    .filter((l) => !branch || l.branch === branch)
+    .map((l) => ({ ...l }));
+}
+
+/** Human-authored review playbooks injected into the critic. */
+export const stubPlaybooksData: ReviewPlaybook[] = [
+  {
+    id: "pb-1",
+    gestoraId: STUB_GESTORA.id,
+    branch: "operaciones_de_fondo",
+    docType: null,
+    title: "Reglas de llamadas de capital",
+    content:
+      "Verificar que el plazo de pago no sea inferior a 10 días hábiles y que se identifique la cuenta de pago y las consecuencias del impago.",
+    filePath: null,
+    isActive: true,
+    createdBy: "u-admin-1",
+    createdAt: "2026-04-10T10:00:00Z",
+    updatedAt: "2026-04-10T10:00:00Z",
+  },
+  {
+    id: "pb-2",
+    gestoraId: STUB_GESTORA.id,
+    branch: null,
+    docType: null,
+    title: "Cláusula de confidencialidad obligatoria",
+    content:
+      "Todos los documentos deben incluir una cláusula de confidencialidad acorde con la política interna de la gestora.",
+    filePath: null,
+    isActive: false,
+    createdBy: "u-admin-1",
+    createdAt: "2026-03-22T09:00:00Z",
+    updatedAt: "2026-05-01T09:00:00Z",
+  },
+];
+
+export function stubPlaybooks(gestoraId: string): ReviewPlaybook[] {
+  return stubPlaybooksData
+    .filter((p) => p.gestoraId === gestoraId)
+    .map((p) => ({ ...p }));
+}
+
+export function stubCreatePlaybook(input: {
+  gestoraId: string;
+  title: string;
+  content: string;
+  branch?: string | null;
+  docType?: string | null;
+  file?: File | null;
+}): ReviewPlaybook {
+  const pb: ReviewPlaybook = {
+    id: `pb-${Date.now()}`,
+    gestoraId: input.gestoraId,
+    branch: (input.branch ?? null) as ReviewPlaybook["branch"],
+    docType: input.docType ?? null,
+    title: input.title,
+    content: input.content,
+    filePath: input.file ? `/gestoras/${input.gestoraId}/playbooks/${input.file.name}` : null,
+    isActive: true,
+    createdBy: "u-admin-1",
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  stubPlaybooksData.unshift(pb);
+  return { ...pb };
+}
+
+export function stubUpdatePlaybook(
+  id: string,
+  fields: { title?: string; content?: string; branch?: string | null; docType?: string | null },
+): ReviewPlaybook {
+  const pb = stubPlaybooksData.find((p) => p.id === id);
+  if (!pb) throw new Error("Playbook not found");
+  if (fields.title !== undefined) pb.title = fields.title;
+  if (fields.content !== undefined) pb.content = fields.content;
+  if (fields.branch !== undefined) pb.branch = fields.branch as ReviewPlaybook["branch"];
+  if (fields.docType !== undefined) pb.docType = fields.docType;
+  pb.updatedAt = now();
+  return { ...pb };
+}
+
+export function stubSetPlaybookActive(id: string, active: boolean): ReviewPlaybook {
+  const pb = stubPlaybooksData.find((p) => p.id === id);
+  if (!pb) throw new Error("Playbook not found");
+  pb.isActive = active;
+  pb.updatedAt = now();
+  return { ...pb };
+}
+
+export function stubDeletePlaybook(id: string): void {
+  const index = stubPlaybooksData.findIndex((p) => p.id === id);
+  if (index >= 0) stubPlaybooksData.splice(index, 1);
+}
+
+export function stubUploadModel(input: {
+  gestoraId: string;
+  docType: string;
+  language: string;
+  file: File;
+}): void {
+  const id = `p-${Date.now()}`;
+  stubPrecedents.push({
+    id,
+    gestoraId: input.gestoraId,
+    fundId: null,
+    docType: input.docType,
+    docTypeLabel: docTypeLabel(input.docType),
+    language: input.language as Precedent["language"],
+    source: "gestora_model",
+    createdAt: now(),
+    versions: [
+      {
+        id: `pv-${Date.now()}`,
+        precedentId: id,
+        versionNumber: 1,
+        filePath: `/gestoras/${input.gestoraId}/modelos/${input.file.name}`,
+        status: "draft",
+        ragWeight: 0.0,
+        createdBy: "u-admin-1",
+      },
+    ],
+  });
 }
 
 /* ------------------------------------------------------------------ */

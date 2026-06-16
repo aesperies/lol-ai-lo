@@ -9,13 +9,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from api.counsel_assignments import resolve_counsel_recipients
 from auth import gestora_of_request, require_admin
 from config import get_settings
 from models.schema import (
     DocumentVersionType,
+    DraftingLessonOut,
     RequestStatus,
     SlaEventKind,
     User,
@@ -208,3 +209,40 @@ async def sla_report(user: User = Depends(require_admin)) -> Any:
 async def trigger_sla_sweep(user: User = Depends(require_admin)) -> Any:
     """Manual SLA sweep (same logic as the periodic in-process task)."""
     return sla_service.run_sla_sweep(dbmod.get_db())
+
+
+# ---------------------------------------------------------------------------
+# Drafting lessons (Feature 3) — admin-only, gestora-siloed read
+# ---------------------------------------------------------------------------
+
+@router.get("/gestoras/{gestora_id}/lessons", response_model=list[DraftingLessonOut])
+async def gestora_lessons(
+    gestora_id: str,
+    branch: Optional[str] = None,
+    user: User = Depends(require_admin),
+) -> Any:
+    """The accumulated drafting lessons learned for one gestora (Feature 3).
+
+    Admin-only and STRICTLY gestora-siloed: the hard gestora_id filter means a
+    gestora's lessons never surface for another. Optional ?branch= narrows to a
+    single specialized drafter. Ordered newest first."""
+    db = dbmod.get_db()
+    if db.get("gestoras", gestora_id) is None:
+        raise HTTPException(status_code=404, detail="Gestora not found")
+    filters: dict[str, Any] = {"gestora_id": gestora_id}
+    if branch:
+        filters["branch"] = branch
+    rows = db.select("drafting_lessons", **filters)
+    rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return [
+        DraftingLessonOut(
+            id=r["id"],
+            gestora_id=r["gestora_id"],
+            branch=r.get("branch", ""),
+            doc_type=r.get("doc_type"),
+            lesson=r.get("lesson", ""),
+            weight=float(r.get("weight", 1.0)),
+            created_at=r.get("created_at"),
+        )
+        for r in rows
+    ]

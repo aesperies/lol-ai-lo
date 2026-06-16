@@ -3,6 +3,9 @@
 import { useEffect, useId, useState } from "react";
 import DocumentHtmlViewer from "@/components/DocumentHtmlViewer";
 import { useI18n } from "@/components/I18nProvider";
+import InternalReviewPanel, {
+  RequestBranchBadge,
+} from "@/components/InternalReviewPanel";
 import StatusBadge from "@/components/StatusBadge";
 import { Banner, Button, Card, CardTitle, Spinner, Textarea } from "@/components/ui";
 import {
@@ -219,6 +222,9 @@ export default function DocumentViewer({
             <p className="mt-1 text-sm text-slate-500">
               {request.docTypeLabel ?? request.docType} — {request.fundName}
             </p>
+            <div className="mt-2">
+              <RequestBranchBadge requestId={request.id} />
+            </div>
           </div>
           <StatusBadge status={request.status} />
         </div>
@@ -420,6 +426,9 @@ export default function DocumentViewer({
           ) : null}
         </Card>
       ) : null}
+
+      {/* Internal automated review (critic) outcome — above the Exit panels */}
+      <InternalReviewPanel requestId={request.id} />
 
       {/* Exit panels — only while pending the client's decision, latest version */}
       {request.status === "review_pending" && viewingLatest ? (

@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import DocumentHtmlViewer from "@/components/DocumentHtmlViewer";
 import { useI18n } from "@/components/I18nProvider";
+import InternalReviewPanel, {
+  RequestBranchBadge,
+} from "@/components/InternalReviewPanel";
 import StatusBadge from "@/components/StatusBadge";
 import { Banner, Button, Card, CardTitle, Textarea } from "@/components/ui";
 import {
@@ -145,6 +148,9 @@ export default function CounselReviewPanel({
             <p className="mt-0.5 text-xs text-slate-400">
               {t("counsel.requestedBy")}: {request.requestedByName ?? request.userId}
             </p>
+            <div className="mt-2">
+              <RequestBranchBadge requestId={request.id} />
+            </div>
           </div>
           <StatusBadge status={validated ? "validated" : request.status} />
         </div>
@@ -154,6 +160,9 @@ export default function CounselReviewPanel({
           </Banner>
         ) : null}
       </Card>
+
+      {/* Internal automated review (critic): what the critic found/fixed */}
+      <InternalReviewPanel requestId={request.id} />
 
       {notice ? <Banner tone="success">{notice}</Banner> : null}
       {error ? <Banner tone="danger">{error}</Banner> : null}
