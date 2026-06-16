@@ -7,6 +7,7 @@ import { useI18n } from "@/components/I18nProvider";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { roleHome, useSession } from "@/components/SessionProvider";
 import { Banner, Button, Card, Input, Label } from "@/components/ui";
+import { Wordmark, LogoMark } from "@/components/Logo";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
 import type { DictKey } from "@/lib/i18n";
@@ -49,25 +50,51 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <p className="text-3xl font-bold tracking-tight text-brand-800">
-            {t("app.name")}
+    <div className="grid min-h-screen lg:grid-cols-2">
+      {/* Brand panel (desktop) */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-ink-900 p-12 text-white lg:flex">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-700/30 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-accent-500/15 blur-3xl"
+        />
+        <Wordmark
+          className="[&_span]:text-white"
+          markClassName="h-8 w-8"
+        />
+        <div className="relative max-w-md">
+          <h2 className="font-display text-4xl font-semibold leading-tight">
+            {t("app.tagline")}
+          </h2>
+          <p className="mt-4 text-sm leading-relaxed text-white/70">
+            {t("auth.loginSubtitle")}
           </p>
-          <p className="mt-1 text-sm text-slate-500">{t("app.tagline")}</p>
         </div>
+        <p className="relative text-xs text-white/40">
+          Lol-AI-lo Legal SLP · {t("app.name")}
+        </p>
+      </aside>
 
-        <Card>
-          <h1 className="text-lg font-semibold text-slate-900">
+      {/* Form column */}
+      <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md animate-fade-in-up">
+          <div className="mb-8 flex justify-center lg:hidden">
+            <LogoMark className="h-12 w-12" />
+          </div>
+
+          <Card className="shadow-elevated">
+          <h1 className="font-display text-xl font-semibold text-ink-900">
             {t("auth.loginTitle")}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">{t("auth.loginSubtitle")}</p>
+          <p className="mt-1 text-sm text-ink-400">{t("auth.loginSubtitle")}</p>
 
           {isStub ? (
             <div className="mt-6 space-y-3">
               <Banner tone="warning">{t("dev.banner")}</Banner>
-              <p className="text-sm font-medium text-slate-700">
+              <p className="text-sm font-medium text-ink-700">
                 {t("dev.chooseRole")}
               </p>
               <div className="grid gap-2">
@@ -113,7 +140,7 @@ export default function LoginPage() {
               <Button type="submit" className="w-full" disabled={submitting}>
                 {t("auth.signIn")}
               </Button>
-              <p className="text-center text-sm text-slate-500">
+              <p className="text-center text-sm text-ink-400">
                 {t("auth.noAccount")}{" "}
                 <Link href="/signup" className="font-medium text-brand-700 hover:underline">
                   {t("auth.goSignup")}
@@ -121,10 +148,11 @@ export default function LoginPage() {
               </p>
             </form>
           )}
-        </Card>
+          </Card>
 
-        <div className="mt-6 flex justify-center">
-          <LanguageSwitcher />
+          <div className="mt-6 flex justify-center">
+            <LanguageSwitcher />
+          </div>
         </div>
       </div>
     </div>

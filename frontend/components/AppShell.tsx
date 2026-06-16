@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { Wordmark } from "@/components/Logo";
 import { useSession } from "@/components/SessionProvider";
 import { Spinner } from "@/components/ui";
 import type { Role } from "@/lib/types";
@@ -52,6 +53,12 @@ export default function AppShell({
   const { user, loading, signOut } = useSession();
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close the mobile menu on navigation.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (loading) return;
@@ -78,20 +85,24 @@ export default function AppShell({
 
   const nav = NAV_BY_ROLE[role];
 
+  function navLinkClass(active: boolean): string {
+    return active
+      ? "rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800"
+      : "rounded-lg px-3 py-1.5 text-sm text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800";
+  }
+
   return (
     <div className="min-h-screen">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-6 px-4">
+      <header className="sticky top-0 z-30 border-b border-ink-100 bg-white/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-4">
           <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-baseline gap-2">
-              <span className="text-lg font-bold tracking-tight text-brand-800">
-                {t("app.name")}
-              </span>
-              <span className="hidden text-xs text-slate-400 sm:inline">
-                {t("app.tagline")}
-              </span>
+            <Link href="/" aria-label={t("app.name")}>
+              <Wordmark />
             </Link>
-            <nav className="flex items-center gap-1">
+            <nav
+              aria-label="Principal"
+              className="hidden items-center gap-1 md:flex"
+            >
               {nav.map((item) => {
                 const active =
                   pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -99,11 +110,8 @@ export default function AppShell({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={
-                      active
-                        ? "rounded-md bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800"
-                        : "rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-                    }
+                    aria-current={active ? "page" : undefined}
+                    className={navLinkClass(active)}
                   >
                     {t(item.labelKey)}
                   </Link>
@@ -113,20 +121,68 @@ export default function AppShell({
           </div>
           <div className="flex items-center gap-3">
             <LanguageSwitcher />
-            <span className="hidden text-xs text-slate-500 md:inline">
+            <span className="hidden text-xs text-ink-400 lg:inline">
               {user.name ?? user.email}
             </span>
             <button
               type="button"
               onClick={() => void signOut()}
-              className="text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
+              className="hidden text-xs text-ink-400 underline-offset-2 hover:text-ink-800 hover:underline md:inline"
             >
               {t("common.logout")}
             </button>
+            <button
+              type="button"
+              aria-label="Menú"
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen((o) => !o)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink-200 text-ink-600 hover:bg-ink-50 md:hidden"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                {mobileOpen ? (
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                ) : (
+                  <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
+
+        {mobileOpen ? (
+          <nav
+            aria-label="Principal"
+            className="border-t border-ink-100 bg-white px-4 py-3 md:hidden"
+          >
+            <div className="flex flex-col gap-1">
+              {nav.map((item) => {
+                const active =
+                  pathname === item.href || pathname.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={navLinkClass(active)}
+                  >
+                    {t(item.labelKey)}
+                  </Link>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="mt-2 rounded-lg px-3 py-1.5 text-left text-sm text-ink-500 hover:bg-ink-100"
+              >
+                {t("common.logout")}
+              </button>
+            </div>
+          </nav>
+        ) : null}
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-10">{children}</main>
+      <main className="mx-auto max-w-6xl animate-fade-in-up px-4 py-10">
+        {children}
+      </main>
     </div>
   );
 }

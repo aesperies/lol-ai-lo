@@ -132,8 +132,8 @@ export default function NewRequestPage() {
       {step === "parsing" ? (
         <Card className="flex flex-col items-center gap-3 py-16 text-center">
           <Spinner className="h-8 w-8" />
-          <p className="text-sm font-medium text-slate-700">{t("flow.parsing")}</p>
-          <p className="text-xs text-slate-400">{t("flow.parsingHint")}</p>
+          <p className="text-sm font-medium text-ink-700">{t("flow.parsing")}</p>
+          <p className="text-xs text-ink-400">{t("flow.parsingHint")}</p>
         </Card>
       ) : null}
 
@@ -149,8 +149,8 @@ export default function NewRequestPage() {
       {step === "generating" ? (
         <Card className="flex flex-col items-center gap-3 py-16 text-center">
           <Spinner className="h-8 w-8" />
-          <p className="text-sm font-medium text-slate-700">{t("flow.generating")}</p>
-          <p className="text-xs text-slate-400">{t("flow.generatingHint")}</p>
+          <p className="text-sm font-medium text-ink-700">{t("flow.generating")}</p>
+          <p className="text-xs text-ink-400">{t("flow.generatingHint")}</p>
         </Card>
       ) : null}
 
@@ -159,9 +159,9 @@ export default function NewRequestPage() {
           <p className="text-sm font-medium text-red-700">
             {t("flow.generationFailed")}
           </p>
-          <p className="text-xs text-slate-400">{t("flow.generationFailedHint")}</p>
+          <p className="text-xs text-ink-400">{t("flow.generationFailedHint")}</p>
           {jobError ? (
-            <p className="max-w-md text-xs text-slate-400">{jobError}</p>
+            <p className="max-w-md text-xs text-ink-400">{jobError}</p>
           ) : null}
           <Button
             onClick={() => void generateAndPoll(request.id)}

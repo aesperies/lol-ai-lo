@@ -61,7 +61,7 @@ export default function CounselDashboardPage() {
           <Spinner />
         </div>
       ) : queue.length === 0 ? (
-        <Card className="text-center text-sm text-slate-500">
+        <Card className="text-center text-sm text-ink-500">
           {t("counsel.queueEmpty")}
         </Card>
       ) : (
@@ -70,11 +70,11 @@ export default function CounselDashboardPage() {
             <Card key={r.id}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="font-medium text-slate-800">
+                  <p className="font-medium text-ink-800">
                     {r.docTypeLabel ?? r.docType}
                   </p>
-                  <p className="mt-0.5 text-sm text-slate-500">{r.fundName}</p>
-                  <p className="mt-0.5 text-xs text-slate-400">
+                  <p className="mt-0.5 text-sm text-ink-500">{r.fundName}</p>
+                  <p className="mt-0.5 text-xs text-ink-400">
                     {t("counsel.requestedBy")}: {r.requestedByName ?? r.userId} —{" "}
                     {new Date(r.createdAt).toLocaleDateString()}
                   </p>

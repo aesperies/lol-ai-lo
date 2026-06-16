@@ -104,7 +104,7 @@ export default function AdminLessonsPage() {
           <Spinner />
         </div>
       ) : lessons.length === 0 ? (
-        <Card className="text-center text-sm text-slate-500">
+        <Card className="text-center text-sm text-ink-500">
           {t("admin.lessons.empty")}
         </Card>
       ) : (
@@ -116,15 +116,15 @@ export default function AdminLessonsPage() {
                   {t(`branch.${l.branch}` as DictKey)}
                 </Badge>
                 {l.docType ? (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-ink-400">
                     {docTypeLabel(l.docType)}
                   </span>
                 ) : null}
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-ink-400">
                   · {t("admin.lessons.weight")}: {l.weight.toFixed(1)}
                 </span>
               </div>
-              <p className="mt-2 text-sm text-slate-700">{l.lesson}</p>
+              <p className="mt-2 text-sm text-ink-700">{l.lesson}</p>
             </Card>
           ))}
         </div>

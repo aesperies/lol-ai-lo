@@ -38,7 +38,7 @@ function CellView({ cell }: { cell: TabularCell | undefined }) {
   const [open, setOpen] = useState(false);
 
   if (!cell || cell.status === "pending") {
-    return <span className="text-xs text-slate-400">{t("tabular.cellPending")}</span>;
+    return <span className="text-xs text-ink-400">{t("tabular.cellPending")}</span>;
   }
   if (cell.status === "error") {
     return (
@@ -52,14 +52,14 @@ function CellView({ cell }: { cell: TabularCell | undefined }) {
   return (
     <div className="space-y-1">
       <div className="flex items-start gap-2">
-        <span className="font-medium text-slate-800">
+        <span className="font-medium text-ink-800">
           {cell.value || t("tabular.cellEmpty")}
         </span>
         {hasCitation ? (
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
-            className="mt-0.5 text-slate-400 hover:text-brand-700"
+            className="mt-0.5 text-ink-400 hover:text-brand-700"
             aria-label={t("tabular.citation")}
             title={t("tabular.citation")}
           >
@@ -79,19 +79,19 @@ function CellView({ cell }: { cell: TabularCell | undefined }) {
         ) : null}
       </div>
       {open && cell.citation ? (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-          <div className="mb-1 font-medium text-slate-500">
+        <div className="rounded-md border border-ink-200 bg-ink-50 p-2 text-xs text-ink-600">
+          <div className="mb-1 font-medium text-ink-500">
             {cell.citation.page != null
               ? t("tabular.citationPage", { page: String(cell.citation.page) })
               : t("tabular.citationNoPage")}
           </div>
           {cell.citation.quote ? (
-            <blockquote className="border-l-2 border-slate-300 pl-2 italic">
+            <blockquote className="border-l-2 border-ink-300 pl-2 italic">
               “{cell.citation.quote}”
             </blockquote>
           ) : null}
           {cell.reasoning ? (
-            <div className="mt-1 text-slate-500">
+            <div className="mt-1 text-ink-500">
               <span className="font-medium">{t("tabular.reasoning")}: </span>
               {cell.reasoning}
             </div>
@@ -255,7 +255,7 @@ export default function TabularReviewDetailPage({
         }
       />
 
-      <div className="mb-4 flex items-center gap-3 text-xs text-slate-500">
+      <div className="mb-4 flex items-center gap-3 text-xs text-ink-500">
         <span>
           {t("tabular.progress", {
             done: String(doneCount),
@@ -272,23 +272,23 @@ export default function TabularReviewDetailPage({
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-              <th className="sticky left-0 bg-white px-4 py-3 font-medium">
+            <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
+              <th scope="col" className="sticky left-0 bg-white px-4 py-3 font-medium">
                 {t("tabular.document")}
               </th>
               {review.columns.map((col) => (
-                <th key={col.id} className="px-4 py-3 font-medium align-top">
+                <th key={col.id} scope="col" className="px-4 py-3 font-medium align-top">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="text-slate-700">{col.name}</div>
-                      <div className="mt-0.5 normal-case font-normal text-[11px] text-slate-400">
+                      <div className="text-ink-700">{col.name}</div>
+                      <div className="mt-0.5 normal-case font-normal text-[11px] text-ink-400">
                         {t(`coltype.${col.colType}` as DictKey)}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => void handleDeleteColumn(col.id)}
-                      className="text-slate-300 hover:text-red-600"
+                      className="text-ink-300 hover:text-red-600"
                       aria-label={t("tabular.removeColumn")}
                       title={t("tabular.removeColumn")}
                     >
@@ -314,11 +314,14 @@ export default function TabularReviewDetailPage({
             {review.documents.map((doc) => (
               <tr
                 key={doc.id}
-                className="border-b border-slate-100 last:border-0 align-top"
+                className="border-b border-ink-100 last:border-0 align-top"
               >
-                <td className="sticky left-0 bg-white px-4 py-4 font-medium text-slate-700">
+                <th
+                  scope="row"
+                  className="sticky left-0 bg-white px-4 py-4 text-left font-medium text-ink-700"
+                >
                   {doc.label ?? doc.sourceId}
-                </td>
+                </th>
                 {review.columns.map((col) => (
                   <td key={col.id} className="px-4 py-4">
                     <CellView cell={cellByPos.get(`${doc.id}:${col.id}`)} />

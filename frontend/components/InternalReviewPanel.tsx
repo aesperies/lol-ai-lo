@@ -52,7 +52,7 @@ export function RequestBranchBadge({ requestId }: { requestId: string }) {
 function IssueRow({ issue }: { issue: ReviewIssue }) {
   const { t } = useI18n();
   return (
-    <li className="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <li className="rounded-lg border border-ink-200 bg-ink-50 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={SEVERITY_TONE[issue.severity]}>
           {t(`review.severity.${issue.severity}` as DictKey)}
@@ -61,30 +61,30 @@ function IssueRow({ issue }: { issue: ReviewIssue }) {
           {t(`review.category.${issue.category}` as DictKey)}
         </Badge>
         {issue.location ? (
-          <span className="text-xs text-slate-400">{issue.location}</span>
+          <span className="text-xs text-ink-400">{issue.location}</span>
         ) : null}
       </div>
-      <p className="mt-2 text-sm text-slate-700">
-        <span className="font-medium text-slate-500">{t("review.problem")}: </span>
+      <p className="mt-2 text-sm text-ink-700">
+        <span className="font-medium text-ink-500">{t("review.problem")}: </span>
         {issue.problem}
       </p>
       {issue.suggestedFix ? (
-        <p className="mt-1 text-sm text-slate-600">
-          <span className="font-medium text-slate-500">
+        <p className="mt-1 text-sm text-ink-600">
+          <span className="font-medium text-ink-500">
             {t("review.suggestedFix")}:{" "}
           </span>
           {issue.suggestedFix}
         </p>
       ) : null}
       {issue.citation && (issue.citation.quote || issue.citation.where) ? (
-        <div className="mt-2 border-l-2 border-slate-300 pl-2.5">
+        <div className="mt-2 border-l-2 border-ink-300 pl-2.5">
           {issue.citation.quote ? (
-            <p className="text-sm italic text-slate-600">
+            <p className="text-sm italic text-ink-600">
               “{issue.citation.quote}”
             </p>
           ) : null}
           {issue.citation.where ? (
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-ink-400">
               {t("review.citationWhere")}: {issue.citation.where}
             </p>
           ) : null}
@@ -134,7 +134,7 @@ export default function InternalReviewPanel({
     return (
       <Card>
         <CardTitle>{t("review.title")}</CardTitle>
-        <p className="mt-2 text-sm text-rose-600">{t("review.error")}</p>
+        <p className="mt-2 text-sm text-red-600">{t("review.error")}</p>
       </Card>
     );
   }
@@ -143,7 +143,7 @@ export default function InternalReviewPanel({
     return (
       <Card>
         <CardTitle>{t("review.title")}</CardTitle>
-        <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+        <div className="mt-3 flex items-center gap-2 text-sm text-ink-500">
           <Spinner className="h-4 w-4" />
           <span>{t("review.loading")}</span>
         </div>
@@ -156,7 +156,7 @@ export default function InternalReviewPanel({
     return (
       <Card>
         <CardTitle>{t("review.title")}</CardTitle>
-        <p className="mt-2 text-sm text-slate-400">{t("review.none")}</p>
+        <p className="mt-2 text-sm text-ink-400">{t("review.none")}</p>
       </Card>
     );
   }
@@ -209,7 +209,7 @@ export default function InternalReviewPanel({
           {reviews.map((round) => (
             <div key={round.round}>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-700">
+                <span className="text-sm font-medium text-ink-700">
                   {t("review.round", { n: round.round })}
                 </span>
                 {round.approved ? (

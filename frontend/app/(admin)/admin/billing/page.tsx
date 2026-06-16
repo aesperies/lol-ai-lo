@@ -111,7 +111,7 @@ export default function AdminBillingPage() {
           <Spinner />
         </div>
       ) : report === null || report.rows.length === 0 ? (
-        <Card className="py-10 text-center text-sm text-slate-400">
+        <Card className="py-10 text-center text-sm text-ink-400">
           {t("admin.billing.empty")}
         </Card>
       ) : (
@@ -119,29 +119,29 @@ export default function AdminBillingPage() {
           <Card className="overflow-x-auto p-0">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-6 py-3 font-medium">
+                <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
+                  <th scope="col" className="px-6 py-3 font-medium">
                     {t("admin.billing.gestora")}
                   </th>
-                  <th className="px-6 py-3 font-medium">
+                  <th scope="col" className="px-6 py-3 font-medium">
                     {t("admin.billing.tier")}
                   </th>
-                  <th className="px-6 py-3 font-medium">
+                  <th scope="col" className="px-6 py-3 font-medium">
                     {t("admin.billing.docs")}
                   </th>
-                  <th className="px-6 py-3 text-right font-medium">
+                  <th scope="col" className="px-6 py-3 text-right font-medium">
                     {t("admin.billing.overage")}
                   </th>
-                  <th className="px-6 py-3 text-right font-medium">
+                  <th scope="col" className="px-6 py-3 text-right font-medium">
                     {t("admin.billing.exitA")}
                   </th>
-                  <th className="px-6 py-3 text-right font-medium">
+                  <th scope="col" className="px-6 py-3 text-right font-medium">
                     {t("admin.billing.exitB")}
                   </th>
-                  <th className="px-6 py-3 text-right font-medium">
+                  <th scope="col" className="px-6 py-3 text-right font-medium">
                     {t("admin.billing.overageEur")}
                   </th>
-                  <th className="px-6 py-3 text-right font-medium">
+                  <th scope="col" className="px-6 py-3 text-right font-medium">
                     {t("admin.billing.funds")}
                   </th>
                 </tr>
@@ -152,9 +152,9 @@ export default function AdminBillingPage() {
                   return (
                     <tr
                       key={row.gestoraId}
-                      className="border-b border-slate-100 last:border-0"
+                      className="border-b border-ink-100 last:border-0"
                     >
-                      <td className="px-6 py-4 font-medium text-slate-800">
+                      <td className="px-6 py-4 font-medium text-ink-800">
                         {row.gestoraName ?? row.gestoraId}
                       </td>
                       <td className="px-6 py-4">
@@ -172,7 +172,7 @@ export default function AdminBillingPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="min-w-[10rem]">
-                          <div className="mb-1 text-slate-700">
+                          <div className="mb-1 text-ink-700">
                             {row.docsGenerated} /{" "}
                             {row.docsLimit ?? t("admin.billing.unlimited")}
                           </div>
@@ -183,18 +183,18 @@ export default function AdminBillingPage() {
                         {row.overageDocs > 0 ? (
                           <Badge tone="red">+{row.overageDocs}</Badge>
                         ) : (
-                          <span className="text-slate-600">0</span>
+                          <span className="text-ink-600">0</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right text-slate-600">
+                      <td className="px-6 py-4 text-right text-ink-600">
                         {row.exitACount}
                       </td>
-                      <td className="px-6 py-4 text-right text-slate-600">
+                      <td className="px-6 py-4 text-right text-ink-600">
                         {row.exitBRequested} / {row.exitBValidated}
                       </td>
-                      <td className="px-6 py-4 text-right text-slate-600">
+                      <td className="px-6 py-4 text-right text-ink-600">
                         {row.estimatedOverageEur > 0 ? (
-                          <span className="font-medium text-slate-800">
+                          <span className="font-medium text-ink-800">
                             {fmtEur(row.estimatedOverageEur)}
                           </span>
                         ) : (
@@ -210,7 +210,7 @@ export default function AdminBillingPage() {
                             </Badge>
                           </span>
                         ) : (
-                          <span className="text-slate-600">
+                          <span className="text-ink-600">
                             {row.fundCount} /{" "}
                             {row.fundsLimit ?? t("admin.billing.unlimited")}
                           </span>
@@ -222,7 +222,7 @@ export default function AdminBillingPage() {
               </tbody>
             </table>
           </Card>
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-ink-400">
             {t("admin.billing.pricesTbdHint")}
           </p>
         </>

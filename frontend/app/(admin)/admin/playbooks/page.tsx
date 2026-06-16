@@ -182,7 +182,7 @@ export default function AdminPlaybooksPage() {
               <Spinner />
             </div>
           ) : playbooks.length === 0 ? (
-            <Card className="text-center text-sm text-slate-500">
+            <Card className="text-center text-sm text-ink-500">
               {t("admin.playbooks.empty")}
             </Card>
           ) : (
@@ -190,21 +190,21 @@ export default function AdminPlaybooksPage() {
               <Card key={pb.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium text-slate-800">{pb.title}</p>
+                    <p className="font-medium text-ink-800">{pb.title}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <Badge tone={pb.isActive ? "emerald" : "slate"}>
                         {pb.isActive
                           ? t("admin.playbooks.active")
                           : t("admin.playbooks.inactive")}
                       </Badge>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-ink-400">
                         {t("admin.playbooks.scope")}:{" "}
                         {pb.branch
                           ? t(`branch.${pb.branch}` as DictKey)
                           : t("admin.playbooks.scopeAll")}
                       </span>
                       {pb.filePath ? (
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-ink-400">
                           · {t("admin.playbooks.hasFile")}
                         </span>
                       ) : null}
@@ -231,7 +231,7 @@ export default function AdminPlaybooksPage() {
                     </Button>
                     <Button
                       variant="ghost"
-                      className="px-2.5 py-1 text-xs text-rose-600"
+                      className="px-2.5 py-1 text-xs text-red-600"
                       disabled={busy}
                       onClick={() => void handleDelete(pb)}
                     >
@@ -239,7 +239,7 @@ export default function AdminPlaybooksPage() {
                     </Button>
                   </div>
                 </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600">
+                <p className="mt-3 whitespace-pre-wrap text-sm text-ink-600">
                   {pb.content}
                 </p>
               </Card>
@@ -275,7 +275,7 @@ export default function AdminPlaybooksPage() {
                 }
                 required
               />
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-ink-400">
                 {t("admin.playbooks.contentHint")}
               </p>
             </div>
@@ -325,7 +325,7 @@ export default function AdminPlaybooksPage() {
                   type="file"
                   accept=".docx,.pdf"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+                  className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
                 />
               </div>
             ) : null}

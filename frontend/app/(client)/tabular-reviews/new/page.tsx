@@ -167,7 +167,7 @@ export default function NewTabularReviewPage() {
 
         <Card>
           <CardTitle>{t("tabular.pickDocuments")}</CardTitle>
-          <p className="mb-4 mt-1 text-xs text-slate-500">
+          <p className="mb-4 mt-1 text-xs text-ink-500">
             {t("tabular.pickDocumentsHint")}
           </p>
           {docOptions === null ? (
@@ -175,19 +175,19 @@ export default function NewTabularReviewPage() {
               <Spinner />
             </div>
           ) : docOptions.length === 0 ? (
-            <p className="text-sm text-slate-500">{t("tabular.noDocuments")}</p>
+            <p className="text-sm text-ink-500">{t("tabular.noDocuments")}</p>
           ) : (
             <ul className="space-y-2">
               {docOptions.map((d) => (
                 <li key={d.sourceId}>
-                  <label className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">
+                  <label className="flex items-center gap-3 rounded-md border border-ink-200 px-3 py-2 text-sm hover:bg-ink-50">
                     <input
                       type="checkbox"
                       checked={selectedDocs.has(d.sourceId)}
                       onChange={() => toggleDoc(d.sourceId)}
-                      className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500"
+                      className="h-4 w-4 rounded border-ink-300 text-brand-700 focus:ring-brand-500"
                     />
-                    <span className="text-slate-800">{d.label}</span>
+                    <span className="text-ink-800">{d.label}</span>
                   </label>
                 </li>
               ))}
@@ -201,7 +201,7 @@ export default function NewTabularReviewPage() {
             {columns.map((col, index) => (
               <div
                 key={index}
-                className="rounded-md border border-slate-200 p-4"
+                className="rounded-md border border-ink-200 p-4"
               >
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>

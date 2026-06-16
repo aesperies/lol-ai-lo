@@ -219,7 +219,7 @@ export default function DocumentViewer({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle>{t("viewer.title")}</CardTitle>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-ink-500">
               {request.docTypeLabel ?? request.docType} — {request.fundName}
             </p>
             <div className="mt-2">
@@ -246,10 +246,10 @@ export default function DocumentViewer({
         {/* Version history: iteration selector (v0, v1, …) above the tabs */}
         {iterations.length > 1 ? (
           <div className="mt-6 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">
+            <span className="text-xs font-medium text-ink-500">
               {t("viewer.versionLabel")}:
             </span>
-            <div className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-1">
+            <div className="inline-flex rounded-md border border-ink-200 bg-ink-100 p-1">
               {iterations.map((it) => {
                 const active = viewIteration === it;
                 return (
@@ -262,8 +262,8 @@ export default function DocumentViewer({
                     }
                     className={
                       active
-                        ? "rounded px-2.5 py-1 text-xs font-medium bg-white text-slate-900 shadow-sm"
-                        : "rounded px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+                        ? "rounded px-2.5 py-1 text-xs font-medium bg-white text-ink-900 shadow-sm"
+                        : "rounded px-2.5 py-1 text-xs font-medium text-ink-500 hover:text-ink-700"
                     }
                   >
                     v{it}
@@ -285,7 +285,7 @@ export default function DocumentViewer({
         <div className="mt-6">
           <div
             role="tablist"
-            className="mb-3 inline-flex rounded-md border border-slate-200 bg-slate-100 p-1"
+            className="mb-3 inline-flex rounded-md border border-ink-200 bg-ink-100 p-1"
           >
             {(["draft", "redline"] as const).map((type) => (
               <button
@@ -296,8 +296,8 @@ export default function DocumentViewer({
                 onClick={() => setTab(type)}
                 className={
                   tab === type
-                    ? "rounded px-3 py-1.5 text-sm font-medium bg-white text-slate-900 shadow-sm"
-                    : "rounded px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700"
+                    ? "rounded px-3 py-1.5 text-sm font-medium bg-white text-ink-900 shadow-sm"
+                    : "rounded px-3 py-1.5 text-sm font-medium text-ink-500 hover:text-ink-700"
                 }
               >
                 {type === "draft"
@@ -354,11 +354,11 @@ export default function DocumentViewer({
           >
             <div>
               <CardTitle>{t("refine.title")}</CardTitle>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-ink-500">
                 {t("refine.remaining", { count: remaining })}
               </p>
             </div>
-            <span aria-hidden="true" className="text-lg text-slate-400">
+            <span aria-hidden="true" className="text-lg text-ink-400">
               {refineOpen ? "−" : "+"}
             </span>
           </button>
@@ -366,7 +366,7 @@ export default function DocumentViewer({
           {refineOpen ? (
             remaining > 0 ? (
               <div className="mt-4 space-y-3">
-                <p className="text-sm text-slate-500">{t("refine.desc")}</p>
+                <p className="text-sm text-ink-500">{t("refine.desc")}</p>
                 <Textarea
                   rows={3}
                   maxLength={INSTRUCTION_MAX}
@@ -375,7 +375,7 @@ export default function DocumentViewer({
                   onChange={(e) => setInstruction(e.target.value)}
                   placeholder={t("refine.placeholder")}
                 />
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-400">
                   <span>
                     {t("intake.charCount", {
                       count: instruction.length,
@@ -396,11 +396,11 @@ export default function DocumentViewer({
                 ) : null}
 
                 {refining ? (
-                  <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <div className="flex items-center gap-3 rounded-md border border-ink-200 bg-ink-50 px-4 py-3 text-sm text-ink-600">
                     <Spinner className="h-4 w-4" />
                     <span>
                       {t("refine.processing")}{" "}
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-ink-400">
                         {t("refine.processingHint")}
                       </span>
                     </span>
@@ -443,20 +443,20 @@ export default function DocumentViewer({
               <CardTitle className="text-emerald-800">
                 {t("viewer.exitATitle")}
               </CardTitle>
-              <p className="mt-1 text-sm text-slate-500">{t("viewer.exitADesc")}</p>
+              <p className="mt-1 text-sm text-ink-500">{t("viewer.exitADesc")}</p>
               <label
                 htmlFor={ackId}
-                className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-3"
+                className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-ink-200 bg-ink-50 p-3"
               >
                 <input
                   id={ackId}
                   type="checkbox"
                   checked={acknowledged}
                   onChange={(e) => setAcknowledged(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500"
+                  className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-700 focus:ring-brand-500"
                 />
                 {/* Verbatim acknowledgment text (SPEC.md) */}
-                <span className="text-sm leading-relaxed text-slate-700">
+                <span className="text-sm leading-relaxed text-ink-700">
                   {t("viewer.exitAAck")}
                 </span>
               </label>
@@ -476,7 +476,7 @@ export default function DocumentViewer({
             <CardTitle className="text-violet-800">
               {t("viewer.exitBTitle")}
             </CardTitle>
-            <p className="mt-1 text-sm text-slate-500">{t("viewer.exitBDesc")}</p>
+            <p className="mt-1 text-sm text-ink-500">{t("viewer.exitBDesc")}</p>
             <div className="mt-4">
               <Button
                 variant={exitAAvailable ? "secondary" : "primary"}
@@ -491,7 +491,7 @@ export default function DocumentViewer({
       ) : null}
 
       {/* SLP disclaimer — verbatim, on every generated document */}
-      <p className="border-t border-slate-200 pt-4 text-xs leading-relaxed text-slate-400">
+      <p className="border-t border-ink-200 pt-4 text-xs leading-relaxed text-ink-400">
         {t("viewer.disclaimer")}
       </p>
     </div>

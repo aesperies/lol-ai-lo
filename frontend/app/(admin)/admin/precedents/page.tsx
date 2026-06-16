@@ -125,7 +125,7 @@ export default function AdminPrecedentsPage() {
       />
 
       {/* Modelos | Precedentes tabs */}
-      <div className="mb-6 inline-flex rounded-md border border-slate-200 bg-slate-100 p-1">
+      <div className="mb-6 inline-flex rounded-lg border border-ink-200 bg-ink-100 p-1">
         {(["precedents", "models"] as const).map((key) => (
           <button
             key={key}
@@ -134,8 +134,8 @@ export default function AdminPrecedentsPage() {
             onClick={() => setTab(key)}
             className={
               tab === key
-                ? "rounded px-3 py-1.5 text-sm font-medium bg-white text-slate-900 shadow-sm"
-                : "rounded px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700"
+                ? "rounded-md px-3 py-1.5 text-sm font-medium bg-white text-ink-900 shadow-sm"
+                : "rounded-md px-3 py-1.5 text-sm font-medium text-ink-500 hover:text-ink-700"
             }
           >
             {key === "models"
@@ -155,7 +155,7 @@ export default function AdminPrecedentsPage() {
               <Spinner />
             </div>
           ) : visible.length === 0 ? (
-            <Card className="text-center text-sm text-slate-500">
+            <Card className="text-center text-sm text-ink-500">
               {isModelTab ? t("admin.models.empty") : t("common.empty")}
             </Card>
           ) : (
@@ -163,10 +163,10 @@ export default function AdminPrecedentsPage() {
               <Card key={p.id}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium text-slate-800">
+                    <p className="font-medium text-ink-800">
                       {p.docTypeLabel ?? p.docType}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-400">
+                    <p className="mt-0.5 text-xs text-ink-400">
                       {gestoras.find((g) => g.id === p.gestoraId)?.name ?? p.gestoraId}{" "}
                       · {p.language.toUpperCase()} ·{" "}
                       {t("admin.precedents.source")}:{" "}
@@ -174,14 +174,14 @@ export default function AdminPrecedentsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-4 divide-y divide-slate-100 rounded-md border border-slate-200">
+                <div className="mt-4 divide-y divide-ink-100 rounded-lg border border-ink-200">
                   {p.versions.map((v) => (
                     <div
                       key={v.id}
                       className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="font-medium text-slate-700">
+                        <span className="font-medium text-ink-700">
                           {t("admin.precedents.version")} {v.versionNumber}
                         </span>
                         <Badge
@@ -195,7 +195,7 @@ export default function AdminPrecedentsPage() {
                         >
                           {t(`precedentStatus.${v.status}` as DictKey)}
                         </Badge>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-ink-400">
                           {t("admin.precedents.ragWeight")}: {v.ragWeight.toFixed(1)}
                         </span>
                       </div>
@@ -235,7 +235,7 @@ export default function AdminPrecedentsPage() {
               ? t("admin.models.upload")
               : t("admin.precedents.upload")}
           </CardTitle>
-          <p className="mb-4 text-xs text-slate-500">
+          <p className="mb-4 text-xs text-ink-500">
             {isModelTab
               ? t("admin.models.uploadHint")
               : t("admin.precedents.uploadHint")}
@@ -302,7 +302,7 @@ export default function AdminPrecedentsPage() {
                 accept=".docx,.pdf"
                 required
                 onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+                className="block w-full text-sm text-ink-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
               />
             </div>
             <Button type="submit" className="w-full" disabled={busy || !uploadFile}>

@@ -35,33 +35,33 @@ export default function TabularReviewsPage() {
           <Spinner />
         </div>
       ) : reviews.length === 0 ? (
-        <Card className="text-center text-sm text-slate-500">
+        <Card className="text-center text-sm text-ink-500">
           {t("tabular.empty")}
         </Card>
       ) : (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-6 py-3 font-medium">{t("common.name")}</th>
-                <th className="px-6 py-3 font-medium">{t("common.status")}</th>
-                <th className="px-6 py-3 font-medium">{t("common.date")}</th>
-                <th className="px-6 py-3 font-medium" />
+              <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.name")}</th>
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.status")}</th>
+                <th scope="col" className="px-6 py-3 font-medium">{t("common.date")}</th>
+                <th scope="col" className="px-6 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
               {reviews.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                  className="border-b border-ink-100 last:border-0 hover:bg-ink-50"
                 >
-                  <td className="px-6 py-4 font-medium text-slate-800">
+                  <td className="px-6 py-4 font-medium text-ink-800">
                     {r.title}
                   </td>
                   <td className="px-6 py-4">
                     <TabularStatusBadge status={r.status} />
                   </td>
-                  <td className="px-6 py-4 text-slate-500">
+                  <td className="px-6 py-4 text-ink-500">
                     {r.createdAt
                       ? new Date(r.createdAt).toLocaleDateString()
                       : "—"}

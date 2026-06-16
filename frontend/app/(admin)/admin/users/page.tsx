@@ -76,19 +76,19 @@ export default function AdminUsersPage() {
             <Card className="overflow-x-auto p-0">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                    <th className="px-6 py-3 font-medium">{t("common.email")}</th>
-                    <th className="px-6 py-3 font-medium">{t("common.role")}</th>
-                    <th className="px-6 py-3 font-medium">{t("admin.users.gestora")}</th>
+                  <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
+                    <th scope="col" className="px-6 py-3 font-medium">{t("common.email")}</th>
+                    <th scope="col" className="px-6 py-3 font-medium">{t("common.role")}</th>
+                    <th scope="col" className="px-6 py-3 font-medium">{t("admin.users.gestora")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
-                    <tr key={u.id} className="border-b border-slate-100 last:border-0">
-                      <td className="px-6 py-4 font-medium text-slate-800">
+                    <tr key={u.id} className="border-b border-ink-100 last:border-0">
+                      <td className="px-6 py-4 font-medium text-ink-800">
                         {u.email}
                         {u.name ? (
-                          <span className="block text-xs font-normal text-slate-400">
+                          <span className="block text-xs font-normal text-ink-400">
                             {u.name}
                           </span>
                         ) : null}
@@ -106,7 +106,7 @@ export default function AdminUsersPage() {
                           {t(`role.${u.role}` as DictKey)}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-slate-600">
+                      <td className="px-6 py-4 text-ink-600">
                         {u.gestoraId
                           ? (gestoras.find((g) => g.id === u.gestoraId)?.name ?? u.gestoraId)
                           : "—"}

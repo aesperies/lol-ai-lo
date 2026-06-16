@@ -227,24 +227,24 @@ export default function AdminGestorasPage() {
             <Card className="overflow-x-auto p-0">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                    <th className="px-6 py-3 font-medium">{t("admin.gestoras.name")}</th>
-                    <th className="px-6 py-3 font-medium">{t("admin.gestoras.tier")}</th>
-                    <th className="px-6 py-3 font-medium">{t("admin.gestoras.billingEmail")}</th>
-                    <th className="px-6 py-3 font-medium">{t("admin.gestoras.funds")}</th>
+                  <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
+                    <th scope="col" className="px-6 py-3 font-medium">{t("admin.gestoras.name")}</th>
+                    <th scope="col" className="px-6 py-3 font-medium">{t("admin.gestoras.tier")}</th>
+                    <th scope="col" className="px-6 py-3 font-medium">{t("admin.gestoras.billingEmail")}</th>
+                    <th scope="col" className="px-6 py-3 font-medium">{t("admin.gestoras.funds")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {gestoras.map((g) => (
-                    <tr key={g.id} className="border-b border-slate-100 last:border-0">
-                      <td className="px-6 py-4 font-medium text-slate-800">{g.name}</td>
+                    <tr key={g.id} className="border-b border-ink-100 last:border-0">
+                      <td className="px-6 py-4 font-medium text-ink-800">{g.name}</td>
                       <td className="px-6 py-4">
                         <Badge tone={g.subscriptionTier === "growth" ? "indigo" : "slate"}>
                           {t(`tier.${g.subscriptionTier}` as DictKey)}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-slate-600">{g.billingEmail}</td>
-                      <td className="px-6 py-4 text-slate-600">
+                      <td className="px-6 py-4 text-ink-600">{g.billingEmail}</td>
+                      <td className="px-6 py-4 text-ink-600">
                         {funds.filter((f) => f.gestoraId === g.id).length}
                       </td>
                     </tr>
@@ -301,7 +301,7 @@ export default function AdminGestorasPage() {
       {/* Counsel asignado (Exit B routing per gestora) */}
       <Card className="mt-6">
         <CardTitle className="mb-1">{t("admin.counsel.title")}</CardTitle>
-        <p className="mb-4 text-xs text-slate-500">{t("admin.counsel.subtitle")}</p>
+        <p className="mb-4 text-xs text-ink-500">{t("admin.counsel.subtitle")}</p>
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
@@ -325,13 +325,13 @@ export default function AdminGestorasPage() {
                 <Spinner />
               </div>
             ) : assignments.length === 0 ? (
-              <p className="text-sm text-slate-500">{t("admin.counsel.empty")}</p>
+              <p className="text-sm text-ink-500">{t("admin.counsel.empty")}</p>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-ink-100">
                 {assignments.map((a) => (
                   <li key={a.id} className="flex items-center justify-between gap-4 py-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-slate-800">
+                      <span className="text-sm font-medium text-ink-800">
                         {a.counselEmail ?? a.counselUserId}
                       </span>
                       <Badge tone={a.isPrimary ? "indigo" : "slate"}>
@@ -384,7 +384,7 @@ export default function AdminGestorasPage() {
               </Select>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-sm text-slate-700">
+              <span className="text-sm text-ink-700">
                 {t("admin.counsel.primary")}
               </span>
               <Toggle
@@ -407,7 +407,7 @@ export default function AdminGestorasPage() {
       {/* GDPR data retention for the gestora selected in the section above */}
       <Card className="mt-6">
         <CardTitle className="mb-1">{t("admin.retention.title")}</CardTitle>
-        <p className="mb-4 text-xs text-slate-500">
+        <p className="mb-4 text-xs text-ink-500">
           {t("admin.retention.subtitle")}
         </p>
 
@@ -434,7 +434,7 @@ export default function AdminGestorasPage() {
                 className="w-32"
                 required
               />
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-ink-400">
                 {t("admin.retention.hint")}
               </p>
             </div>

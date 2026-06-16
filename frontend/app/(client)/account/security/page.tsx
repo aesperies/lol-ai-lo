@@ -162,7 +162,7 @@ export default function AccountSecurityPage() {
           </Button>
         ) : enrolling ? (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ink-600">
               {t("account.security.enroll")}
             </p>
             {qr ? (
@@ -170,7 +170,7 @@ export default function AccountSecurityPage() {
               <img src={qr} alt="TOTP QR" className="h-44 w-44" />
             ) : null}
             {secret ? (
-              <p className="font-mono text-xs text-slate-500">{secret}</p>
+              <p className="font-mono text-xs text-ink-500">{secret}</p>
             ) : null}
             <div>
               <Label htmlFor="totp-code">{t("account.security.code")}</Label>

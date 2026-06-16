@@ -86,33 +86,33 @@ export default function ParsedParamsReview({
     <Card>
       <div className="mb-6">
         <CardTitle>{t("params.title")}</CardTitle>
-        <p className="mt-1 text-sm text-slate-500">{t("params.subtitle")}</p>
+        <p className="mt-1 text-sm text-ink-500">{t("params.subtitle")}</p>
       </div>
 
       {/* Parser summary */}
-      <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+      <div className="mb-6 rounded-md border border-ink-200 bg-ink-50 p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
           {t("params.summary")}
         </p>
-        <p className="mt-1 text-sm leading-relaxed text-slate-700">
+        <p className="mt-1 text-sm leading-relaxed text-ink-700">
           {params.summary || "—"}
         </p>
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-500">
           <span>
             {t("params.docTypeConfirmed")}:{" "}
-            <span className="font-medium text-slate-700">
+            <span className="font-medium text-ink-700">
               {params.docTypeConfirmed}
             </span>
           </span>
           <span>
             {t("params.languageDetected")}:{" "}
-            <span className="font-medium uppercase text-slate-700">
+            <span className="font-medium uppercase text-ink-700">
               {params.language}
             </span>
           </span>
           <span>
             {t("params.confidence")}:{" "}
-            <span className="font-medium text-slate-700">
+            <span className="font-medium text-ink-700">
               {(params.confidence * 100).toFixed(0)}%
             </span>
           </span>
@@ -128,7 +128,7 @@ export default function ParsedParamsReview({
       <div className="space-y-6">
         {/* Parties */}
         <fieldset>
-          <legend className="mb-2 flex items-center text-sm font-medium text-slate-700">
+          <legend className="mb-2 flex items-center text-sm font-medium text-ink-700">
             {t("params.parties")}
             {isUnclear("parties") ? unclearBadge : null}
           </legend>
@@ -143,7 +143,7 @@ export default function ParsedParamsReview({
                 }
               >
                 <div>
-                  <Label className="flex items-center gap-2 text-xs text-slate-500">
+                  <Label className="flex items-center gap-2 text-xs text-ink-500">
                     {t("params.partyRole")}
                     {party.source === "client_confirmed" ? confirmedChip : null}
                   </Label>
@@ -157,7 +157,7 @@ export default function ParsedParamsReview({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-slate-500">
+                  <Label className="text-xs text-ink-500">
                     {t("params.partyName")}
                   </Label>
                   <Input
@@ -176,13 +176,13 @@ export default function ParsedParamsReview({
 
         {/* Key dates */}
         <fieldset>
-          <legend className="mb-2 flex items-center text-sm font-medium text-slate-700">
+          <legend className="mb-2 flex items-center text-sm font-medium text-ink-700">
             {t("params.keyDates")}
             {isUnclear("key_dates") ? unclearBadge : null}
           </legend>
           <div className="space-y-2">
             {params.keyDates.length === 0 ? (
-              <p className="text-sm text-slate-400">—</p>
+              <p className="text-sm text-ink-400">—</p>
             ) : (
               params.keyDates.map((kd, i) => (
                 <div
@@ -254,13 +254,13 @@ export default function ParsedParamsReview({
 
         {/* Key terms */}
         <fieldset>
-          <legend className="mb-2 flex items-center text-sm font-medium text-slate-700">
+          <legend className="mb-2 flex items-center text-sm font-medium text-ink-700">
             {t("params.keyTerms")}
             {isUnclear("key_terms") ? unclearBadge : null}
           </legend>
           <div className="space-y-2">
             {params.keyTerms.length === 0 ? (
-              <p className="text-sm text-slate-400">—</p>
+              <p className="text-sm text-ink-400">—</p>
             ) : (
               params.keyTerms.map((term, i) => (
                 <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -297,7 +297,7 @@ export default function ParsedParamsReview({
       ) : null}
 
       <div className="mt-6 flex items-center justify-between gap-4">
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-ink-400">
           {edited ? t("params.editedNote") : " "}
         </p>
         <div className="flex gap-2">

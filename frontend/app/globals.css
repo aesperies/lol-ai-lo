@@ -2,12 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-display: "Source Serif 4", Georgia, Cambria, "Times New Roman", serif;
+}
+
 @layer base {
   html {
     @apply antialiased;
+    font-family: var(--font-sans);
   }
   body {
-    @apply bg-slate-50 text-slate-900;
+    @apply bg-ink-50 text-ink-900;
+  }
+  /* Visible, consistent keyboard focus everywhere (a11y). */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+  ::selection {
+    @apply bg-brand-100 text-brand-900;
   }
 }
 
