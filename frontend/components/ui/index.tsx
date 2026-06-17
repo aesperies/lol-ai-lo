@@ -22,9 +22,9 @@ function cx(...classes: Array<string | false | null | undefined>): string {
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  // Monochrome primary: near-black in light, near-white in dark (ink flips).
+  // Deep-green brand primary (lifts to sage in dark; text stays readable).
   primary:
-    "bg-ink-900 text-canvas hover:bg-ink-800 focus-visible:ring-brand-500 disabled:bg-ink-200 disabled:text-ink-400",
+    "bg-brand-700 text-white hover:bg-brand-800 focus-visible:ring-brand-500 disabled:bg-ink-200 disabled:text-ink-400 dark:text-brand-900",
   secondary:
     "bg-surface text-ink-700 border border-ink-200 hover:bg-ink-100 hover:border-ink-300 focus-visible:ring-brand-500 disabled:text-ink-300",
   danger:

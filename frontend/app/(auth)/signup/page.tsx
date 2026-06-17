@@ -47,23 +47,23 @@ export default function SignupPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel (desktop) */}
-      <aside className="relative hidden flex-col justify-between overflow-hidden bg-zinc-950 p-12 text-white lg:flex">
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-[#14241c] p-12 text-white lg:flex">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-500/25 blur-3xl"
+          className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#2f5d49]/40 blur-3xl"
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-brand-400/10 blur-3xl"
+          className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-[#a87f3f]/15 blur-3xl"
         />
-        <span className="relative text-xl font-semibold tracking-tight text-white">
-          Lol<span className="text-brand-400">·AI·</span>lo
+        <span className="relative font-display text-xl font-semibold tracking-tight text-white">
+          Lol<span className="text-[#cda86a]">·AI·</span>lo
         </span>
         <div className="relative max-w-md">
-          <h2 className="text-4xl font-semibold leading-tight tracking-tight">
+          <h2 className="font-display text-4xl font-semibold leading-tight">
             {t("app.tagline")}
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-white/60">
+          <p className="mt-4 text-sm leading-relaxed text-white/65">
             {t("auth.signupSubtitle")}
           </p>
         </div>

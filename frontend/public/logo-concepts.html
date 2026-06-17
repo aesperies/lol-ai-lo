@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lol·AI·lo — Logo Concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --green:#1f4031;
+    --green-2:#2f5d49;
+    --brass:#a87f3f;
+    --cream:#f6f3ea;
+    --cream-2:#fffdf7;
+    --ink:#1c1c1a;
+    --muted:#6b6a63;
+    --line:#e3ddcd;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    background:var(--cream);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 28px 96px}
+  header.page{margin-bottom:48px;border-bottom:1px solid var(--line);padding-bottom:32px}
+  .kicker{
+    font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--brass);font-weight:600;margin:0 0 14px
+  }
+  h1{
+    font-family:'Fraunces',Georgia,serif;
+    font-weight:600;font-size:clamp(34px,5vw,52px);
+    line-height:1.02;margin:0 0 14px;color:var(--green);
+    letter-spacing:-.01em;
+  }
+  header.page p{margin:0;max-width:62ch;color:var(--muted);font-size:16px}
+
+  .concept{
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--cream-2);
+    padding:26px 26px 30px;
+    margin-bottom:30px;
+    box-shadow:0 1px 0 rgba(31,64,49,.03), 0 18px 40px -32px rgba(31,64,49,.4);
+  }
+  .concept-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .concept-head .no{
+    font-family:'Fraunces',serif;font-size:15px;color:var(--brass);font-weight:600;
+    border:1px solid var(--brass);border-radius:50%;width:30px;height:30px;
+    display:inline-flex;align-items:center;justify-content:center;flex:none;
+  }
+  .concept-head h2{
+    font-family:'Fraunces',serif;font-weight:600;font-size:23px;margin:0;color:var(--green)
+  }
+  .rationale{margin:0 0 22px 44px;color:var(--muted);font-size:14.5px;max-width:74ch}
+
+  .renders{
+    display:grid;
+    grid-template-columns: 1.6fr .85fr .85fr 1fr;
+    gap:16px;
+    align-items:stretch;
+  }
+  .cell{
+    border:1px solid var(--line);
+    border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    min-height:128px;position:relative;overflow:hidden;
+    padding:18px;
+  }
+  .cell.cream{background:var(--cream)}
+  .cell.green{background:var(--green)}
+  .cell.mono{background:#fff}
+  .cell .tag{
+    position:absolute;top:8px;left:10px;
+    font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);font-weight:600;
+  }
+  .cell.green .tag{color:rgba(246,243,234,.55)}
+  .cell.mono .tag{color:#9a9a96}
+  .cell.smallproof{flex-direction:column;gap:10px}
+  .cell.smallproof .px{font-size:10px;color:var(--muted);letter-spacing:.1em}
+
+  /* lockup type sits beside marks */
+  .lockup{display:flex;align-items:center;gap:14px}
+  .wordmark{
+    font-family:'Fraunces',serif;font-weight:600;font-size:30px;
+    color:var(--green);letter-spacing:-.01em;line-height:1;white-space:nowrap;
+  }
+  .wordmark .dot{color:var(--brass)}
+  .wordmark .ai{color:var(--brass)}
+  .wordmark.sub{display:block;font-family:'Inter',sans-serif;font-weight:500;
+    font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:5px}
+  .wm-stack{display:flex;flex-direction:column;justify-content:center}
+
+  footer.page{
+    margin-top:46px;border-top:1px solid var(--line);padding-top:24px;
+    color:var(--muted);font-size:13.5px;max-width:70ch
+  }
+  footer.page strong{color:var(--green)}
+
+  @media (max-width:860px){
+    .renders{grid-template-columns:1fr 1fr}
+    .cell.full{grid-column:1 / -1}
+  }
+  @media (max-width:520px){
+    .renders{grid-template-columns:1fr}
+    .cell.full{grid-column:auto}
+    .rationale{margin-left:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <p class="kicker">Brand exploration · Concept A — editorial European</p>
+    <h1>Lol·AI·lo — Logo concepts</h1>
+    <p>Six distinct directions for the mark and wordmark. Each is shown as a full lockup on cream, a knockout mark on deep forest green, a 24px small-size proof, and a monochrome version. Built in forest green (#1f4031 / #2f5d49), brass (#a87f3f) and cream (#f6f3ea / #fffdf7), with Fraunces for the wordmark.</p>
+  </header>
+
+  <!-- ============================================================
+       CONCEPT 1 — The Folded Brief
+       ============================================================ -->
+  <section class="concept">
+    <div class="concept-head">
+      <span class="no">1</span>
+      <h2>The Folded Brief</h2>
+    </div>
+    <p class="rationale">A legal page with a dog-eared corner fold and three ruled lines — the most literal "document" cue, drawn with a single confident weight so it reads instantly at any size.</p>
+    <div class="renders">
+
+      <div class="cell cream full">
+        <span class="tag">Full lockup</span>
+        <div class="lockup">
+          <svg width="56" height="56" viewBox="0 0 64 64" aria-label="Folded brief mark">
+            <path d="M14 6 h26 l12 12 v40 a2 2 0 0 1-2 2 H14 a2 2 0 0 1-2-2 V8 a2 2 0 0 1 2-2 Z"
+                  fill="none" stroke="#1f4031" stroke-width="3.4" stroke-linejoin="round"/>
+            <path d="M40 6 v10 a2 2 0 0 0 2 2 h10" fill="none" stroke="#a87f3f" stroke-width="3.4" stroke-linejoin="round"/>
+            <line x1="20" y1="34" x2="44" y2="34" stroke="#1f4031" stroke-width="3" stroke-linecap="round"/>
+            <line x1="20" y1="42" x2="44" y2="42" stroke="#1f4031" stroke-width="3" stroke-linecap="round"/>
+            <line x1="20" y1="50" x2="36" y2="50" stroke="#a87f3f" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span class="wm-stack">
+            <span class="wordmark">Lol<span class="dot">·</span><span class="ai">AI</span><span class="dot">·</span>lo</span>
+            <span class="wordmark sub">Generate · Validate · File</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="cell green">
+        <span class="tag">Knockout</span>
+        <svg width="60" height="60" viewBox="0 0 64 64" aria-label="Folded brief reversed">
+          <path d="M14 6 h26 l12 12 v40 a2 2 0 0 1-2 2 H14 a2 2 0 0 1-2-2 V8 a2 2 0 0 1 2-2 Z"
+                fill="none" stroke="#f6f3ea" stroke-width="3.4" stroke-linejoin="round"/>
+          <path d="M40 6 v10 a2 2 0 0 0 2 2 h10" fill="none" stroke="#a87f3f" stroke-width="3.4" stroke-linejoin="round"/>
+          <line x1="20" y1="34" x2="44" y2="34" stroke="#f6f3ea" stroke-width="3" stroke-linecap="round"/>
+          <line x1="20" y1="42" x2="44" y2="42" stroke="#f6f3ea" stroke-width="3" stroke-linecap="round"/>
+          <line x1="20" y1="50" x2="36" y2="50" stroke="#a87f3f" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <div class="cell cream smallproof">
+        <span class="tag">24px proof</span>
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-label="Folded brief small">
+          <path d="M14 6 h26 l12 12 v40 a2 2 0 0 1-2 2 H14 a2 2 0 0 1-2-2 V8 a2 2 0 0 1 2-2 Z"
+                fill="none" stroke="#1f4031" stroke-width="4.2" stroke-linejoin="round"/>
+          <path d="M40 6 v10 a2 2 0 0 0 2 2 h10" fill="none" stroke="#a87f3f" stroke-width="4.2" stroke-linejoin="round"/>
+          <line x1="21" y1="36" x2="43" y2="36" stroke="#1f4031" stroke-width="4" stroke-linecap="round"/>
+          <line x1="21" y1="46" x2="38" y2="46" stroke="#a87f3f" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+        <span class="px">24 px</span>
+      </div>
+
+      <div class="cell mono smallproof">
+        <span class="tag">Monochrome</span>
+        <svg width="48" height="48" viewBox="0 0 64 64" aria-label="Folded brief monochrome">
+          <path d="M14 6 h26 l12 12 v40 a2 2 0 0 1-2 2 H14 a2 2 0 0 1-2-2 V8 a2 2 0 0 1 2-2 Z"
+                fill="none" stroke="#1c1c1a" stroke-width="3.4" stroke-linejoin="round"/>
+          <path d="M40 6 v10 a2 2 0 0 0 2 2 h10" fill="none" stroke="#1c1c1a" stroke-width="3.4" stroke-linejoin="round"/>
+          <line x1="20" y1="34" x2="44" y2="34" stroke="#1c1c1a" stroke-width="3" stroke-linecap="round"/>
+          <line x1="20" y1="42" x2="44" y2="42" stroke="#1c1c1a" stroke-width="3" stroke-linecap="round"/>
+          <line x1="20" y1="50" x2="36" y2="50" stroke="#1c1c1a" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CONCEPT 2 — The Notarial Seal (monogram L)
+       ============================================================ -->
+  <section class="concept">
+    <div class="concept-head">
+      <span class="no">2</span>
+      <h2>The Notarial Seal</h2>
+    </div>
+    <p class="rationale">A scalloped notary seal enclosing a serif monogram "L". European authority and "officially witnessed" weight — the most prestige-leaning route, and a natural app/favicon.</p>
+    <div class="renders">
+
+      <div class="cell cream full">
+        <span class="tag">Full lockup</span>
+        <div class="lockup">
+          <svg width="58" height="58" viewBox="0 0 64 64" aria-label="Notarial seal mark">
+            <g fill="none" stroke="#1f4031" stroke-width="2.6">
+              <circle cx="32" cy="32" r="27" stroke-dasharray="2.0 3.35" stroke-linecap="round"/>
+              <circle cx="32" cy="32" r="22.5"/>
+            </g>
+            <circle cx="32" cy="32" r="19" fill="#1f4031"/>
+            <text x="32" y="43.5" text-anchor="middle"
+                  font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" fill="#a87f3f">L</text>
+          </svg>
+          <span class="wm-stack">
+            <span class="wordmark">Lol<span class="dot">·</span><span class="ai">AI</span><span class="dot">·</span>lo</span>
+            <span class="wordmark sub">Drafted · Witnessed · Filed</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="cell green">
+        <span class="tag">Knockout</span>
+        <svg width="60" height="60" viewBox="0 0 64 64" aria-label="Seal reversed">
+          <g fill="none" stroke="#f6f3ea" stroke-width="2.6">
+            <circle cx="32" cy="32" r="27" stroke-dasharray="2.0 3.35" stroke-linecap="round"/>
+            <circle cx="32" cy="32" r="22.5"/>
+          </g>
+          <circle cx="32" cy="32" r="19" fill="#a87f3f"/>
+          <text x="32" y="43.5" text-anchor="middle"
+                font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" fill="#1f4031">L</text>
+        </svg>
+      </div>
+
+      <div class="cell cream smallproof">
+        <span class="tag">24px proof</span>
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-label="Seal small">
+          <circle cx="32" cy="32" r="26" fill="none" stroke="#1f4031" stroke-width="3.4"/>
+          <circle cx="32" cy="32" r="20" fill="#1f4031"/>
+          <text x="32" y="43.5" text-anchor="middle"
+                font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" fill="#a87f3f">L</text>
+        </svg>
+        <span class="px">24 px</span>
+      </div>
+
+      <div class="cell mono smallproof">
+        <span class="tag">Monochrome</span>
+        <svg width="48" height="48" viewBox="0 0 64 64" aria-label="Seal monochrome">
+          <g fill="none" stroke="#1c1c1a" stroke-width="2.6">
+            <circle cx="32" cy="32" r="27" stroke-dasharray="2.0 3.35" stroke-linecap="round"/>
+            <circle cx="32" cy="32" r="22.5"/>
+          </g>
+          <circle cx="32" cy="32" r="19" fill="#1c1c1a"/>
+          <text x="32" y="43.5" text-anchor="middle"
+                font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" fill="#fff">L</text>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CONCEPT 3 — The Pilcrow (§ / ¶ motif)
+       ============================================================ -->
+  <section class="concept">
+    <div class="concept-head">
+      <span class="no">3</span>
+      <h2>The Section Mark</h2>
+    </div>
+    <p class="rationale">The section sign § — the universal symbol of legal clauses — set in a soft-cornered tile. Pure typography-as-mark: distinctive, ownable, and unmistakably "law".</p>
+    <div class="renders">
+
+      <div class="cell cream full">
+        <span class="tag">Full lockup</span>
+        <div class="lockup">
+          <svg width="56" height="56" viewBox="0 0 64 64" aria-label="Section mark">
+            <rect x="6" y="6" width="52" height="52" rx="13" fill="#1f4031"/>
+            <text x="32" y="47" text-anchor="middle"
+                  font-family="Fraunces, Georgia, serif" font-weight="600" font-size="42" fill="#a87f3f">§</text>
+          </svg>
+          <span class="wm-stack">
+            <span class="wordmark">Lol<span class="dot">·</span><span class="ai">AI</span><span class="dot">·</span>lo</span>
+            <span class="wordmark sub">Clause-perfect documents</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="cell green">
+        <span class="tag">Knockout</span>
+        <svg width="60" height="60" viewBox="0 0 64 64" aria-label="Section reversed">
+          <rect x="6" y="6" width="52" height="52" rx="13" fill="none" stroke="#f6f3ea" stroke-width="3.2"/>
+          <text x="32" y="47" text-anchor="middle"
+                font-family="Fraunces, Georgia, serif" font-weight="600" font-size="42" fill="#f6f3ea">§</text>
+        </svg>
+      </div>
+
+      <div class="cell cream smallproof">
+        <span class="tag">24px proof</span>
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-label="Section small">
+          <rect x="6" y="6" width="52" height="52" rx="13" fill="#1f4031"/>
+          <text x="32" y="47" text-anchor="middle"
+                font-family="Fraunces, Georgia, serif" font-weight="600" font-size="42" fill="#a87f3f">§</text>
+        </svg>
+        <span class="px">24 px</span>
+      </div>
+
+      <div class="cell mono smallproof">
+        <span class="tag">Monochrome</span>
+        <svg width="48" height="48" viewBox="0 0 64 64" aria-label="Section monochrome">
+          <rect x="6" y="6" width="52" height="52" rx="13" fill="#1c1c1a"/>
+          <text x="32" y="47" text-anchor="middle"
+                font-family="Fraunces, Georgia, serif" font-weight="600" font-size="42" fill="#fff">§</text>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CONCEPT 4 — The Validated Page (check inside a doc)
+       ============================================================ -->
+  <section class="concept">
+    <div class="concept-head">
+      <span class="no">4</span>
+      <h2>The Validated Page</h2>
+    </div>
+    <p class="rationale">A document whose lower half resolves into a confident checkmark — the "lawyer-validated" promise in one gesture. Speaks to the core product: generated, then verified.</p>
+    <div class="renders">
+
+      <div class="cell cream full">
+        <span class="tag">Full lockup</span>
+        <div class="lockup">
+          <svg width="56" height="56" viewBox="0 0 64 64" aria-label="Validated page mark">
+            <path d="M16 7 h22 l10 10 v40 a2 2 0 0 1-2 2 H16 a2 2 0 0 1-2-2 V9 a2 2 0 0 1 2-2 Z"
+                  fill="none" stroke="#1f4031" stroke-width="3.2" stroke-linejoin="round"/>
+            <path d="M38 7 v8 a2 2 0 0 0 2 2 h8" fill="none" stroke="#1f4031" stroke-width="3.2" stroke-linejoin="round"/>
+            <line x1="21" y1="26" x2="41" y2="26" stroke="#1f4031" stroke-width="2.6" stroke-linecap="round"/>
+            <path d="M22 41 l7 8 13-17" fill="none" stroke="#a87f3f" stroke-width="4.4"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="wm-stack">
+            <span class="wordmark">Lol<span class="dot">·</span><span class="ai">AI</span><span class="dot">·</span>lo</span>
+            <span class="wordmark sub">Lawyer-validated · by design</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="cell green">
+        <span class="tag">Knockout</span>
+        <svg width="60" height="60" viewBox="0 0 64 64" aria-label="Validated page reversed">
+          <path d="M16 7 h22 l10 10 v40 a2 2 0 0 1-2 2 H16 a2 2 0 0 1-2-2 V9 a2 2 0 0 1 2-2 Z"
+                fill="none" stroke="#f6f3ea" stroke-width="3.2" stroke-linejoin="round"/>
+          <path d="M38 7 v8 a2 2 0 0 0 2 2 h8" fill="none" stroke="#f6f3ea" stroke-width="3.2" stroke-linejoin="round"/>
+          <line x1="21" y1="26" x2="41" y2="26" stroke="rgba(246,243,234,.6)" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M22 41 l7 8 13-17" fill="none" stroke="#a87f3f" stroke-width="4.4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="cell cream smallproof">
+        <span class="tag">24px proof</span>
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-label="Validated page small">
+          <path d="M16 7 h22 l10 10 v40 a2 2 0 0 1-2 2 H16 a2 2 0 0 1-2-2 V9 a2 2 0 0 1 2-2 Z"
+                fill="none" stroke="#1f4031" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M38 7 v8 a2 2 0 0 0 2 2 h8" fill="none" stroke="#1f4031" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M22 39 l7 9 14-18" fill="none" stroke="#a87f3f" stroke-width="5.4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="px">24 px</span>
+      </div>
+
+      <div class="cell mono smallproof">
+        <span class="tag">Monochrome</span>
+        <svg width="48" height="48" viewBox="0 0 64 64" aria-label="Validated page monochrome">
+          <path d="M16 7 h22 l10 10 v40 a2 2 0 0 1-2 2 H16 a2 2 0 0 1-2-2 V9 a2 2 0 0 1 2-2 Z"
+                fill="none" stroke="#1c1c1a" stroke-width="3.2" stroke-linejoin="round"/>
+          <path d="M38 7 v8 a2 2 0 0 0 2 2 h8" fill="none" stroke="#1c1c1a" stroke-width="3.2" stroke-linejoin="round"/>
+          <line x1="21" y1="26" x2="41" y2="26" stroke="#1c1c1a" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M22 41 l7 8 13-17" fill="none" stroke="#1c1c1a" stroke-width="4.4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CONCEPT 5 — The Ledger Columns (funds)
+       ============================================================ -->
+  <section class="concept">
+    <div class="concept-head">
+      <span class="no">5</span>
+      <h2>The Ledger</h2>
+    </div>
+    <p class="rationale">Three rising columns inside a frame — a fund ledger / classical colonnade. Signals capital and European institutional gravitas rather than generic "AI". Abstract, scalable, distinctive.</p>
+    <div class="renders">
+
+      <div class="cell cream full">
+        <span class="tag">Full lockup</span>
+        <div class="lockup">
+          <svg width="56" height="56" viewBox="0 0 64 64" aria-label="Ledger mark">
+            <rect x="8" y="8" width="48" height="48" rx="9" fill="none" stroke="#1f4031" stroke-width="3.2"/>
+            <rect x="17" y="34" width="7" height="14" rx="2" fill="#1f4031"/>
+            <rect x="28.5" y="26" width="7" height="22" rx="2" fill="#2f5d49"/>
+            <rect x="40" y="18" width="7" height="30" rx="2" fill="#a87f3f"/>
+          </svg>
+          <span class="wm-stack">
+            <span class="wordmark">Lol<span class="dot">·</span><span class="ai">AI</span><span class="dot">·</span>lo</span>
+            <span class="wordmark sub">Fund documents · in order</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="cell green">
+        <span class="tag">Knockout</span>
+        <svg width="60" height="60" viewBox="0 0 64 64" aria-label="Ledger reversed">
+          <rect x="8" y="8" width="48" height="48" rx="9" fill="none" stroke="#f6f3ea" stroke-width="3.2"/>
+          <rect x="17" y="34" width="7" height="14" rx="2" fill="#f6f3ea"/>
+          <rect x="28.5" y="26" width="7" height="22" rx="2" fill="#cfe0d6"/>
+          <rect x="40" y="18" width="7" height="30" rx="2" fill="#a87f3f"/>
+        </svg>
+      </div>
+
+      <div class="cell cream smallproof">
+        <span class="tag">24px proof</span>
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-label="Ledger small">
+          <rect x="7" y="7" width="50" height="50" rx="10" fill="none" stroke="#1f4031" stroke-width="4"/>
+          <rect x="16" y="34" width="8" height="15" rx="2" fill="#1f4031"/>
+          <rect x="28" y="26" width="8" height="23" rx="2" fill="#1f4031"/>
+          <rect x="40" y="18" width="8" height="31" rx="2" fill="#a87f3f"/>
+        </svg>
+        <span class="px">24 px</span>
+      </div>
+
+      <div class="cell mono smallproof">
+        <span class="tag">Monochrome</span>
+        <svg width="48" height="48" viewBox="0 0 64 64" aria-label="Ledger monochrome">
+          <rect x="8" y="8" width="48" height="48" rx="9" fill="none" stroke="#1c1c1a" stroke-width="3.2"/>
+          <rect x="17" y="34" width="7" height="14" rx="2" fill="#1c1c1a"/>
+          <rect x="28.5" y="26" width="7" height="22" rx="2" fill="#1c1c1a"/>
+          <rect x="40" y="18" width="7" height="30" rx="2" fill="#1c1c1a"/>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CONCEPT 6 — The Centre Dot (·AI· wink, dot-as-seal)
+       ============================================================ -->
+  <section class="concept">
+    <div class="concept-head">
+      <span class="no">6</span>
+      <h2>The Centre Dot</h2>
+    </div>
+    <p class="rationale">The mark IS the middot from "·AI·": a brass seal-dot whose ring carries a tiny checkmark, doubling as the "o" of the name. The wink lives in the wordmark — the cleverest, most flexible system.</p>
+    <div class="renders">
+
+      <div class="cell cream full">
+        <span class="tag">Full lockup</span>
+        <div class="lockup">
+          <svg width="52" height="52" viewBox="0 0 64 64" aria-label="Centre dot mark">
+            <circle cx="32" cy="32" r="24" fill="#1f4031"/>
+            <circle cx="32" cy="32" r="24" fill="none" stroke="#a87f3f" stroke-width="2.2"
+                    stroke-dasharray="2.6 4.2" stroke-linecap="round" transform="rotate(0 32 32)"/>
+            <path d="M23 33 l6 7 13-15" fill="none" stroke="#a87f3f" stroke-width="4.2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="wm-stack">
+            <span class="wordmark">L<span style="color:var(--green-2)">o</span>l<span class="dot">·</span><span class="ai">AI</span><span class="dot">·</span>l<span style="color:var(--brass)">o</span></span>
+            <span class="wordmark sub">The dot that signs off</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="cell green">
+        <span class="tag">Knockout</span>
+        <svg width="58" height="58" viewBox="0 0 64 64" aria-label="Centre dot reversed">
+          <circle cx="32" cy="32" r="24" fill="none" stroke="#f6f3ea" stroke-width="2.2"
+                  stroke-dasharray="2.6 4.2" stroke-linecap="round"/>
+          <circle cx="32" cy="32" r="18" fill="#a87f3f"/>
+          <path d="M24 33 l5.5 6.5 12-14" fill="none" stroke="#1f4031" stroke-width="4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="cell cream smallproof">
+        <span class="tag">24px proof</span>
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-label="Centre dot small">
+          <circle cx="32" cy="32" r="26" fill="#1f4031"/>
+          <path d="M21 33 l7 8 15-17" fill="none" stroke="#a87f3f" stroke-width="5.4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="px">24 px</span>
+      </div>
+
+      <div class="cell mono smallproof">
+        <span class="tag">Monochrome</span>
+        <svg width="48" height="48" viewBox="0 0 64 64" aria-label="Centre dot monochrome">
+          <circle cx="32" cy="32" r="24" fill="none" stroke="#1c1c1a" stroke-width="2.2"
+                  stroke-dasharray="2.6 4.2" stroke-linecap="round"/>
+          <circle cx="32" cy="32" r="18" fill="#1c1c1a"/>
+          <path d="M24 33 l5.5 6.5 12-14" fill="none" stroke="#fff" stroke-width="4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="page">
+    <p>These are <strong>concepts for selection only</strong> — nothing here is wired into the app, and no existing files (Logo.tsx, tokens, config) were touched. Pick one and it'll be built into a proper React component with the brand tokens. Each mark is drawn on a 64-unit grid, holds at 24px, and works knocked-out or in single colour.</p>
+  </footer>
+
+</div>
+</body>
+</html>
