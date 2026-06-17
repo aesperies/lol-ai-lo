@@ -22,12 +22,13 @@ function cx(...classes: Array<string | false | null | undefined>): string {
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
+  // Deep-green brand primary (lifts to sage in dark; text stays readable).
   primary:
-    "bg-brand-700 text-white shadow-brand hover:bg-brand-800 focus-visible:ring-brand-500 disabled:bg-ink-200 disabled:shadow-none",
+    "bg-brand-700 text-white hover:bg-brand-800 focus-visible:ring-brand-500 disabled:bg-ink-200 disabled:text-ink-400 dark:text-brand-900",
   secondary:
-    "bg-white text-ink-700 border border-ink-200 shadow-sm hover:bg-ink-50 hover:border-ink-300 focus-visible:ring-brand-500 disabled:text-ink-300",
+    "bg-surface text-ink-700 border border-ink-200 hover:bg-ink-100 hover:border-ink-300 focus-visible:ring-brand-500 disabled:text-ink-300",
   danger:
-    "bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-ink-200",
+    "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-ink-200",
   ghost:
     "bg-transparent text-ink-600 hover:bg-ink-100 focus-visible:ring-brand-500 disabled:text-ink-300",
 };
@@ -64,7 +65,7 @@ export function Card({
   return (
     <div
       className={cx(
-        "rounded-xl border border-ink-100 bg-white p-6 shadow-card",
+        "rounded-xl border border-ink-200 bg-surface p-6 shadow-card",
         className,
       )}
     >
@@ -100,7 +101,7 @@ type BadgeTone =
   | "red";
 
 const BADGE_TONES: Record<BadgeTone, string> = {
-  slate: "bg-slate-100 text-slate-700 ring-slate-200",
+  slate: "bg-ink-100 text-ink-700 ring-ink-200",
   sky: "bg-sky-100 text-sky-800 ring-sky-200",
   indigo: "bg-indigo-100 text-indigo-800 ring-indigo-200",
   amber: "bg-amber-100 text-amber-800 ring-amber-200",
@@ -137,7 +138,7 @@ export type { BadgeTone };
 /* ------------------------------ Inputs ---------------------------- */
 
 const FIELD_BASE =
-  "w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:bg-ink-50 disabled:text-ink-300";
+  "w-full rounded-lg border border-ink-200 bg-surface px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:bg-ink-100 disabled:text-ink-300";
 
 export const Input = forwardRef<
   HTMLInputElement,
@@ -204,7 +205,7 @@ export function UsageBar({
       aria-valuemin={0}
       aria-valuemax={100}
       className={cx(
-        "h-2 w-full overflow-hidden rounded-full bg-slate-100",
+        "h-2 w-full overflow-hidden rounded-full bg-ink-200",
         className,
       )}
     >
@@ -326,7 +327,7 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className={cx(
         "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2",
-        checked ? "bg-brand-700" : "bg-slate-300",
+        checked ? "bg-brand-600" : "bg-ink-300",
       )}
     >
       <span

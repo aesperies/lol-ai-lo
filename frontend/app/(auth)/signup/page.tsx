@@ -6,7 +6,7 @@ import { useI18n } from "@/components/I18nProvider";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useSession } from "@/components/SessionProvider";
 import { Banner, Button, Card, Input, Label } from "@/components/ui";
-import { Wordmark, LogoMark } from "@/components/Logo";
+import { LogoMark } from "@/components/Logo";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SignupPage() {
@@ -47,21 +47,23 @@ export default function SignupPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel (desktop) */}
-      <aside className="relative hidden flex-col justify-between overflow-hidden bg-ink-900 p-12 text-white lg:flex">
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-[#14241c] p-12 text-white lg:flex">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-700/30 blur-3xl"
+          className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#2f5d49]/40 blur-3xl"
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-accent-500/15 blur-3xl"
+          className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-[#a87f3f]/15 blur-3xl"
         />
-        <Wordmark className="[&_span]:text-white" markClassName="h-8 w-8" />
+        <span className="relative font-display text-xl font-semibold tracking-tight text-white">
+          Lol<span className="text-[#cda86a]">·AI·</span>lo
+        </span>
         <div className="relative max-w-md">
           <h2 className="font-display text-4xl font-semibold leading-tight">
             {t("app.tagline")}
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-white/70">
+          <p className="mt-4 text-sm leading-relaxed text-white/65">
             {t("auth.signupSubtitle")}
           </p>
         </div>

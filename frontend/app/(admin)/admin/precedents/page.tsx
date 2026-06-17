@@ -134,7 +134,7 @@ export default function AdminPrecedentsPage() {
             onClick={() => setTab(key)}
             className={
               tab === key
-                ? "rounded-md px-3 py-1.5 text-sm font-medium bg-white text-ink-900 shadow-sm"
+                ? "rounded-md px-3 py-1.5 text-sm font-medium bg-surface text-ink-900 shadow-sm"
                 : "rounded-md px-3 py-1.5 text-sm font-medium text-ink-500 hover:text-ink-700"
             }
           >

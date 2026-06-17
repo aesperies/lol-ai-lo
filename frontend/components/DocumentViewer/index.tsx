@@ -262,7 +262,7 @@ export default function DocumentViewer({
                     }
                     className={
                       active
-                        ? "rounded px-2.5 py-1 text-xs font-medium bg-white text-ink-900 shadow-sm"
+                        ? "rounded px-2.5 py-1 text-xs font-medium bg-surface text-ink-900 shadow-sm"
                         : "rounded px-2.5 py-1 text-xs font-medium text-ink-500 hover:text-ink-700"
                     }
                   >
@@ -296,7 +296,7 @@ export default function DocumentViewer({
                 onClick={() => setTab(type)}
                 className={
                   tab === type
-                    ? "rounded px-3 py-1.5 text-sm font-medium bg-white text-ink-900 shadow-sm"
+                    ? "rounded px-3 py-1.5 text-sm font-medium bg-surface text-ink-900 shadow-sm"
                     : "rounded px-3 py-1.5 text-sm font-medium text-ink-500 hover:text-ink-700"
                 }
               >
