@@ -216,7 +216,7 @@ export default function CounselReviewPanel({
           <Button variant="secondary" onClick={() => void handleDownload()}>
             ⬇ {t("counsel.downloadDocx")}
           </Button>
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors hover:border-ink-300 hover:bg-ink-50">
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-ink-200 bg-surface px-4 py-2 text-sm font-medium text-ink-700 shadow-sm transition-colors hover:border-ink-300 hover:bg-ink-50">
             ⬆ {t("counsel.uploadDocx")}
             <input
               type="file"

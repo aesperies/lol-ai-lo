@@ -1,15 +1,18 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Lol-AI-lo design system — trustworthy, modern legal-tech.
+ * Lol-AI-lo design system — modern legal-tech (Harvey-light / Legora-dark).
  *
- * - brand: deep indigo (primary actions, links, focus)
- * - ink:   near-black navy (headings, brand surfaces)
- * - accent: warm gold (sparingly — the logo dot, premium highlights)
- * Typography: Fraunces (display/serif, legal character) + Inter (UI sans),
- * loaded via <link> in app/layout.tsx with system-font fallbacks.
+ * Colours are CSS variables (see app/globals.css) so the whole UI flips
+ * between light and dark via the `dark` class on <html>:
+ *   - canvas/surface/surface-muted = backgrounds (page / card / subtle)
+ *   - ink-50..900 = neutral text + borders (ramp REVERSES in dark mode)
+ *   - brand-50..900 = the single restrained accent (indigo)
+ * Primary actions are near-black in light / near-white in dark (monochrome).
+ * UI type is Inter; the in-browser document viewer keeps a serif (font-serif).
  */
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -18,52 +21,45 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Institutional navy — the primary brand colour (buttons, links, focus).
-        brand: {
-          50: "#eef1f6",
-          100: "#d8e0ea",
-          200: "#b3c2d6",
-          300: "#7e95b4",
-          400: "#4f6b92",
-          500: "#2f4d74",
-          600: "#1f3a5c",
-          700: "#16233b",
-          800: "#101a2c",
-          900: "#0a1120",
+        canvas: "rgb(var(--canvas) / <alpha-value>)",
+        surface: {
+          DEFAULT: "rgb(var(--surface) / <alpha-value>)",
+          muted: "rgb(var(--surface-muted) / <alpha-value>)",
         },
-        // Cool navy-grey — text + neutral surfaces.
         ink: {
-          50: "#f4f6f9",
-          100: "#e6eaf0",
-          200: "#cdd4e0",
-          300: "#9aa3b5",
-          400: "#5b6577",
-          500: "#45506a",
-          600: "#333c52",
-          700: "#232c40",
-          800: "#161d2d",
-          900: "#0e1422",
+          50: "rgb(var(--ink-50) / <alpha-value>)",
+          100: "rgb(var(--ink-100) / <alpha-value>)",
+          200: "rgb(var(--ink-200) / <alpha-value>)",
+          300: "rgb(var(--ink-300) / <alpha-value>)",
+          400: "rgb(var(--ink-400) / <alpha-value>)",
+          500: "rgb(var(--ink-500) / <alpha-value>)",
+          600: "rgb(var(--ink-600) / <alpha-value>)",
+          700: "rgb(var(--ink-700) / <alpha-value>)",
+          800: "rgb(var(--ink-800) / <alpha-value>)",
+          900: "rgb(var(--ink-900) / <alpha-value>)",
         },
-        // Restrained gold — sparingly (the logo dot, premium highlights).
-        accent: {
-          50: "#faf4e6",
-          100: "#f0e3c0",
-          200: "#e3cd92",
-          400: "#c79a3a",
-          500: "#b88a2a",
-          600: "#946c1d",
+        brand: {
+          50: "rgb(var(--brand-50) / <alpha-value>)",
+          100: "rgb(var(--brand-100) / <alpha-value>)",
+          200: "rgb(var(--brand-200) / <alpha-value>)",
+          300: "rgb(var(--brand-300) / <alpha-value>)",
+          400: "rgb(var(--brand-400) / <alpha-value>)",
+          500: "rgb(var(--brand-500) / <alpha-value>)",
+          600: "rgb(var(--brand-600) / <alpha-value>)",
+          700: "rgb(var(--brand-700) / <alpha-value>)",
+          800: "rgb(var(--brand-800) / <alpha-value>)",
+          900: "rgb(var(--brand-900) / <alpha-value>)",
         },
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
-        display: ["var(--font-display)", "Georgia", "Cambria", "serif"],
-        serif: ["var(--font-display)", "Georgia", "Cambria", "serif"],
+        display: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ["var(--font-serif)", "Georgia", "Cambria", "serif"],
       },
       boxShadow: {
-        card: "0 1px 2px 0 rgb(14 17 28 / 0.04), 0 1px 3px 0 rgb(14 17 28 / 0.06)",
+        card: "0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.05)",
         elevated:
-          "0 4px 12px -2px rgb(14 17 28 / 0.08), 0 2px 6px -2px rgb(14 17 28 / 0.06)",
-        brand: "0 6px 16px -4px rgb(64 53 196 / 0.35)",
+          "0 4px 16px -4px rgb(0 0 0 / 0.10), 0 2px 8px -4px rgb(0 0 0 / 0.06)",
       },
       borderRadius: {
         xl: "0.875rem",

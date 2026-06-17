@@ -12,21 +12,21 @@ export function LogoMark({ className }: { className?: string }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <rect width="32" height="32" rx="8" className="fill-brand-700" />
+      <rect width="32" height="32" rx="8" className="fill-ink-900" />
       {/* stylised document */}
       <path
         d="M11 8.5h6.4L22 13v10.5a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1Z"
-        className="fill-white/95"
+        className="fill-canvas"
       />
-      <path d="M17.2 8.6V13H21" className="stroke-brand-200" strokeWidth="1.1" />
+      <path d="M17.2 8.6V13H21" className="stroke-ink-300" strokeWidth="1.1" />
       <path
         d="M12.6 16h6.8M12.6 18.6h6.8M12.6 21.2h4.2"
-        className="stroke-brand-400"
+        className="stroke-ink-400"
         strokeWidth="1.1"
         strokeLinecap="round"
       />
       {/* AI accent dot */}
-      <circle cx="22.5" cy="21.5" r="3.2" className="fill-accent-400" />
+      <circle cx="22.5" cy="21.5" r="3.2" className="fill-brand-500" />
     </svg>
   );
 }
@@ -41,8 +41,8 @@ export function Wordmark({
   return (
     <span className={`inline-flex items-center gap-2 ${className ?? ""}`}>
       <LogoMark className={markClassName ?? "h-7 w-7"} />
-      <span className="font-display text-xl font-semibold tracking-tight text-ink-900">
-        Lol<span className="text-brand-700">·AI·</span>lo
+      <span className="text-xl font-semibold tracking-tight text-ink-900">
+        Lol<span className="text-brand-500">·AI·</span>lo
       </span>
     </span>
   );

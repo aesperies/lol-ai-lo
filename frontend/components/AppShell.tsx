@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Wordmark } from "@/components/Logo";
 import { useSession } from "@/components/SessionProvider";
 import { Spinner } from "@/components/ui";
@@ -93,7 +94,7 @@ export default function AppShell({
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-ink-100 bg-white/85 backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-ink-200 bg-surface/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-4">
           <div className="flex items-center gap-8">
             <Link href="/" aria-label={t("app.name")}>
@@ -120,6 +121,7 @@ export default function AppShell({
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <LanguageSwitcher />
             <span className="hidden text-xs text-ink-400 lg:inline">
               {user.name ?? user.email}
@@ -152,7 +154,7 @@ export default function AppShell({
         {mobileOpen ? (
           <nav
             aria-label="Principal"
-            className="border-t border-ink-100 bg-white px-4 py-3 md:hidden"
+            className="border-t border-ink-200 bg-surface px-4 py-3 md:hidden"
           >
             <div className="flex flex-col gap-1">
               {nav.map((item) => {

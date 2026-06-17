@@ -273,7 +273,7 @@ export default function TabularReviewDetailPage({
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-ink-200 text-xs uppercase tracking-wide text-ink-400">
-              <th scope="col" className="sticky left-0 bg-white px-4 py-3 font-medium">
+              <th scope="col" className="sticky left-0 bg-surface px-4 py-3 font-medium">
                 {t("tabular.document")}
               </th>
               {review.columns.map((col) => (
@@ -318,7 +318,7 @@ export default function TabularReviewDetailPage({
               >
                 <th
                   scope="row"
-                  className="sticky left-0 bg-white px-4 py-4 text-left font-medium text-ink-700"
+                  className="sticky left-0 bg-surface px-4 py-4 text-left font-medium text-ink-700"
                 >
                   {doc.label ?? doc.sourceId}
                 </th>

@@ -23,7 +23,7 @@ export default function DevModeBanner() {
         <span className="flex items-center gap-2 font-medium">
           <span
             aria-hidden="true"
-            className="inline-block h-1.5 w-1.5 rounded-full bg-accent-400"
+            className="inline-block h-1.5 w-1.5 rounded-full bg-brand-500"
           />
           {t("dev.banner")}
         </span>
