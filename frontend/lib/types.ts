@@ -238,6 +238,12 @@ export interface RequestItem {
   fallbackLevel?: FallbackLevel;
   /** True when the generated document contains [MISSING: …] fields → blocks Exit A. */
   hasMissingFields?: boolean;
+  /** Collaboration (012_collaboration.sql): per-caller ownership/sharing flags
+   * the list/detail endpoints set so the UI can distinguish "mine" from
+   * "shared with me" and hide owner-only actions. Undefined for counsel/admin. */
+  isOwner?: boolean | null;
+  sharedWithMe?: boolean | null;
+  sharedByEmail?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -590,8 +596,37 @@ export interface TabularReview {
   createdBy: string | null;
   title: string;
   status: TabularReviewStatus;
+  /** Collaboration (012_collaboration.sql): per-caller ownership/sharing flags,
+   * mirroring RequestItem. Undefined for counsel/admin. */
+  isOwner?: boolean | null;
+  sharedWithMe?: boolean | null;
+  sharedByEmail?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Collaboration / sharing (012_collaboration.sql)                     */
+/* ------------------------------------------------------------------ */
+
+/** A same-gestora colleague offered in the share picker (GET /api/my/colleagues). */
+export interface Colleague {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/** A collaborator on a shared resource (one share row). Always single-gestora:
+ * gestoraId equals both the sharer's and the sharee's gestora. */
+export interface Share {
+  id: string;
+  gestoraId: string;
+  sharedWithUserId: string;
+  sharedWithEmail: string | null;
+  sharedWithName: string | null;
+  sharedBy: string;
+  sharedByEmail: string | null;
+  createdAt: string | null;
 }
 
 /** A tabular review with its full grid (columns + documents + cells). */

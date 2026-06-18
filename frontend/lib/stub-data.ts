@@ -14,8 +14,10 @@ import { translate, type DictKey } from "@/lib/i18n";
 import { readDevRoleCookie } from "@/lib/supabase/client";
 import type {
   AccountProfile,
+  Colleague,
   DeleteMode,
   ModelConfig,
+  Share,
   AssignedCounsel,
   BillingReport,
   BillingRow,
@@ -1704,6 +1706,23 @@ function cloneTabularDetail(r: TabularReviewDetail): TabularReviewDetail {
   };
 }
 
+/** Collaboration flags for a review as seen by the stub's current user. */
+function reviewShareFlags(r: TabularReview): {
+  isOwner: boolean;
+  sharedWithMe: boolean;
+  sharedByEmail: string | null;
+} {
+  const meId = stubCurrentUser().id;
+  const owner = r.createdBy === meId;
+  const shared = !owner && (_stubReviewShares[r.id] ?? []).includes(meId);
+  const ownerUser = STUB_ALL_USERS.find((u) => u.id === r.createdBy);
+  return {
+    isOwner: owner,
+    sharedWithMe: shared,
+    sharedByEmail: shared ? (ownerUser?.email ?? null) : null,
+  };
+}
+
 export function stubTabularReviews(): TabularReview[] {
   return stubTabularReviewStore.map((r) => ({
     id: r.id,
@@ -1712,6 +1731,7 @@ export function stubTabularReviews(): TabularReview[] {
     createdBy: r.createdBy,
     title: r.title,
     status: r.status,
+    ...reviewShareFlags(r),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }));
@@ -1719,7 +1739,8 @@ export function stubTabularReviews(): TabularReview[] {
 
 export function stubTabularReview(id: string): TabularReviewDetail | undefined {
   const found = stubTabularReviewStore.find((r) => r.id === id);
-  return found ? cloneTabularDetail(found) : undefined;
+  if (!found) return undefined;
+  return { ...cloneTabularDetail(found), ...reviewShareFlags(found) };
 }
 
 function findStubReview(id: string): TabularReviewDetail {
@@ -2015,4 +2036,72 @@ export function stubPutModelConfig(
   };
   _stubModelConfigByGestora[gestoraId] = next;
   return next;
+}
+
+/* ------------------------------------------------------------------ */
+/* Collaboration / sharing (dev stubs) — single-gestora only          */
+/* ------------------------------------------------------------------ */
+
+// resource id -> set of shared-with user ids (in-memory demo state)
+const _stubRequestShares: Record<string, string[]> = { "r-3": ["u-client-2"] };
+const _stubReviewShares: Record<string, string[]> = {};
+
+function stubUserById(id: string): UserProfile | undefined {
+  return STUB_ALL_USERS.find((u) => u.id === id);
+}
+
+/** Same-gestora client colleagues (excludes the current user). */
+export function stubColleagues(): Colleague[] {
+  const me = stubCurrentUser();
+  const gestoraId = me.gestoraId ?? STUB_GESTORA.id;
+  return STUB_ALL_USERS.filter(
+    (u) => u.role === "client" && u.gestoraId === gestoraId && u.id !== me.id,
+  ).map((u) => ({ id: u.id, email: u.email, name: u.name ?? u.email }));
+}
+
+function buildShare(resourceId: string, userId: string): Share {
+  const me = stubCurrentUser();
+  const u = stubUserById(userId);
+  return {
+    id: `share-${resourceId}-${userId}`,
+    gestoraId: me.gestoraId ?? STUB_GESTORA.id,
+    sharedWithUserId: userId,
+    sharedWithEmail: u?.email ?? null,
+    sharedWithName: u?.name ?? null,
+    sharedBy: me.id,
+    sharedByEmail: me.email,
+    createdAt: hoursAgoIso(4),
+  };
+}
+
+export function stubRequestShares(id: string): Share[] {
+  return (_stubRequestShares[id] ?? []).map((uid) => buildShare(id, uid));
+}
+
+export function stubCreateRequestShare(id: string, userId: string): Share {
+  const list = (_stubRequestShares[id] ??= []);
+  if (!list.includes(userId)) list.push(userId);
+  return buildShare(id, userId);
+}
+
+export function stubDeleteRequestShare(id: string, userId: string): void {
+  _stubRequestShares[id] = (_stubRequestShares[id] ?? []).filter(
+    (uid) => uid !== userId,
+  );
+}
+
+export function stubReviewShares(id: string): Share[] {
+  return (_stubReviewShares[id] ?? []).map((uid) => buildShare(id, uid));
+}
+
+export function stubCreateReviewShare(id: string, userId: string): Share {
+  const list = (_stubReviewShares[id] ??= []);
+  if (!list.includes(userId)) list.push(userId);
+  return buildShare(id, userId);
+}
+
+export function stubDeleteReviewShare(id: string, userId: string): void {
+  _stubReviewShares[id] = (_stubReviewShares[id] ?? []).filter(
+    (uid) => uid !== userId,
+  );
 }

@@ -457,3 +457,57 @@ class TestModelConfigIsolation:
         rows_b = db.select("gestora_model_config", gestora_id=seed["gestora_b"]["id"])
         assert rows_a and rows_b == []
         assert secrets.decrypt(rows_a[-1]["anthropic_api_key_enc"]) == "sk-ant-solo-alfa"
+
+
+# ---------------------------------------------------------------------------
+# 8. Collaboration / sharing (012_collaboration.sql) — never crosses gestoras
+# ---------------------------------------------------------------------------
+
+class TestShareIsolation:
+    def test_share_never_crosses_gestora(self, client, db, seed):
+        """A request owned in gestora A can NEVER be shared with — nor leaked to
+        — a gestora B user, at CREATE time or ACCESS time (the inviolable rule).
+
+        The colleague picker is also gestora-siloed, so the cross-gestora user
+        is never even offered as a candidate sharee.
+        """
+        # A gestora-A request.
+        request_row = db.insert(
+            "requests",
+            {
+                "fund_id": seed["fund_a"]["id"],
+                "user_id": seed["client_a"]["id"],
+                "doc_type": DOC_TYPE,
+                "freetext": "x",
+                "language": "es",
+                "status": "review_pending",
+                "requires_counsel": False,
+            },
+        )
+        request_id = request_row["id"]
+
+        # CREATE time: the B user is rejected (404, no leak) and no row is made.
+        res = client.post(
+            f"/api/requests/{request_id}/shares",
+            json={"user_id": seed["client_b"]["id"]},
+            headers=auth(seed["client_a"]),
+        )
+        assert res.status_code == 404
+        assert db.select("request_shares", request_id=request_id) == []
+
+        # The picker never offers the cross-gestora user.
+        colleagues = client.get("/api/my/colleagues", headers=auth(seed["client_a"])).json()
+        assert all(c["id"] != seed["client_b"]["id"] for c in colleagues)
+
+        # ACCESS time: even a forged cross-gestora share row grants nothing.
+        db.insert(
+            "request_shares",
+            {
+                "request_id": request_id,
+                "gestora_id": seed["gestora_b"]["id"],
+                "shared_with_user_id": seed["client_b"]["id"],
+                "shared_by": seed["client_a"]["id"],
+            },
+        )
+        leaked = client.get(f"/api/requests/{request_id}", headers=auth(seed["client_b"]))
+        assert leaked.status_code == 404

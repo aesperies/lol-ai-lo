@@ -27,7 +27,7 @@ from api import (
     require_status,
     transition,
 )
-from auth import assert_request_access, get_current_user, require_client
+from auth import assert_request_access, assert_request_owner, get_current_user, require_client
 from config import ServiceNotConfiguredError, get_settings
 from models.schema import (
     AuditAction,
@@ -220,7 +220,8 @@ async def request_refinement(
     db = dbmod.get_db()
     settings = get_settings()
     row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
+    # Owner-only (collaboration): refinements are mutating; collaborators get 403.
+    gestora_id = assert_request_owner(db, user, row)
     require_status(row, RequestStatus.review_pending)
 
     existing = db.select("refinements", request_id=request_id)

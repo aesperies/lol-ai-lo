@@ -19,7 +19,10 @@ from api import (
 from api.counsel_assignments import resolve_counsel_recipients
 from auth import (
     assert_request_access,
+    assert_request_owner,
     get_current_user,
+    is_request_owner,
+    request_is_shared_with,
     require_client,
     require_counsel,
 )
@@ -150,7 +153,7 @@ async def parse_request(
     """Run the Claude intake parser and store parsed_params (503 if Anthropic unset)."""
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
-    assert_request_access(db, user, row)
+    assert_request_owner(db, user, row)
     require_status(row, RequestStatus.parsing)
 
     parsed = intake_parser.parse_intake(
@@ -180,7 +183,7 @@ async def confirm_params(
     """
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
+    gestora_id = assert_request_owner(db, user, row)
     require_status(row, RequestStatus.parsing)
 
     params = row.get("parsed_params")
@@ -232,15 +235,48 @@ async def confirm_params(
 # Listing / detail (gestora-siloed for clients)
 # ---------------------------------------------------------------------------
 
+def _request_flags(db: dbmod.Database, user: User, row: dict[str, Any]) -> dict[str, Any]:
+    """Per-caller is_owner / shared_with_me / shared_by_email flags for a request.
+
+    Collaboration (012_collaboration.sql): lets the UI distinguish "mine" from
+    "shared with me" and hide owner-only actions. None for counsel/admin
+    (cross-gestora by role; not part of the sharing model)."""
+    if user.role in (UserRole.counsel, UserRole.admin):
+        return {"is_owner": None, "shared_with_me": None, "shared_by_email": None}
+    owner = is_request_owner(user, row)
+    shared = (not owner) and request_is_shared_with(db, row["id"], user)
+    shared_by_email = None
+    if shared:
+        owner_row = db.get("users", row.get("user_id")) if row.get("user_id") else None
+        shared_by_email = (owner_row or {}).get("email")
+    return {"is_owner": owner, "shared_with_me": shared, "shared_by_email": shared_by_email}
+
+
 @router.get("", response_model=list[RequestOut])
 async def list_requests(user: User = Depends(get_current_user)) -> Any:
+    """List requests. Counsel/admin see all (cross-gestora). A client sees their
+    own gestora's requests PLUS any request shared WITH them (collaboration);
+    each row is flagged is_owner / shared_with_me so the UI can show a
+    "Compartido contigo" badge and hide owner-only actions."""
     db = dbmod.get_db()
     rows = db.select("requests")
     if user.role in (UserRole.counsel, UserRole.admin):
         return rows
-    # Client: only requests whose fund belongs to their gestora.
+    # Client: requests they OWN, plus requests a same-gestora colleague SHARED
+    # with them (collaboration). A request is private to its owner otherwise.
     fund_ids = {f["id"] for f in db.select("funds", gestora_id=user.gestora_id)}
-    return [r for r in rows if r["fund_id"] in fund_ids]
+    shared_ids = {
+        s["request_id"]
+        for s in db.select("request_shares", shared_with_user_id=user.id)
+        if s.get("gestora_id") == user.gestora_id
+    }
+    visible = [
+        r
+        for r in rows
+        if r["fund_id"] in fund_ids
+        and (is_request_owner(user, r) or r["id"] in shared_ids)
+    ]
+    return [{**r, **_request_flags(db, user, r)} for r in visible]
 
 
 @router.get("/{request_id}", response_model=RequestOut)
@@ -248,7 +284,7 @@ async def get_request(request_id: str, user: User = Depends(get_current_user)) -
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
     assert_request_access(db, user, row)
-    return row
+    return {**row, **_request_flags(db, user, row)}
 
 
 @router.get("/{request_id}/branch", response_model=RequestBranchOut)
@@ -306,7 +342,7 @@ async def exit_a_acknowledge(
     """Record the explicit Exit A responsibility acknowledgment (guardrail 9)."""
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
+    gestora_id = assert_request_owner(db, user, row)
     require_status(row, RequestStatus.review_pending)
 
     if not body.acknowledged:
@@ -340,7 +376,7 @@ async def exit_a_download(
     creates a precedent CANDIDATE (status 'draft', pending admin activation)."""
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
+    gestora_id = assert_request_owner(db, user, row)
     require_status(row, RequestStatus.review_pending)
 
     if not row.get("exit_a_acknowledged_at"):
@@ -456,7 +492,7 @@ async def exit_b_request_validation(
     db = dbmod.get_db()
     settings = get_settings()
     row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
+    gestora_id = assert_request_owner(db, user, row)
     require_status(row, RequestStatus.review_pending)
 
     transition(db, row, RequestStatus.counsel_review)

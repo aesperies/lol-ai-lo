@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import DocumentViewer from "@/components/DocumentViewer";
 import { useI18n } from "@/components/I18nProvider";
-import { Banner, PageHeader, Spinner } from "@/components/ui";
+import ShareDialog from "@/components/ShareDialog";
+import { Badge, Banner, Button, PageHeader, Spinner } from "@/components/ui";
 import { getRequest } from "@/lib/api";
 import type { RequestItem } from "@/lib/types";
 
@@ -16,6 +17,7 @@ export default function DocumentDetailPage({
   const { t } = useI18n();
   const [request, setRequest] = useState<RequestItem | null>(null);
   const [error, setError] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     void getRequest(params.id)
@@ -42,10 +44,29 @@ export default function DocumentDetailPage({
           <PageHeader
             title={request.docTypeLabel ?? request.docType}
             subtitle={request.fundName}
+            actions={
+              request.sharedWithMe ? (
+                <Badge tone="violet">
+                  {request.sharedByEmail
+                    ? t("share.sharedByYou", { who: request.sharedByEmail })
+                    : t("share.sharedWithYou")}
+                </Badge>
+              ) : request.isOwner === false ? null : (
+                <Button variant="secondary" onClick={() => setShareOpen(true)}>
+                  {t("share.button")}
+                </Button>
+              )
+            }
           />
           <DocumentViewer
             request={request}
             onRequestUpdate={(updated) => setRequest({ ...updated })}
+          />
+          <ShareDialog
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            kind="request"
+            resourceId={request.id}
           />
         </>
       )}

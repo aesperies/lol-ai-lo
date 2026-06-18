@@ -106,6 +106,10 @@ class AuditAction(str, Enum):
     data_subject_deleted = "data_subject_deleted"
     # Per-gestora BYO model configuration.
     model_config_updated = "model_config_updated"
+    # Collaboration / sharing (012_collaboration.sql): an owner grants a
+    # same-gestora colleague READ access to a request or a tabular review.
+    resource_shared = "resource_shared"
+    resource_unshared = "resource_unshared"
 
 
 class AuditResourceType(str, Enum):
@@ -376,6 +380,14 @@ class RequestOut(BaseModel):
     counsel_validated_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Collaboration (012_collaboration.sql): per-caller ownership/sharing flags
+    # the list/detail endpoints set so the UI can distinguish "mine" from
+    # "shared with me" and hide owner-only actions. Not stored on the request
+    # row — derived for the calling user. None for counsel/admin (cross-gestora
+    # by role; not part of the sharing model).
+    is_owner: Optional[bool] = None
+    shared_with_me: Optional[bool] = None
+    shared_by_email: Optional[str] = None
 
 
 class DocumentOut(BaseModel):
@@ -697,6 +709,11 @@ class TabularReviewOut(BaseModel):
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Collaboration (012_collaboration.sql): per-caller ownership/sharing flags,
+    # mirroring RequestOut. Derived for the calling user, not stored on the row.
+    is_owner: Optional[bool] = None
+    shared_with_me: Optional[bool] = None
+    shared_by_email: Optional[str] = None
 
 
 class TabularReviewDetailOut(TabularReviewOut):
@@ -792,3 +809,42 @@ class ModelConfigOut(BaseModel):
     is_default: bool = False
     updated_by: Optional[str] = None
     updated_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# Collaboration / sharing (012_collaboration.sql)
+# ---------------------------------------------------------------------------
+
+class ColleagueOut(BaseModel):
+    """A same-gestora client colleague offered in the share picker
+    (GET /api/my/colleagues). Excludes the caller; gestora-siloed."""
+
+    id: str
+    email: str
+    name: str
+
+
+class ShareCreate(BaseModel):
+    """POST /api/{requests,tabular-reviews}/{id}/shares — share with one
+    colleague. ``user_id`` MUST be a client of the SAME gestora as the
+    resource (the inviolable single-gestora rule) and not the owner."""
+
+    user_id: str
+
+
+class ShareOut(BaseModel):
+    """A collaborator on a shared resource (one share row).
+
+    ``gestora_id`` is recorded once on the row (= the resource's gestora) and
+    is always equal to both the sharer's and the sharee's gestora — the
+    inviolable single-gestora rule. ``shared_with_email`` / ``shared_with_name``
+    and ``shared_by_email`` are resolved for display."""
+
+    id: str
+    gestora_id: str
+    shared_with_user_id: str
+    shared_with_email: Optional[str] = None
+    shared_with_name: Optional[str] = None
+    shared_by: str
+    shared_by_email: Optional[str] = None
+    created_at: Optional[datetime] = None
