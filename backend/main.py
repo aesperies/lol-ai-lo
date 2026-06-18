@@ -27,6 +27,11 @@ from api.playbooks import router as playbooks_router
 from api.precedents import router as precedents_router
 from api.refinements import router as refinements_router
 from api.requests import router as requests_router
+from api.sharing import (
+    colleagues_router,
+    request_shares_router,
+    review_shares_router,
+)
 from api.tabular import router as tabular_router
 from config import ServiceNotConfiguredError, get_settings
 
@@ -92,6 +97,10 @@ app.include_router(billing_router)
 app.include_router(tabular_router)
 app.include_router(account_router)
 app.include_router(model_config_router)
+# Collaboration / sharing (012_collaboration.sql).
+app.include_router(colleagues_router)
+app.include_router(request_shares_router)
+app.include_router(review_shares_router)
 
 
 @app.get("/health")

@@ -14,7 +14,13 @@ from api import (
     transition,
     validate_upload,
 )
-from auth import assert_request_access, get_current_user, gestora_of_request, require_counsel
+from auth import (
+    assert_request_access,
+    assert_request_owner,
+    get_current_user,
+    gestora_of_request,
+    require_counsel,
+)
 from config import ServiceNotConfiguredError, get_settings
 from models import doc_fields
 from models.schema import (
@@ -247,7 +253,9 @@ async def generate(
         raise HTTPException(status_code=403, detail="Counsel cannot trigger generation")
 
     row = get_request_or_404(db, request_id)
-    gestora_id = assert_request_access(db, user, row)
+    # Owner-only (collaboration): generation is a mutating LLM-cost action; a
+    # read-only collaborator is rejected (403). Counsel was already blocked above.
+    gestora_id = assert_request_owner(db, user, row)
     require_status(row, RequestStatus.confirmed)
 
     params = row.get("parsed_params") or {}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import TabularStatusBadge from "@/components/TabularStatusBadge";
+import ShareDialog from "@/components/ShareDialog";
 import {
   Badge,
   Banner,
@@ -112,6 +113,7 @@ export default function TabularReviewDetailPage({
 
   const [review, setReview] = useState<TabularReviewDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [running, setRunning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [addingColumn, setAddingColumn] = useState(false);
@@ -234,6 +236,17 @@ export default function TabularReviewDetailPage({
         actions={
           <div className="flex items-center gap-2">
             <TabularStatusBadge status={review.status} />
+            {review.sharedWithMe ? (
+              <Badge tone="violet">
+                {review.sharedByEmail
+                  ? t("share.sharedByYou", { who: review.sharedByEmail })
+                  : t("share.sharedWithYou")}
+              </Badge>
+            ) : review.isOwner === false ? null : (
+              <Button variant="secondary" onClick={() => setShareOpen(true)}>
+                {t("share.button")}
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => void handleExport()}
@@ -401,6 +414,13 @@ export default function TabularReviewDetailPage({
           {t("common.back")}
         </Link>
       </div>
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        kind="review"
+        resourceId={review.id}
+      />
     </div>
   );
 }

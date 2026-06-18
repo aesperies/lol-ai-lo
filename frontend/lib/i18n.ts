@@ -98,6 +98,21 @@ const es = {
   "nav.account": "Mi cuenta",
   "nav.modelConfig": "Modelo por gestora",
 
+  // Collaboration / sharing
+  "share.button": "Compartir",
+  "share.title": "Compartir con tu equipo",
+  "share.note":
+    "Los colegas de tu gestora con acceso podrán ver y descargar, pero no realizar acciones (validación, ajustes o borrado).",
+  "share.addColleague": "Añadir colega",
+  "share.selectColleague": "Selecciona un colega…",
+  "share.add": "Añadir",
+  "share.collaborators": "Con acceso",
+  "share.empty": "Aún no lo has compartido con nadie.",
+  "share.viewer": "Lectura",
+  "share.remove": "Quitar",
+  "share.sharedWithYou": "Compartido contigo",
+  "share.sharedByYou": "Compartido por {who}",
+
   // Account — security (MFA)
   "account.security.title": "Seguridad de la cuenta",
   "account.security.subtitle":
@@ -726,6 +741,21 @@ const en: Record<DictKey, string> = {
   "nav.billing": "Billing",
   "nav.account": "My account",
   "nav.modelConfig": "Model per gestora",
+
+  // Collaboration / sharing
+  "share.button": "Share",
+  "share.title": "Share with your team",
+  "share.note":
+    "Colleagues from your gestora with access can view and download, but not take actions (validation, refinements or deletion).",
+  "share.addColleague": "Add colleague",
+  "share.selectColleague": "Select a colleague…",
+  "share.add": "Add",
+  "share.collaborators": "With access",
+  "share.empty": "Not shared with anyone yet.",
+  "share.viewer": "Viewer",
+  "share.remove": "Remove",
+  "share.sharedWithYou": "Shared with you",
+  "share.sharedByYou": "Shared by {who}",
 
   // Account — security (MFA)
   "account.security.title": "Account security",

@@ -69,6 +69,13 @@ import {
   stubDeleteMyData,
   stubGetModelConfig,
   stubPutModelConfig,
+  stubColleagues,
+  stubRequestShares,
+  stubCreateRequestShare,
+  stubDeleteRequestShare,
+  stubReviewShares,
+  stubCreateReviewShare,
+  stubDeleteReviewShare,
 } from "@/lib/stub-data";
 import {
   getSupabaseBrowserClient,
@@ -81,6 +88,7 @@ import type {
   BillingReport,
   BillingRow,
   Branch,
+  Colleague,
   DeleteMode,
   ModelConfig,
   CounselAssignment,
@@ -108,6 +116,7 @@ import type {
   ReviewIssue,
   ReviewPlaybook,
   Role,
+  Share,
   SlaReport,
   SlaStats,
   SubscriptionTier,
@@ -214,6 +223,14 @@ export const apiPaths = {
   // Per-gestora model configuration (admin-only).
   adminModelConfig: (gestoraId: string) =>
     `/api/admin/gestoras/${gestoraId}/model-config`,
+  // Collaboration / sharing (012_collaboration.sql) — single-gestora only.
+  colleagues: "/api/my/colleagues",
+  requestShares: (id: string) => `/api/requests/${id}/shares`,
+  requestShare: (id: string, userId: string) =>
+    `/api/requests/${id}/shares/${userId}`,
+  reviewShares: (id: string) => `/api/tabular-reviews/${id}/shares`,
+  reviewShare: (id: string, userId: string) =>
+    `/api/tabular-reviews/${id}/shares/${userId}`,
 } as const;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -524,12 +541,29 @@ export async function requestExitB(id: string): Promise<RequestItem> {
   return apiFetch<RequestItem>(apiPaths.exitB(id), { method: "POST" });
 }
 
+/** Overlays the collaboration flags (snake_case on the wire) onto a request,
+ * leaving the rest of the existing pass-through shape untouched. */
+function withRequestShareFlags(req: RequestItem): RequestItem {
+  const wire = req as RequestItem & {
+    is_owner?: boolean | null;
+    shared_with_me?: boolean | null;
+    shared_by_email?: string | null;
+  };
+  return {
+    ...req,
+    isOwner: req.isOwner ?? wire.is_owner ?? null,
+    sharedWithMe: req.sharedWithMe ?? wire.shared_with_me ?? null,
+    sharedByEmail: req.sharedByEmail ?? wire.shared_by_email ?? null,
+  };
+}
+
 export async function getRequests(): Promise<RequestItem[]> {
   if (isStubMode()) {
     await delay(STUB_LATENCY / 2);
     return [...stubRequests];
   }
-  return apiFetch<RequestItem[]>(apiPaths.requests);
+  const rows = await apiFetch<RequestItem[]>(apiPaths.requests);
+  return rows.map(withRequestShareFlags);
 }
 
 export async function getRequest(id: string): Promise<RequestItem> {
@@ -539,7 +573,7 @@ export async function getRequest(id: string): Promise<RequestItem> {
     if (!req) throw new ApiError(404, "Request not found");
     return req;
   }
-  return apiFetch<RequestItem>(apiPaths.request(id));
+  return withRequestShareFlags(await apiFetch<RequestItem>(apiPaths.request(id)));
 }
 
 /** Downloads a document version as a Blob (stub: plain-text .docx placeholder).
@@ -1511,6 +1545,10 @@ interface TabularReviewWire {
   created_by?: string | null;
   title: string;
   status: TabularReview["status"];
+  // Collaboration (012_collaboration.sql): per-caller ownership/sharing flags.
+  is_owner?: boolean | null;
+  shared_with_me?: boolean | null;
+  shared_by_email?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -1529,6 +1567,9 @@ function mapTabularReview(wire: TabularReviewWire): TabularReview {
     createdBy: wire.created_by ?? null,
     title: wire.title,
     status: wire.status,
+    isOwner: wire.is_owner ?? null,
+    sharedWithMe: wire.shared_with_me ?? null,
+    sharedByEmail: wire.shared_by_email ?? null,
     createdAt: wire.created_at ?? null,
     updatedAt: wire.updated_at ?? null,
   };
@@ -1914,6 +1955,140 @@ export async function updateModelConfig(
       body,
     }),
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Collaboration / sharing (012_collaboration.sql) — single-gestora     */
+/* ------------------------------------------------------------------ */
+
+interface ColleagueWire {
+  id: string;
+  email: string;
+  name: string;
+}
+
+interface ShareWire {
+  id: string;
+  gestora_id: string;
+  shared_with_user_id: string;
+  shared_with_email?: string | null;
+  shared_with_name?: string | null;
+  shared_by: string;
+  shared_by_email?: string | null;
+  created_at?: string | null;
+}
+
+function mapShare(wire: ShareWire): Share {
+  return {
+    id: wire.id,
+    gestoraId: wire.gestora_id,
+    sharedWithUserId: wire.shared_with_user_id,
+    sharedWithEmail: wire.shared_with_email ?? null,
+    sharedWithName: wire.shared_with_name ?? null,
+    sharedBy: wire.shared_by,
+    sharedByEmail: wire.shared_by_email ?? null,
+    createdAt: wire.created_at ?? null,
+  };
+}
+
+/** Same-gestora client colleagues for the share picker (excludes the caller). */
+export async function getColleagues(): Promise<Colleague[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubColleagues();
+  }
+  const rows = await apiFetch<ColleagueWire[]>(apiPaths.colleagues);
+  return rows.map((c) => ({ id: c.id, email: c.email, name: c.name }));
+}
+
+/** Collaborators on a request (owner + collaborators may view). */
+export async function getRequestShares(id: string): Promise<Share[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubRequestShares(id);
+  }
+  const rows = await apiFetch<ShareWire[]>(apiPaths.requestShares(id));
+  return rows.map(mapShare);
+}
+
+/** Shares a request with a same-gestora colleague (owner only; idempotent). */
+export async function createRequestShare(
+  id: string,
+  userId: string,
+): Promise<Share> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubCreateRequestShare(id, userId);
+  }
+  return mapShare(
+    await apiFetch<ShareWire>(apiPaths.requestShares(id), {
+      method: "POST",
+      body: { user_id: userId },
+    }),
+  );
+}
+
+/** Revokes a colleague's access to a request (owner only). */
+export async function deleteRequestShare(
+  id: string,
+  userId: string,
+): Promise<void> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    stubDeleteRequestShare(id, userId);
+    return;
+  }
+  const headers = await authHeaders();
+  const res = await fetch(`${API_URL}${apiPaths.requestShare(id, userId)}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+}
+
+/** Collaborators on a tabular review (owner + collaborators may view). */
+export async function getReviewShares(id: string): Promise<Share[]> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    return stubReviewShares(id);
+  }
+  const rows = await apiFetch<ShareWire[]>(apiPaths.reviewShares(id));
+  return rows.map(mapShare);
+}
+
+/** Shares a tabular review with a same-gestora colleague (owner only). */
+export async function createReviewShare(
+  id: string,
+  userId: string,
+): Promise<Share> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 2);
+    return stubCreateReviewShare(id, userId);
+  }
+  return mapShare(
+    await apiFetch<ShareWire>(apiPaths.reviewShares(id), {
+      method: "POST",
+      body: { user_id: userId },
+    }),
+  );
+}
+
+/** Revokes a colleague's access to a tabular review (owner only). */
+export async function deleteReviewShare(
+  id: string,
+  userId: string,
+): Promise<void> {
+  if (isStubMode()) {
+    await delay(STUB_LATENCY / 3);
+    stubDeleteReviewShare(id, userId);
+    return;
+  }
+  const headers = await authHeaders();
+  const res = await fetch(`${API_URL}${apiPaths.reviewShare(id, userId)}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
 }
 
 /** Triggers a browser download for a Blob. */

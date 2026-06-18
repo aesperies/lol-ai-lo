@@ -95,18 +95,78 @@ def gestora_of_request(db: dbmod.Database, request_row: dict[str, Any]) -> Optio
     return fund["gestora_id"] if fund else None
 
 
-def assert_request_access(db: dbmod.Database, user: User, request_row: dict[str, Any]) -> str:
-    """404 unless the user may access this request. Returns the gestora_id.
+def request_is_shared_with(db: dbmod.Database, request_id: str, user: User) -> bool:
+    """True iff a share row grants ``user`` access to this request AND it stays
+    within a single gestora (the inviolable rule, defence in depth).
 
-    Clients only ever see requests whose fund belongs to their own gestora;
-    counsel/admin are cross-gestora by design (SPEC actor matrix).
-    A 404 (not 403) avoids leaking the existence of other gestoras' data.
+    Collaboration (012_collaboration.sql): a share only grants access when the
+    share row, the sharee and the request all belong to the SAME gestora. We
+    re-verify gestora equality here at ACCESS time even though it was enforced
+    at CREATE time, so a later data inconsistency can never become a leak.
+    """
+    if user.gestora_id is None:
+        return False
+    request_gestora = gestora_of_request(db, db.get("requests", request_id) or {})
+    if request_gestora is None or request_gestora != user.gestora_id:
+        return False
+    shares = db.select(
+        "request_shares", request_id=request_id, shared_with_user_id=user.id
+    )
+    return any(s.get("gestora_id") == user.gestora_id for s in shares)
+
+
+def assert_request_access(db: dbmod.Database, user: User, request_row: dict[str, Any]) -> str:
+    """404 unless the user may READ this request. Returns the gestora_id.
+
+    Read access is granted to:
+      * the request's OWNER (the client who created it);
+      * a same-gestora colleague the owner has SHARED it with (collaboration,
+        012_collaboration.sql);
+      * counsel/admin, who are cross-gestora by design (SPEC actor matrix).
+    A request is otherwise PRIVATE to its owner: a different same-gestora client
+    who was not shared with gets 404 (not 403) so the request's existence is
+    never leaked — the same no-leak rule used across gestoras.
+
+    Sharing NEVER crosses gestoras: a share only counts when the share row, the
+    sharee and the request are all the same gestora (request_is_shared_with
+    re-checks this), so this stays within the inviolable single-gestora rule.
+    Owner-only / mutating actions are gated separately by assert_request_owner;
+    this helper only governs READ access.
     """
     gestora_id = gestora_of_request(db, request_row)
     if user.role in (UserRole.counsel, UserRole.admin):
         return gestora_id or ""
     if gestora_id is None or user.gestora_id != gestora_id:
+        # Cross-gestora (or fund-less) request: never visible to a client.
         raise HTTPException(status_code=404, detail="Request not found")
+    if is_request_owner(user, request_row):
+        return gestora_id
+    if request_is_shared_with(db, request_row["id"], user):
+        return gestora_id
+    raise HTTPException(status_code=404, detail="Request not found")
+
+
+def is_request_owner(user: User, request_row: dict[str, Any]) -> bool:
+    """True iff ``user`` is the client who created the request."""
+    return user.role == UserRole.client and request_row.get("user_id") == user.id
+
+
+def assert_request_owner(db: dbmod.Database, user: User, request_row: dict[str, Any]) -> str:
+    """404/403 unless ``user`` OWNS this request. Returns the gestora_id.
+
+    Collaboration (012_collaboration.sql): every MUTATING / irreversible action
+    on a request — Exit A acknowledgment & download, Exit B / counsel request,
+    refinements, managing the share list — is reserved to the OWNER. A
+    collaborator with read access is rejected here (403) without losing their
+    read access elsewhere. We first run the standard 404-no-leak access check
+    (so a stranger still gets 404, never 403), then require ownership.
+    """
+    gestora_id = assert_request_access(db, user, request_row)
+    if not is_request_owner(user, request_row):
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el propietario de la solicitud puede realizar esta acción.",
+        )
     return gestora_id
 
 
