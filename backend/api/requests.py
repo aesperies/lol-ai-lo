@@ -230,6 +230,12 @@ async def confirm_params(
 # Listing / detail (gestora-siloed for clients)
 # ---------------------------------------------------------------------------
 
+def _fund_name(db: dbmod.Database, row: dict[str, Any]) -> dict[str, Any]:
+    """Display enrichment: the request's fund name (never a bare UUID in the UI)."""
+    fund = db.get("funds", row["fund_id"]) if row.get("fund_id") else None
+    return {"fund_name": (fund or {}).get("name")}
+
+
 def _request_flags(db: dbmod.Database, user: User, row: dict[str, Any]) -> dict[str, Any]:
     """Per-caller is_owner / shared_with_me / shared_by_email flags for a request.
 
@@ -256,7 +262,7 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
     db = dbmod.get_db()
     rows = db.unscoped_select("requests")
     if user.role in (UserRole.counsel, UserRole.admin):
-        return rows
+        return [{**r, **_fund_name(db, r)} for r in rows]
     # Client: requests they OWN, plus requests a same-gestora colleague SHARED
     # with them (collaboration). A request is private to its owner otherwise.
     fund_ids = {f["id"] for f in db.select("funds", gestora_id=user.gestora_id)}
@@ -271,7 +277,7 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
         if r["fund_id"] in fund_ids
         and (is_request_owner(user, r) or r["id"] in shared_ids)
     ]
-    return [{**r, **_request_flags(db, user, r)} for r in visible]
+    return [{**r, **_request_flags(db, user, r), **_fund_name(db, r)} for r in visible]
 
 
 @router.get("/{request_id}", response_model=RequestOut)
@@ -279,7 +285,7 @@ async def get_request(request_id: str, user: User = Depends(get_current_user)) -
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
     assert_request_access(db, user, row)
-    return {**row, **_request_flags(db, user, row)}
+    return {**row, **_request_flags(db, user, row), **_fund_name(db, row)}
 
 
 @router.get("/{request_id}/branch", response_model=RequestBranchOut)

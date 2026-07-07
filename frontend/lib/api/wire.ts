@@ -81,6 +81,7 @@ export function parsedParamsToWire(params: ParsedParams): ParsedParamsWire {
 export interface RequestWire {
   id: string;
   fund_id: string;
+  fund_name?: string | null;
   user_id: string;
   doc_type: string;
   doc_type_custom?: string | null;
@@ -104,6 +105,7 @@ export function mapRequest(wire: RequestWire): RequestItem {
   return {
     id: wire.id,
     fundId: wire.fund_id,
+    fundName: wire.fund_name ?? undefined,
     userId: wire.user_id,
     docType: wire.doc_type,
     docTypeLabel: docTypeLabel(wire.doc_type),

@@ -33,6 +33,9 @@ from models.enums import (
 class RequestOut(BaseModel):  # doubles as requests-row mirror and API DTO
     id: str
     fund_id: str
+    # Display enrichment (list/detail endpoints): the fund's name, so the UI
+    # never has to show a bare fund UUID. Not stored on the row.
+    fund_name: Optional[str] = None
     user_id: str
     doc_type: str
     doc_type_custom: Optional[str] = None

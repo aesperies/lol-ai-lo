@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -17,7 +16,6 @@ const STUB_ROLES: Role[] = ["client", "counsel", "admin"];
 export default function LoginPage() {
   const { t } = useI18n();
   const { isStub, setStubRole } = useSession();
-  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +40,10 @@ export default function LoginPage() {
         (data.user.app_metadata?.role as Role | undefined) ??
         (data.user.user_metadata?.role as Role | undefined) ??
         "client";
-      router.push(roleHome(role));
-      router.refresh();
+      // Full navigation (not router.push): guarantees the just-written auth
+      // cookies travel with the request the middleware inspects — a soft RSC
+      // navigation can race the cookie write and bounce back to /login.
+      window.location.assign(roleHome(role));
     } finally {
       setSubmitting(false);
     }

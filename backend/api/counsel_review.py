@@ -48,7 +48,11 @@ def _comment_out(row: dict[str, Any]) -> CounselCommentOut:
 async def counsel_queue(user: User = Depends(require_counsel_or_admin)) -> Any:
     """Requests awaiting counsel review, oldest first (FIFO queue)."""
     db = dbmod.get_db()
-    return db.unscoped_select("requests", status=RequestStatus.counsel_review.value)
+    rows = db.unscoped_select("requests", status=RequestStatus.counsel_review.value)
+    def fund_name(row: dict[str, Any]) -> Any:
+        fund = db.get("funds", row["fund_id"]) if row.get("fund_id") else None
+        return (fund or {}).get("name")
+    return [{**r, "fund_name": fund_name(r)} for r in rows]
 
 
 @router.get("/requests/{request_id}/review", response_model=ReviewBundleOut)
