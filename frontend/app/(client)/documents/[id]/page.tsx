@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import DocumentViewer from "@/components/DocumentViewer";
 import { useI18n } from "@/components/I18nProvider";
 import ShareDialog from "@/components/ShareDialog";
 import { Badge, Banner, Button, PageHeader, Spinner } from "@/components/ui";
 import { getRequest } from "@/lib/api";
+import { useAsync } from "@/lib/hooks";
 import type { RequestItem } from "@/lib/types";
 
 export default function DocumentDetailPage({
@@ -15,15 +16,15 @@ export default function DocumentDetailPage({
   params: { id: string };
 }) {
   const { t } = useI18n();
-  const [request, setRequest] = useState<RequestItem | null>(null);
-  const [error, setError] = useState(false);
+  const { data, error } = useAsync(
+    () => getRequest(params.id).then((r) => ({ ...r })),
+    [params.id],
+  );
+  // Local override so DocumentViewer status updates (Exit A/B, refinements)
+  // are reflected without re-fetching.
+  const [updated, setUpdated] = useState<RequestItem | null>(null);
+  const request = updated && updated.id === params.id ? updated : data;
   const [shareOpen, setShareOpen] = useState(false);
-
-  useEffect(() => {
-    void getRequest(params.id)
-      .then((r) => setRequest({ ...r }))
-      .catch(() => setError(true));
-  }, [params.id]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -35,7 +36,7 @@ export default function DocumentDetailPage({
 
       {error ? (
         <Banner tone="danger">{t("common.error")}</Banner>
-      ) : request === null ? (
+      ) : request == null ? (
         <div className="flex justify-center py-16">
           <Spinner />
         </div>
@@ -60,7 +61,7 @@ export default function DocumentDetailPage({
           />
           <DocumentViewer
             request={request}
-            onRequestUpdate={(updated) => setRequest({ ...updated })}
+            onRequestUpdate={(next) => setUpdated({ ...next })}
           />
           <ShareDialog
             open={shareOpen}

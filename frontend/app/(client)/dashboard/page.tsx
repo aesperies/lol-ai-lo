@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
 import { Button, Card, PageHeader, Spinner, UsageBar } from "@/components/ui";
 import { getMyUsage, getRequests } from "@/lib/api";
-import type { MyUsage, RequestItem } from "@/lib/types";
+import { useAsync } from "@/lib/hooks";
+import type { MyUsage } from "@/lib/types";
 
 /** Small monthly-consumption widget (improvement #7). Hidden when the
  * /api/my/usage call fails — consumption is informative, never blocking. */
@@ -38,22 +38,12 @@ function UsageWidget({ usage }: { usage: MyUsage }) {
 
 export default function ClientDashboardPage() {
   const { t } = useI18n();
-  const [requests, setRequests] = useState<RequestItem[] | null>(null);
-  const [usage, setUsage] = useState<MyUsage | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    void getRequests()
-      .then(setRequests)
-      .catch(() => {
-        setError(true);
-        setRequests([]);
-      });
-    // Graceful: hide the widget entirely if the usage call fails.
-    void getMyUsage()
-      .then(setUsage)
-      .catch(() => setUsage(null));
-  }, []);
+  const { data, error } = useAsync(() => getRequests(), []);
+  // On error, fall back to an empty list so the error card renders
+  // (same behavior as before).
+  const requests = data ?? (error ? [] : null);
+  // Graceful: hide the widget entirely if the usage call fails.
+  const { data: usage } = useAsync<MyUsage | null>(() => getMyUsage(), []);
 
   return (
     <div>

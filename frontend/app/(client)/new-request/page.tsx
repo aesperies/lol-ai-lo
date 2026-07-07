@@ -15,6 +15,7 @@ import {
   parseRequest,
   type CreateRequestInput,
 } from "@/lib/api";
+import { isAbortError, pollUntil, useUnmountSignal } from "@/lib/hooks";
 import type { ParsedParams, RequestItem } from "@/lib/types";
 
 /**
@@ -30,14 +31,9 @@ type FlowStep =
   | "generation_failed"
   | "ready";
 
-const JOB_POLL_INTERVAL_MS = 2000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export default function NewRequestPage() {
   const { t } = useI18n();
+  const getSignal = useUnmountSignal();
 
   const [step, setStep] = useState<FlowStep>("intake");
   const [request, setRequest] = useState<RequestItem | null>(null);
@@ -64,34 +60,37 @@ export default function NewRequestPage() {
     }
   }
 
-  /** Enqueues the generation job (202) and polls it until terminal state. */
+  /** Enqueues the generation job (202) and polls it until terminal state.
+   * The poll aborts as soon as the component unmounts (navigation away),
+   * so no further API calls or setState happen after unmount. */
   async function generateAndPoll(requestId: string) {
+    const signal = getSignal();
     setBusy(true);
     setError(null);
     setJobError(null);
     setStep("generating");
     try {
       await generateRequest(requestId);
-      for (;;) {
-        await sleep(JOB_POLL_INTERVAL_MS);
-        const job = await getGenerationJob(requestId);
-        if (job.status === "succeeded") {
-          const updated = await getRequest(requestId);
-          setRequest({ ...updated });
-          setStep("ready");
-          return;
-        }
-        if (job.status === "failed") {
-          setJobError(job.lastError ?? null);
-          setStep("generation_failed");
-          return;
-        }
+      const job = await pollUntil({
+        fn: () => getGenerationJob(requestId),
+        done: (j) => j.status === "succeeded" || j.status === "failed",
+        signal,
+      });
+      if (job.status === "succeeded") {
+        const updated = await getRequest(requestId);
+        if (signal.aborted) return;
+        setRequest({ ...updated });
+        setStep("ready");
+      } else {
+        setJobError(job.lastError ?? null);
+        setStep("generation_failed");
       }
-    } catch {
+    } catch (err) {
+      if (isAbortError(err) || signal.aborted) return;
       setError(t("common.error"));
       setStep("params");
     } finally {
-      setBusy(false);
+      if (!signal.aborted) setBusy(false);
     }
   }
 

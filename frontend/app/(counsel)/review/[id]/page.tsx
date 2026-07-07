@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import CounselReviewPanel from "@/components/CounselReviewPanel";
 import { useI18n } from "@/components/I18nProvider";
 import { Banner, Spinner } from "@/components/ui";
 import { getReviewBundle } from "@/lib/api";
-import type { ReviewBundle } from "@/lib/types";
+import { useAsync } from "@/lib/hooks";
 
 export default function CounselReviewPage({
   params,
@@ -14,14 +13,10 @@ export default function CounselReviewPage({
   params: { id: string };
 }) {
   const { t } = useI18n();
-  const [bundle, setBundle] = useState<ReviewBundle | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    void getReviewBundle(params.id)
-      .then(setBundle)
-      .catch(() => setError(true));
-  }, [params.id]);
+  const { data: bundle, error } = useAsync(
+    () => getReviewBundle(params.id),
+    [params.id],
+  );
 
   return (
     <div>

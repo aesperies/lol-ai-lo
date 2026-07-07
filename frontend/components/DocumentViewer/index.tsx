@@ -19,15 +19,11 @@ import {
   requestExitB,
   triggerBlobDownload,
 } from "@/lib/api";
+import { isAbortError, pollUntil, useUnmountSignal } from "@/lib/hooks";
 import type { Refinement, RequestItem } from "@/lib/types";
 
-const JOB_POLL_INTERVAL_MS = 2000;
 const INSTRUCTION_MIN = 5;
 const INSTRUCTION_MAX = 1000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Step 5 of the master workflow — CLIENT reviews the generated document:
@@ -58,6 +54,7 @@ export default function DocumentViewer({
 }) {
   const { t } = useI18n();
   const ackId = useId();
+  const getSignal = useUnmountSignal();
 
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState<"exitA" | "exitB" | null>(null);
@@ -162,43 +159,47 @@ export default function DocumentViewer({
   }
 
   /** Enqueues the refinement (202) and polls the generation job until done,
-   * then refreshes the history + viewer (same pattern as new-request). */
+   * then refreshes the history + viewer (same pattern as new-request).
+   * The poll aborts when the component unmounts, so no further API calls
+   * or setState happen after navigation away. */
   async function handleRefine() {
     const text = instruction.trim();
     if (text.length < INSTRUCTION_MIN || text.length > INSTRUCTION_MAX) return;
+    const signal = getSignal();
     setRefining(true);
     setRefineError(null);
     setRefineNotice(null);
     try {
       await createRefinement(request.id, text);
-      for (;;) {
-        await sleep(JOB_POLL_INTERVAL_MS);
-        const job = await getGenerationJob(request.id);
-        if (job.status !== "succeeded" && job.status !== "failed") continue;
+      const job = await pollUntil({
+        fn: () => getGenerationJob(request.id),
+        done: (j) => j.status === "succeeded" || j.status === "failed",
+        signal,
+      });
 
-        const [updated, rows] = await Promise.all([
-          getRequest(request.id),
-          getRefinements(request.id),
-        ]);
-        setRefinements(rows);
-        onRequestUpdate?.(updated);
-        const latest = rows[rows.length - 1];
-        if (job.status === "failed" || latest?.status === "failed") {
-          // [REFINEMENT-UNCLEAR] or job failure: previous document untouched,
-          // reason shown inline.
-          setRefineError(latest?.error ?? job.lastError ?? t("refine.failed"));
-        } else {
-          setInstruction("");
-          setSelectedIteration(null); // jump to the new latest iteration
-          setRefreshToken((n) => n + 1);
-          setRefineNotice(t("refine.applied"));
-        }
-        return;
+      const [updated, rows] = await Promise.all([
+        getRequest(request.id),
+        getRefinements(request.id),
+      ]);
+      if (signal.aborted) return;
+      setRefinements(rows);
+      onRequestUpdate?.(updated);
+      const latest = rows[rows.length - 1];
+      if (job.status === "failed" || latest?.status === "failed") {
+        // [REFINEMENT-UNCLEAR] or job failure: previous document untouched,
+        // reason shown inline.
+        setRefineError(latest?.error ?? job.lastError ?? t("refine.failed"));
+      } else {
+        setInstruction("");
+        setSelectedIteration(null); // jump to the new latest iteration
+        setRefreshToken((n) => n + 1);
+        setRefineNotice(t("refine.applied"));
       }
-    } catch {
+    } catch (err) {
+      if (isAbortError(err) || signal.aborted) return;
       setRefineError(t("common.error"));
     } finally {
-      setRefining(false);
+      if (!signal.aborted) setRefining(false);
     }
   }
 

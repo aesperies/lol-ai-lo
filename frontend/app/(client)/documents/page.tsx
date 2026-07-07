@@ -1,28 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
 import { Card, Label, PageHeader, Select, Spinner } from "@/components/ui";
 import { getFunds, getRequests } from "@/lib/api";
 import { DOC_TYPE_CATALOG, docTypeGroupLabel } from "@/lib/catalog";
 import { REQUEST_STATUSES, type Fund, type RequestItem, type RequestStatus } from "@/lib/types";
+import { useAsync } from "@/lib/hooks";
 import type { DictKey } from "@/lib/i18n";
 
 export default function DocumentsHistoryPage() {
   const { t } = useI18n();
 
-  const [requests, setRequests] = useState<RequestItem[] | null>(null);
-  const [funds, setFunds] = useState<Fund[]>([]);
+  // Errors degrade to an empty list (same behavior as before).
+  const { data: requests } = useAsync<RequestItem[]>(
+    () => getRequests().catch(() => []),
+    [],
+  );
+  const { data: fundsData } = useAsync<Fund[]>(
+    () => getFunds().catch(() => []),
+    [],
+  );
+  const funds = fundsData ?? [];
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [docTypeFilter, setDocTypeFilter] = useState<string>("");
   const [fundFilter, setFundFilter] = useState<string>("");
-
-  useEffect(() => {
-    void getRequests().then(setRequests).catch(() => setRequests([]));
-    void getFunds().then(setFunds).catch(() => setFunds([]));
-  }, []);
 
   const filtered = useMemo(() => {
     if (!requests) return [];

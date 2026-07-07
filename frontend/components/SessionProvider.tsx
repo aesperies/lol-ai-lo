@@ -10,7 +10,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { STUB_USERS_BY_ROLE } from "@/lib/stub-data";
 import {
   getSupabaseBrowserClient,
   isStubMode,
@@ -18,6 +17,15 @@ import {
   writeDevRoleCookie,
 } from "@/lib/supabase/client";
 import type { Role, UserProfile } from "@/lib/types";
+
+/** Dev-stub users, loaded on demand so the 2100-line stub dataset stays in
+ * its own async chunk and never ships eagerly to production users (lib/api
+ * already dynamic-imports it; this was the last static import). */
+async function stubUserForRole(role: Role | null): Promise<UserProfile | null> {
+  if (!role) return null;
+  const { STUB_USERS_BY_ROLE } = await import("@/lib/stub-data");
+  return STUB_USERS_BY_ROLE[role] ?? null;
+}
 
 interface SessionContextValue {
   user: UserProfile | null;
@@ -52,9 +60,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     if (stub) {
       const role = readDevRoleCookie() as Role | null;
-      setUser(role ? (STUB_USERS_BY_ROLE[role] ?? null) : null);
-      setLoading(false);
-      return;
+      stubUserForRole(role).then((stubUser) => {
+        if (cancelled) return;
+        setUser(stubUser);
+        setLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
 
     const supabase = getSupabaseBrowserClient();
@@ -100,9 +113,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const setStubRole = useCallback(
     (role: Role) => {
       writeDevRoleCookie(role);
-      setUser(STUB_USERS_BY_ROLE[role] ?? null);
-      router.push(roleHome(role));
-      router.refresh();
+      void stubUserForRole(role).then((stubUser) => {
+        setUser(stubUser);
+        router.push(roleHome(role));
+        router.refresh();
+      });
     },
     [router],
   );
