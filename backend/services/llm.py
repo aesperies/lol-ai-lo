@@ -5,8 +5,11 @@ local daemon at ``OLLAMA_BASE_URL``). **Anthropic** Claude is an optional,
 env-selectable cloud fallback (``LLM_PROVIDER=anthropic``).
 
 Callers use :func:`complete` for plain-text completions and
-:func:`complete_json` when they need a parsed JSON object. Provider/network
-failures are wrapped: a misconfigured or unreachable provider raises
+:func:`complete_json` when they need a parsed JSON object. This module owns
+the per-gestora config RESOLUTION (fail-closed to local); the provider
+implementations live in the services/providers registry — adding a provider
+is one new module there, nothing here changes. Provider/network failures are
+wrapped: a misconfigured or unreachable provider raises
 :class:`ServiceNotConfiguredError` (API layers translate this to HTTP 503).
 Transient network errors are retried with a short backoff (instant under
 pytest).
@@ -19,13 +22,14 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
-import time
 from typing import Any, Optional
 
-import httpx
+# Kept as a module attribute on purpose: tests (and conftest's no-network
+# guard) monkeypatch ``llm.httpx.post`` to stub every provider's HTTP layer —
+# this IS the shared httpx module object the providers use.
+import httpx  # noqa: F401
 
-from config import ServiceNotConfiguredError, get_settings
+from config import get_settings
 
 logger = logging.getLogger("lolailo.llm")
 
@@ -68,15 +72,72 @@ class EffectiveLLMConfig:
         return bool(self.anthropic_api_key)
 
 
+class EffectiveEmbeddingConfig:
+    """The embedding provider/model/keys to use for ONE RAG call.
+
+    Mirrors :class:`EffectiveLLMConfig` for the embedding side: the gestora's
+    ``gestora_model_config`` row (embedding_provider / embedding_model /
+    openai_api_key_enc / ollama_base_url) overrides the global settings.
+    """
+
+    __slots__ = (
+        "embedding_provider",
+        "embedding_model",
+        "openai_api_key",
+        "ollama_base_url",
+        "ollama_embed_model",
+    )
+
+    def __init__(
+        self,
+        *,
+        embedding_provider: str,
+        embedding_model: str,
+        openai_api_key: str,
+        ollama_base_url: str,
+        ollama_embed_model: str,
+    ) -> None:
+        self.embedding_provider = embedding_provider
+        self.embedding_model = embedding_model
+        self.openai_api_key = openai_api_key
+        self.ollama_base_url = ollama_base_url
+        self.ollama_embed_model = ollama_embed_model
+
+
+def _load_override_row(gestora_id: str) -> Optional[dict[str, Any]]:
+    """The gestora's model-config override row (newest wins), or None.
+
+    Raises on DB failure — callers decide the degradation, and for anything
+    that could route content to a cloud provider the rule is FAIL CLOSED.
+    """
+    # Local import: keep services/llm.py importable with zero optional deps.
+    from services import db as dbmod
+
+    rows = dbmod.get_db().select("gestora_model_config", gestora_id=gestora_id)
+    return rows[-1] if rows else None
+
+
+def _local_llm_config(settings: Any) -> EffectiveLLMConfig:
+    """Local-only (Ollama, no cloud key) — the fail-closed degradation target."""
+    return EffectiveLLMConfig(
+        llm_provider="ollama",
+        claude_model=settings.claude_model,
+        anthropic_api_key="",
+        ollama_base_url=settings.ollama_base_url,
+        ollama_llm_model=settings.ollama_llm_model,
+    )
+
+
 def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
     """Resolve the effective LLM config for an optional gestora.
 
-    Falls back entirely to global settings when ``gestora_id`` is None, the DB
-    is unreachable, or the gestora has no override row — so this never raises and
-    never changes behaviour for callers that don't opt in. Encrypted BYO keys are
-    decrypted here (services/secrets.py); a key that fails to decrypt is treated
-    as "not set" (logged at WARNING, never the plaintext) so a rotated/garbled
-    key degrades to the global default rather than breaking generation.
+    Falls back to global settings when ``gestora_id`` is None or the gestora
+    has no override row. When the override row CANNOT BE READ the resolution
+    fails CLOSED to local Ollama: the gestora may have configured "local only",
+    and sending its content to a cloud default on a transient DB error would
+    violate the no-cloud-without-opt-in rule (CLAUDE.md). Encrypted BYO keys
+    are decrypted here (services/secrets.py); a key that fails to decrypt is
+    treated as "not set" (logged at WARNING, never the plaintext).
     """
     settings = get_settings()
     config = EffectiveLLMConfig(
@@ -89,18 +150,19 @@ def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
     if not gestora_id:
         return config
 
-    # Local imports: keep services/llm.py importable with zero optional deps and
-    # avoid an import cycle (db -> config only).
-    from services import db as dbmod, secrets
+    from services import secrets  # local import (optional-deps-free startup)
 
     try:
-        rows = dbmod.get_db().select("gestora_model_config", gestora_id=gestora_id)
-    except Exception:  # noqa: BLE001 — config resolution must never break a call
-        logger.warning("Could not load model config for gestora %s; using global.", gestora_id)
+        row = _load_override_row(gestora_id)
+    except Exception:  # noqa: BLE001 — resolution must never break a call
+        logger.warning(
+            "Could not load model config for gestora %s; failing CLOSED to "
+            "local Ollama (cloud is opt-in and the opt-in is unreadable).",
+            gestora_id,
+        )
+        return _local_llm_config(settings)
+    if row is None:
         return config
-    if not rows:
-        return config
-    row = rows[-1]
 
     if row.get("llm_provider"):
         config.llm_provider = row["llm_provider"]
@@ -122,132 +184,66 @@ def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
             )
     return config
 
-# Backoff base (seconds) between transient-network retries. Pinned to ~0 under
-# pytest so the suite stays fast (mirrors the job_backoff pattern).
-_RETRY_BACKOFF_BASE = 0.0 if "pytest" in sys.modules else 0.5
 
+def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbeddingConfig:
+    """Resolve the effective embedding config for an optional gestora.
 
-def _retryable(func, attempts: int):
-    """Call ``func`` up to ``attempts`` times, retrying on transient httpx
-    network errors with a short exponential backoff. Non-network errors and
-    the final failure propagate to the caller."""
-    last_exc: Optional[Exception] = None
-    for attempt in range(1, attempts + 1):
-        try:
-            return func()
-        except (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError) as exc:
-            last_exc = exc
-            if attempt >= attempts:
-                break
-            logger.warning("LLM transient network error (attempt %d/%d): %s", attempt, attempts, exc)
-            time.sleep(_RETRY_BACKOFF_BASE * (2 ** (attempt - 1)))
-    assert last_exc is not None
-    raise last_exc
-
-
-def _json_instructions(schema: dict[str, Any]) -> str:
-    """Prompt fragment instructing the model to emit JSON matching ``schema``."""
-    return (
-        "You must respond with a single valid JSON object and nothing else "
-        "(no markdown, no code fences, no preamble). The object must match "
-        "this JSON schema:\n"
-        f"{json.dumps(schema, ensure_ascii=False)}"
-    )
-
-
-def _complete_ollama(
-    prompt: str,
-    *,
-    max_tokens: int,
-    json_schema: Optional[dict[str, Any]],
-    system: Optional[str],
-    config: EffectiveLLMConfig,
-) -> str:
-    """Call the local Ollama daemon's ``/api/chat`` endpoint (non-streaming)."""
+    Same contract as :func:`resolve_config`: the gestora's override row wins
+    field-by-field over global settings, and an unreadable override FAILS
+    CLOSED to local Ollama — precedent text is the highest-volume content the
+    platform sends to an embedding provider, so it never goes to a cloud
+    default by accident.
+    """
     settings = get_settings()
-    messages: list[dict[str, str]] = []
-    system_parts = [system] if system else []
-    if json_schema is not None:
-        system_parts.append(_json_instructions(json_schema))
-    if system_parts:
-        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
-    messages.append({"role": "user", "content": prompt})
+    config = EffectiveEmbeddingConfig(
+        embedding_provider=settings.embedding_provider,
+        embedding_model=settings.embedding_model,
+        openai_api_key=settings.openai_api_key,
+        ollama_base_url=settings.ollama_base_url,
+        ollama_embed_model=settings.ollama_embed_model,
+    )
+    if not gestora_id:
+        return config
 
-    payload: dict[str, Any] = {
-        "model": config.ollama_llm_model,
-        "messages": messages,
-        "stream": False,
-        "options": {"num_predict": max_tokens},
-    }
-    if json_schema is not None:
-        payload["format"] = "json"  # Ollama JSON mode
-
-    url = f"{config.ollama_base_url.rstrip('/')}/api/chat"
-
-    def _do() -> httpx.Response:
-        return httpx.post(url, json=payload, timeout=settings.ollama_timeout_seconds)
+    from services import secrets  # local import (optional-deps-free startup)
 
     try:
-        response = _retryable(_do, settings.llm_retry_attempts)
-    except httpx.HTTPError as exc:
-        raise ServiceNotConfiguredError(
-            "ollama",
-            f"Could not reach Ollama at {config.ollama_base_url}. "
-            "Start it (`ollama serve`) or set LLM_PROVIDER=anthropic.",
-        ) from exc
-
-    if response.status_code != 200:
-        raise ServiceNotConfiguredError(
-            "ollama",
-            f"Ollama returned HTTP {response.status_code}: {response.text[:200]}. "
-            f"Is the model '{config.ollama_llm_model}' pulled?",
+        row = _load_override_row(gestora_id)
+    except Exception:  # noqa: BLE001 — resolution must never break a call
+        logger.warning(
+            "Could not load model config for gestora %s; failing CLOSED to "
+            "local Ollama embeddings (cloud is opt-in and the opt-in is unreadable).",
+            gestora_id,
         )
-    data = response.json()
-    return (data.get("message") or {}).get("content", "")
+        return EffectiveEmbeddingConfig(
+            embedding_provider="ollama",
+            embedding_model=settings.embedding_model,
+            openai_api_key="",
+            ollama_base_url=settings.ollama_base_url,
+            ollama_embed_model=settings.ollama_embed_model,
+        )
+    if row is None:
+        return config
 
-
-def _complete_anthropic(
-    prompt: str,
-    *,
-    max_tokens: int,
-    json_schema: Optional[dict[str, Any]],
-    system: Optional[str],
-    config: EffectiveLLMConfig,
-) -> str:
-    """Call the Anthropic Claude API. JSON mode is prompt-driven (Anthropic has
-    no ``format=json``)."""
-    settings = get_settings()
-    if not config.anthropic_configured:
-        raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
-    # Lazy import: heavy optional dep; app must start without it.
-    import anthropic  # type: ignore[import-not-found]
-
-    system_parts = [system] if system else []
-    if json_schema is not None:
-        system_parts.append(_json_instructions(json_schema))
-
-    # Key/model resolved per call (global default, or the gestora's BYO override).
-    client = anthropic.Anthropic(api_key=config.anthropic_api_key)
-    kwargs: dict[str, Any] = {
-        "model": config.claude_model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    if system_parts:
-        kwargs["system"] = "\n\n".join(system_parts)
-
-    def _do() -> Any:
-        return client.messages.create(**kwargs)
-
-    try:
-        response = _retryable(_do, settings.llm_retry_attempts)
-    except anthropic.APIConnectionError as exc:  # type: ignore[attr-defined]
-        raise ServiceNotConfiguredError(
-            "anthropic", "Could not reach the Anthropic API."
-        ) from exc
-    return "".join(
-        block.text for block in response.content if getattr(block, "type", "") == "text"
-    )
+    if row.get("embedding_provider"):
+        config.embedding_provider = row["embedding_provider"]
+    if row.get("embedding_model"):
+        # Stored generically; maps onto the selected provider's model field.
+        config.embedding_model = row["embedding_model"]
+        config.ollama_embed_model = row["embedding_model"]
+    if row.get("ollama_base_url"):
+        config.ollama_base_url = row["ollama_base_url"]
+    enc = row.get("openai_api_key_enc")
+    if enc:
+        try:
+            config.openai_api_key = secrets.decrypt(enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "OpenAI BYO key for gestora %s could not be decrypted; "
+                "falling back to global OPENAI_API_KEY.",
+                gestora_id,
+            )
+    return config
 
 
 def complete(
@@ -281,18 +277,12 @@ def complete(
             unreachable (API layers translate to HTTP 503).
     """
     config = resolve_config(gestora_id)
-    provider = config.llm_provider
-    if provider == "ollama":
-        return _complete_ollama(
-            prompt, max_tokens=max_tokens, json_schema=json_schema, system=system, config=config
-        )
-    if provider == "anthropic":
-        return _complete_anthropic(
-            prompt, max_tokens=max_tokens, json_schema=json_schema, system=system, config=config
-        )
-    raise ServiceNotConfiguredError(
-        provider or "llm",
-        "Unknown LLM_PROVIDER; expected 'ollama' or 'anthropic'.",
+    # Registry dispatch (services/providers): unknown providers raise
+    # ServiceNotConfiguredError there (→ HTTP 503).
+    from services import providers  # local import (optional-deps-free startup)
+
+    return providers.get_llm(config.llm_provider).complete(
+        prompt, max_tokens=max_tokens, json_schema=json_schema, system=system, config=config
     )
 
 

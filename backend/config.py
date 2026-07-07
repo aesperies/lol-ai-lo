@@ -177,29 +177,25 @@ class Settings(BaseSettings):
     def llm_configured(self) -> bool:
         """Whether the SELECTED text-generation provider is usable.
 
-        Ollama needs no credential (only a reachable daemon, checked at call
-        time); Anthropic needs ANTHROPIC_API_KEY. Reachability of a local
-        Ollama is surfaced as a 503 from services/llm.py, not here.
+        Delegates to the provider registry (services/providers) — each
+        provider knows its own credential requirements. Reachability of a
+        local Ollama is surfaced as a 503 at call time, not here.
         """
-        if self.llm_provider == "ollama":
-            return True
-        if self.llm_provider == "anthropic":
-            return self.anthropic_configured
-        return False
+        from services import providers  # lazy: providers imports config
+
+        return providers.llm_configured(self.llm_provider, self)
 
     @property
     def embeddings_configured(self) -> bool:
         """Whether the SELECTED embeddings provider is usable.
 
-        Ollama needs no credential; OpenAI needs OPENAI_API_KEY. When the
+        Delegates to the provider registry (services/providers). When the
         provider is unreachable, RAG degrades to weight/recency ranking rather
         than failing (see services/rag.py).
         """
-        if self.embedding_provider == "ollama":
-            return True
-        if self.embedding_provider == "openai":
-            return self.openai_configured
-        return False
+        from services import providers  # lazy: providers imports config
+
+        return providers.embeddings_configured(self.embedding_provider, self)
 
     @property
     def drive_configured(self) -> bool:

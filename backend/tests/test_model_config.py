@@ -100,7 +100,9 @@ class TestResolution:
             captured["key"] = config.anthropic_api_key
             return "ok"
 
-        monkeypatch.setattr(llm, "_complete_anthropic", fake_anthropic)
+        from services import providers
+
+        monkeypatch.setattr(providers.get_llm("anthropic"), "complete", fake_anthropic)
         out = llm.complete("hi", gestora_id=seed["gestora_a"]["id"])
         assert out == "ok"
         assert captured == {

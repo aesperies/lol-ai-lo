@@ -266,7 +266,7 @@ def test_rag_embed_ollama_path(settings, monkeypatch):
 
     # llm.httpx IS the httpx module, shared with rag.py's lazy import.
     monkeypatch.setattr(llm.httpx, "post", fake_post)
-    vectors = rag._embed(["hello", "world"])
+    vectors = rag._embed(["hello", "world"], llm.resolve_embedding_config())
     assert vectors == [[0.1, 0.2, 0.3], [0.1, 0.2, 0.3]]
     assert calls == ["hello", "world"]
 
@@ -279,8 +279,8 @@ def test_rag_embed_degrades_to_none_when_unreachable(settings, monkeypatch):
         raise httpx.ConnectError("no daemon")
 
     monkeypatch.setattr(llm.httpx, "post", fake_post)
-    assert rag._embed(["x"]) is None
-    assert rag._semantic_scores("q", []) is None
+    assert rag._embed(["x"], llm.resolve_embedding_config()) is None
+    assert rag._semantic_scores("q", [], llm.resolve_embedding_config()) is None
 
 
 # small helper to avoid shadowing the `json` param name in fake_post closures

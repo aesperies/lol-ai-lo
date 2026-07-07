@@ -35,10 +35,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from config import get_settings
 from models.schema import LEVEL3_WARNING, PrecedentSource, PrecedentVersionStatus
 from services import db as dbmod
-from services import docx_renderer, storage
+from services import docx_renderer, llm, storage
 
 # rag_weight by version status within the gestora silo (SPEC).
 _SILO_WEIGHTS = {
@@ -184,68 +183,30 @@ def _chunk(text: str) -> list[str]:
     return [" ".join(words[i:i + CHUNK_TOKENS]) for i in range(0, len(words), step)]
 
 
-def _embed_openai(texts: list[str]) -> Optional[list[list[float]]]:
-    """Embed via OpenAI text-embedding through LlamaIndex, or None if the stack
-    is unavailable."""
-    settings = get_settings()
-    if not settings.openai_configured:
+def _embed(texts: list[str], config: llm.EffectiveEmbeddingConfig) -> Optional[list[list[float]]]:
+    """Embed ``texts`` via the resolved provider, or None when unavailable.
+
+    ``config`` comes from llm.resolve_embedding_config(gestora_id): the
+    gestora's override (or fail-closed local Ollama) — never a raw global
+    default when a gestora is in play. Dispatches through the provider
+    registry (services/providers); an unknown provider degrades to None
+    (weight/recency ranking) rather than failing retrieval.
+    """
+    from services import providers  # local import (optional-deps-free startup)
+
+    provider = providers.get_embedding(config.embedding_provider)
+    if provider is None:
         return None
-    try:
-        # Lazy imports: heavy optional deps.
-        from llama_index.embeddings.openai import OpenAIEmbedding  # type: ignore[import-not-found]
-    except ImportError:
-        return None
-    # TODO: real OpenAI API key required (OPENAI_API_KEY).
-    embedder = OpenAIEmbedding(model=settings.embedding_model, api_key=settings.openai_api_key)
-    try:
-        return embedder.get_text_embedding_batch(texts)
-    except Exception:
-        # Network/auth failure: degrade to weight/recency (never a wider pool).
-        return None
+    return provider.embed(texts, config)
 
 
-def _embed_ollama(texts: list[str]) -> Optional[list[list[float]]]:
-    """Embed via the local Ollama daemon's ``/api/embeddings`` endpoint, looping
-    per text. Returns None if Ollama is unreachable (caller degrades to
-    weight/recency ranking — never a wider candidate pool)."""
-    settings = get_settings()
-    import httpx  # hard dependency
-
-    url = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
-    vectors: list[list[float]] = []
-    for text in texts:
-        try:
-            response = httpx.post(
-                url,
-                json={"model": settings.ollama_embed_model, "prompt": text},
-                timeout=settings.ollama_timeout_seconds,
-            )
-        except httpx.HTTPError:
-            return None
-        if response.status_code != 200:
-            return None
-        vector = response.json().get("embedding")
-        if not vector:
-            return None
-        vectors.append(vector)
-    return vectors
-
-
-def _embed(texts: list[str]) -> Optional[list[list[float]]]:
-    """Embed ``texts`` via the configured provider, or None when unavailable."""
-    settings = get_settings()
-    if settings.embedding_provider == "ollama":
-        return _embed_ollama(texts)
-    if settings.embedding_provider == "openai":
-        return _embed_openai(texts)
-    return None
-
-
-def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[float]]:
+def _semantic_scores(
+    query: str, candidates: list[Candidate], config: llm.EffectiveEmbeddingConfig
+) -> Optional[list[float]]:
     """Cosine similarity per candidate (max over chunks), or None if the
     selected embedding provider is unavailable — caller falls back to
     weight/recency ranking (never a wider candidate pool)."""
-    query_vectors = _embed([query])
+    query_vectors = _embed([query], config)
     if not query_vectors:
         return None
     query_vector = query_vectors[0]
@@ -257,7 +218,7 @@ def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[f
 
     scores: list[float] = []
     for candidate in candidates:
-        chunk_vectors = _embed(_chunk(candidate.text)[:20])
+        chunk_vectors = _embed(_chunk(candidate.text)[:20], config)
         if not chunk_vectors:
             return None
         best = max((cosine(query_vector, v) for v in chunk_vectors), default=0.0)
@@ -265,8 +226,10 @@ def _semantic_scores(query: str, candidates: list[Candidate]) -> Optional[list[f
     return scores
 
 
-def _rank(query: str, candidates: list[Candidate]) -> list[Candidate]:
-    similarities = _semantic_scores(query, candidates)
+def _rank(
+    query: str, candidates: list[Candidate], config: llm.EffectiveEmbeddingConfig
+) -> list[Candidate]:
+    similarities = _semantic_scores(query, candidates, config)
     if similarities is None:
         # Deterministic degradation: rag_weight desc, then most recent.
         return sorted(
@@ -289,6 +252,11 @@ def retrieve(
     """Walk the fallback chain and return the generation base + context."""
     reference_context: list[str] = []  # PDF-only levels contribute context, never a base
 
+    # Embedding provider resolved ONCE per retrieval, honoring the gestora's
+    # model-config override (fail-closed to local Ollama on error) — this
+    # gestora's precedent text never goes to a cloud embedder without opt-in.
+    embed_config = llm.resolve_embedding_config(gestora_id)
+
     # Within the gestora silo, modelos (0a) are tried as the generation base
     # BEFORE precedentes (0b); precedentes always contribute as context. Both
     # report level=0 (the silo level). Levels 1-2 are the global template pools.
@@ -302,7 +270,7 @@ def retrieve(
     for level, candidates in levels:
         if not candidates:
             continue
-        ranked = _rank(query_text, candidates)
+        ranked = _rank(query_text, candidates, embed_config)
         base = next((c for c in ranked if c.is_generation_base), None)
         if base is None:
             # PDFs only: keep as read-only reference and keep falling back.
@@ -311,7 +279,7 @@ def retrieve(
         # Precedentes contribute context even when a model provides the base.
         context = [c.text for c in ranked[:TOP_K]]
         if level == 0 and candidates is not precedente_candidates:
-            context += [c.text for c in _rank(query_text, precedente_candidates)[:TOP_K]]
+            context += [c.text for c in _rank(query_text, precedente_candidates, embed_config)[:TOP_K]]
         return RetrievalResult(
             level=level,
             base_text=base.text,
