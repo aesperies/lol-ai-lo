@@ -19,6 +19,14 @@ import {
   fetchMultipart,
   stubCall,
 } from "./http";
+import {
+  type CounselCommentWire,
+  type RequestWire,
+  type ReviewBundleWire,
+  mapCounselComment,
+  mapRequest,
+  mapReviewBundle,
+} from "./wire";
 
 export async function getCounselQueue(): Promise<RequestItem[]> {
   if (isStubMode()) {
@@ -27,7 +35,8 @@ export async function getCounselQueue(): Promise<RequestItem[]> {
       return stub.stubRequests.filter((r) => r.status === "counsel_review");
     });
   }
-  return apiFetch<RequestItem[]>(apiPaths.counselQueue);
+  const rows = await apiFetch<RequestWire[]>(apiPaths.counselQueue);
+  return rows.map(mapRequest);
 }
 
 export async function getReviewBundle(id: string): Promise<ReviewBundle> {
@@ -39,7 +48,9 @@ export async function getReviewBundle(id: string): Promise<ReviewBundle> {
       return stub.stubReviewBundle(req);
     });
   }
-  return apiFetch<ReviewBundle>(apiPaths.reviewBundle(id));
+  return mapReviewBundle(
+    await apiFetch<ReviewBundleWire>(apiPaths.reviewBundle(id)),
+  );
 }
 
 export async function saveCounselEdit(
@@ -64,7 +75,6 @@ export async function uploadCounselDocx(
       await stub.delay(STUB_LATENCY);
     });
   }
-  // TODO: multipart upload to the backend once the endpoint exists.
   const form = new FormData();
   form.append("file", file);
   await fetchMultipart(apiPaths.counselUpload(id), form);
@@ -80,10 +90,12 @@ export async function addComment(
       return stub.stubAddComment(id, "María Llopis", text);
     });
   }
-  return apiFetch<CounselComment>(apiPaths.comments(id), {
-    method: "POST",
-    body: { text },
-  });
+  return mapCounselComment(
+    await apiFetch<CounselCommentWire>(apiPaths.comments(id), {
+      method: "POST",
+      body: { text },
+    }),
+  );
 }
 
 export async function validateRequest(id: string): Promise<RequestItem> {
@@ -100,7 +112,9 @@ export async function validateRequest(id: string): Promise<RequestItem> {
       return req;
     });
   }
-  return apiFetch<RequestItem>(apiPaths.validate(id), { method: "POST" });
+  return mapRequest(
+    await apiFetch<RequestWire>(apiPaths.validate(id), { method: "POST" }),
+  );
 }
 
 /** The requesting client's gestora's assigned counsel, or null when none. */

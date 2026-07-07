@@ -125,23 +125,42 @@ async def upload_precedent(
     return {"precedent": precedent, "version": version}
 
 
+def _with_versions(db: dbmod.Database, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Embed each precedent's version list (the admin library UI and the
+    tabular-review document picker consume versions with the precedent).
+
+    One bulk query + in-memory grouping instead of a per-precedent select —
+    the interface has no IN-filter, and N+1 round-trips to Supabase made the
+    listing take seconds. Isolation holds: versions are only attached to the
+    already-scoped precedent rows; the rest are discarded."""
+    if not rows:
+        return []
+    wanted = {p["id"] for p in rows}
+    versions_by_precedent: dict[str, list[dict[str, Any]]] = {}
+    for v in db.unscoped_select("precedent_versions"):
+        if v["precedent_id"] in wanted:
+            versions_by_precedent.setdefault(v["precedent_id"], []).append(v)
+    return [{**p, "versions": versions_by_precedent.get(p["id"], [])} for p in rows]
+
+
 @router.get("", response_model=list[PrecedentOut])
 async def list_precedents(
     gestora_id: Optional[str] = None,
     user: User = Depends(get_current_user),
 ) -> Any:
-    """List precedents. Clients only ever see their own silo + global templates;
-    the gestora_id query param is honoured for admin/counsel only."""
+    """List precedents (with embedded versions). Clients only ever see their
+    own silo + global templates; the gestora_id query param is honoured for
+    admin/counsel only."""
     db = dbmod.get_db()
     if user.role in (UserRole.admin, UserRole.counsel):
         if gestora_id:
-            return db.select("precedents", gestora_id=gestora_id)
-        return db.unscoped_select("precedents")
+            return _with_versions(db, db.select("precedents", gestora_id=gestora_id))
+        return _with_versions(db, db.unscoped_select("precedents"))
     own = db.select("precedents", gestora_id=user.gestora_id)
     global_templates = [
         p for p in db.select("precedents", gestora_id=None) if p["source"] in _GLOBAL_SOURCES
     ]
-    return own + global_templates
+    return _with_versions(db, own + global_templates)
 
 
 @router.get("/{precedent_id}/versions", response_model=list[PrecedentVersionOut])
@@ -265,6 +284,51 @@ async def activate_version(
     )
 
     # Re-index the affected silo (or the global pool for SLP/base templates).
+    if precedent.get("gestora_id"):
+        rag.reindex_gestora(precedent["gestora_id"])
+    else:
+        rag.reindex_global()
+    return version
+
+
+@router.post("/versions/{version_id}/supersede")
+async def supersede_version(
+    version_id: str,
+    http_request: Request,
+    user: User = Depends(require_admin),
+) -> Any:
+    """Admin manually supersedes an ACTIVE version without activating another
+    (kept in the index with rag_weight 0.3, per the same re-index rules)."""
+    db = dbmod.get_db()
+    version = db.get("precedent_versions", version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    precedent = db.get("precedents", version["precedent_id"])
+    if precedent is None:
+        raise HTTPException(status_code=404, detail="Precedent not found")
+    if version["status"] != PrecedentVersionStatus.active.value:
+        raise HTTPException(status_code=409, detail="Only an active version can be superseded")
+
+    version = db.update(
+        "precedent_versions",
+        version_id,
+        {
+            "status": PrecedentVersionStatus.superseded.value,
+            "rag_weight": 0.3,
+            "superseded_at": now_iso(),
+        },
+    )
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.precedent_superseded,
+        resource_type=AuditResourceType.precedent_version,
+        resource_id=version_id,
+        gestora_id=precedent.get("gestora_id"),
+        metadata={"rag_weight": 0.3, "manual": True},
+        ip_address=client_ip(http_request),
+    )
+
     if precedent.get("gestora_id"):
         rag.reindex_gestora(precedent["gestora_id"])
     else:

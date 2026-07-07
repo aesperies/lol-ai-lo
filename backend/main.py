@@ -19,6 +19,8 @@ from api.admin_metrics import router as admin_metrics_router
 from api.admin_retention import router as admin_retention_router
 from api.billing import router as billing_router
 from api.counsel_assignments import router as counsel_assignments_router
+from api.counsel_review import router as counsel_review_router
+from api.directory import router as directory_router
 from api.doc_types import router as doc_types_router
 from api.documents import router as documents_router
 from api.model_config import router as model_config_router
@@ -97,6 +99,9 @@ app.include_router(billing_router)
 app.include_router(tabular_router)
 app.include_router(account_router)
 app.include_router(model_config_router)
+# Directory + counsel review surface (013_directory_and_comments.sql).
+app.include_router(directory_router)
+app.include_router(counsel_review_router)
 # Collaboration / sharing (012_collaboration.sql).
 app.include_router(colleagues_router)
 app.include_router(request_shares_router)

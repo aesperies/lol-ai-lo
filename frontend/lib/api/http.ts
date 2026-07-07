@@ -49,8 +49,8 @@ export const apiPaths = {
   // Critic review trail + derived drafting branch (drafting-agents UI).
   requestReviews: (id: string) => `/api/requests/${id}/reviews`,
   requestBranch: (id: string) => `/api/requests/${id}/branch`,
-  counselEdit: (id: string) => `/api/requests/${id}/counsel-edit`,
-  counselUpload: (id: string) => `/api/requests/${id}/counsel-upload`,
+  counselEdit: (id: string) => `/api/requests/${id}/counsel/edit`,
+  counselUpload: (id: string) => `/api/requests/${id}/counsel/upload`,
   validate: (id: string) => `/api/requests/${id}/validate`,
   comments: (id: string) => `/api/requests/${id}/comments`,
   counselQueue: "/api/counsel/queue",
@@ -67,10 +67,12 @@ export const apiPaths = {
   precedents: "/api/precedents",
   precedentVersions: (precedentId: string) =>
     `/api/precedents/${precedentId}/versions`,
-  precedentVersionActivate: (precedentId: string, versionId: string) =>
-    `/api/precedents/${precedentId}/versions/${versionId}/activate`,
-  precedentVersionSupersede: (precedentId: string, versionId: string) =>
-    `/api/precedents/${precedentId}/versions/${versionId}/supersede`,
+  // Version actions are keyed by version id alone (the backend resolves the
+  // parent precedent): /api/precedents/versions/{versionId}/...
+  precedentVersionActivate: (_precedentId: string, versionId: string) =>
+    `/api/precedents/versions/${versionId}/activate`,
+  precedentVersionSupersede: (_precedentId: string, versionId: string) =>
+    `/api/precedents/versions/${versionId}/supersede`,
   users: "/api/users",
   // Review playbooks CRUD (admin) — gestora-siloed critic rules.
   playbooks: (gestoraId?: string) =>

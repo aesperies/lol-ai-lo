@@ -103,6 +103,10 @@ class AuditAction(str, Enum):
     # same-gestora colleague READ access to a request or a tabular review.
     resource_shared = "resource_shared"
     resource_unshared = "resource_unshared"
+    # Directory + counsel review thread (013_directory_and_comments.sql).
+    gestora_created = "gestora_created"
+    user_invited = "user_invited"
+    counsel_comment_added = "counsel_comment_added"
 
 
 class AuditResourceType(str, Enum):

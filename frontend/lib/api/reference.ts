@@ -22,6 +22,16 @@ import {
   fetchMultipart,
   stubCall,
 } from "./http";
+import {
+  type FundWire,
+  type GestoraWire,
+  type PrecedentWire,
+  type UserWire,
+  mapFund,
+  mapGestora,
+  mapPrecedent,
+  mapUser,
+} from "./wire";
 
 /** Structured intake field specs for a doc_type ([] = freetext-only). */
 export async function getDocFields(docType: string): Promise<FieldSpec[]> {
@@ -59,7 +69,8 @@ export async function getFunds(): Promise<Fund[]> {
       return stub.STUB_FUNDS;
     });
   }
-  return apiFetch<Fund[]>(apiPaths.funds);
+  const rows = await apiFetch<FundWire[]>(apiPaths.funds);
+  return rows.map(mapFund);
 }
 
 export async function getGestoras(): Promise<Gestora[]> {
@@ -69,7 +80,8 @@ export async function getGestoras(): Promise<Gestora[]> {
       return [...stub.stubGestoras];
     });
   }
-  return apiFetch<Gestora[]>(apiPaths.gestoras);
+  const rows = await apiFetch<GestoraWire[]>(apiPaths.gestoras);
+  return rows.map(mapGestora);
 }
 
 export async function createGestora(input: {
@@ -92,7 +104,16 @@ export async function createGestora(input: {
       return gestora;
     });
   }
-  return apiFetch<Gestora>(apiPaths.gestoras, { method: "POST", body: input });
+  return mapGestora(
+    await apiFetch<GestoraWire>(apiPaths.gestoras, {
+      method: "POST",
+      body: {
+        name: input.name,
+        subscription_tier: input.subscriptionTier,
+        billing_email: input.billingEmail,
+      },
+    }),
+  );
 }
 
 export async function getPrecedents(): Promise<Precedent[]> {
@@ -102,7 +123,8 @@ export async function getPrecedents(): Promise<Precedent[]> {
       return [...stub.stubPrecedents];
     });
   }
-  return apiFetch<Precedent[]>(apiPaths.precedents);
+  const rows = await apiFetch<PrecedentWire[]>(apiPaths.precedents);
+  return rows.map(mapPrecedent);
 }
 
 export async function uploadPrecedent(input: {
@@ -137,7 +159,6 @@ export async function uploadPrecedent(input: {
       });
     });
   }
-  // TODO: multipart upload to the backend once the endpoint exists.
   const form = new FormData();
   form.append("gestora_id", input.gestoraId);
   form.append("doc_type", input.docType);
@@ -235,7 +256,8 @@ export async function getUsers(): Promise<UserProfile[]> {
       return stub.STUB_ALL_USERS;
     });
   }
-  return apiFetch<UserProfile[]>(apiPaths.users);
+  const rows = await apiFetch<UserWire[]>(apiPaths.users);
+  return rows.map(mapUser);
 }
 
 export async function inviteUser(input: {
@@ -254,5 +276,8 @@ export async function inviteUser(input: {
       });
     });
   }
-  await apiFetch(apiPaths.users, { method: "POST", body: input });
+  await apiFetch(apiPaths.users, {
+    method: "POST",
+    body: { email: input.email, role: input.role, gestora_id: input.gestoraId },
+  });
 }

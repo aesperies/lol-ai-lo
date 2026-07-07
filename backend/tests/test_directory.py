@@ -1,0 +1,214 @@
+"""Directory endpoints (013): /api/gestoras, /api/funds, /api/users, plus the
+counsel review surface (/api/counsel/queue, /review, /comments) and the manual
+precedent-version supersede."""
+from __future__ import annotations
+
+from tests.conftest import DOC_TYPE, FREETEXT, auth, seed_precedent
+
+
+class TestGestoras:
+    def test_admin_sees_all(self, client, seed):
+        res = client.get("/api/gestoras", headers=auth(seed["admin"]))
+        assert res.status_code == 200
+        names = {g["name"] for g in res.json()}
+        assert {"Gestora Alfa", "Gestora Beta"} <= names
+
+    def test_client_sees_only_own(self, client, seed):
+        res = client.get("/api/gestoras", headers=auth(seed["client_a"]))
+        assert res.status_code == 200
+        assert [g["id"] for g in res.json()] == [seed["gestora_a"]["id"]]
+
+    def test_admin_creates_gestora(self, client, seed, db):
+        res = client.post(
+            "/api/gestoras",
+            headers=auth(seed["admin"]),
+            json={"name": "Gestora Gamma", "subscription_tier": "growth",
+                  "billing_email": "billing@gamma.es"},
+        )
+        assert res.status_code == 201
+        body = res.json()
+        assert body["name"] == "Gestora Gamma"
+        assert db.get("gestoras", body["id"]) is not None
+        actions = [r["action"] for r in db.unscoped_select("audit_log")]
+        assert "gestora_created" in actions
+
+    def test_client_cannot_create(self, client, seed):
+        res = client.post(
+            "/api/gestoras", headers=auth(seed["client_a"]), json={"name": "X"}
+        )
+        assert res.status_code == 403
+
+
+class TestFunds:
+    def test_client_sees_own_gestora_funds_only(self, client, seed):
+        res = client.get("/api/funds", headers=auth(seed["client_a"]))
+        assert res.status_code == 200
+        assert [f["id"] for f in res.json()] == [seed["fund_a"]["id"]]
+
+    def test_admin_sees_all_and_can_filter(self, client, seed):
+        res = client.get("/api/funds", headers=auth(seed["admin"]))
+        assert {f["id"] for f in res.json()} == {seed["fund_a"]["id"], seed["fund_b"]["id"]}
+        res = client.get(
+            f"/api/funds?gestora_id={seed['gestora_b']['id']}", headers=auth(seed["admin"])
+        )
+        assert [f["id"] for f in res.json()] == [seed["fund_b"]["id"]]
+
+    def test_client_filter_param_ignored(self, client, seed):
+        """A client may not use gestora_id to peek across silos."""
+        res = client.get(
+            f"/api/funds?gestora_id={seed['gestora_b']['id']}",
+            headers=auth(seed["client_a"]),
+        )
+        assert [f["id"] for f in res.json()] == [seed["fund_a"]["id"]]
+
+
+class TestUsers:
+    def test_admin_lists_users(self, client, seed):
+        res = client.get("/api/users", headers=auth(seed["admin"]))
+        assert res.status_code == 200
+        emails = {u["email"] for u in res.json()}
+        assert {"clienta@alfa.es", "admin@lolailo.es"} <= emails
+
+    def test_non_admin_forbidden(self, client, seed):
+        for who in ("client_a", "counsel"):
+            assert client.get("/api/users", headers=auth(seed[who])).status_code == 403
+
+    def test_invite_client_requires_gestora(self, client, seed):
+        res = client.post(
+            "/api/users",
+            headers=auth(seed["admin"]),
+            json={"email": "nueva@alfa.es", "role": "client"},
+        )
+        assert res.status_code == 422
+
+    def test_invite_creates_row_in_dev_mode(self, client, seed, db):
+        res = client.post(
+            "/api/users",
+            headers=auth(seed["admin"]),
+            json={"email": "Nueva@Alfa.es", "role": "client",
+                  "gestora_id": seed["gestora_a"]["id"]},
+        )
+        assert res.status_code == 201
+        body = res.json()
+        assert body["email"] == "nueva@alfa.es"  # normalized
+        assert body["gestora_id"] == seed["gestora_a"]["id"]
+        assert "user_invited" in [r["action"] for r in db.unscoped_select("audit_log")]
+
+    def test_invite_duplicate_email_409(self, client, seed):
+        res = client.post(
+            "/api/users",
+            headers=auth(seed["admin"]),
+            json={"email": "clienta@alfa.es", "role": "client",
+                  "gestora_id": seed["gestora_a"]["id"]},
+        )
+        assert res.status_code == 409
+
+    def test_invite_counsel_strips_gestora(self, client, seed):
+        res = client.post(
+            "/api/users",
+            headers=auth(seed["admin"]),
+            json={"email": "counsel2@lolailolegal.es", "role": "counsel",
+                  "gestora_id": seed["gestora_a"]["id"]},
+        )
+        assert res.status_code == 201
+        assert res.json()["gestora_id"] is None
+
+
+def _make_request(client, seed, db, fake_llm, *, requires_counsel=True) -> str:
+    seed_precedent(db, gestora_id=seed["gestora_a"]["id"])
+    res = client.post(
+        "/api/requests",
+        headers=auth(seed["client_a"]),
+        json={
+            "fund_id": seed["fund_a"]["id"],
+            "doc_type": DOC_TYPE,
+            "freetext": FREETEXT,
+            "validation_requested": requires_counsel,
+        },
+    )
+    assert res.status_code == 201
+    return res.json()["id"]
+
+
+class TestCounselReviewSurface:
+    def test_queue_lists_counsel_review_requests(self, client, seed, db, fake_llm):
+        request_id = _make_request(client, seed, db, fake_llm)
+        db.update("requests", request_id, {"status": "counsel_review"})
+        res = client.get("/api/counsel/queue", headers=auth(seed["counsel"]))
+        assert res.status_code == 200
+        assert [r["id"] for r in res.json()] == [request_id]
+
+    def test_queue_forbidden_for_client(self, client, seed):
+        assert client.get("/api/counsel/queue", headers=auth(seed["client_a"])).status_code == 403
+
+    def test_review_bundle_shape_and_access(self, client, seed, db, fake_llm):
+        request_id = _make_request(client, seed, db, fake_llm)
+        res = client.get(f"/api/requests/{request_id}/review", headers=auth(seed["counsel"]))
+        assert res.status_code == 200
+        bundle = res.json()
+        assert bundle["request"]["id"] == request_id
+        assert isinstance(bundle["draft_text"], str)
+        assert bundle["comments"] == []
+        # Cross-gestora client: 404-no-leak.
+        res = client.get(f"/api/requests/{request_id}/review", headers=auth(seed["client_b"]))
+        assert res.status_code == 404
+
+    def test_comment_thread_roundtrip(self, client, seed, db, fake_llm):
+        request_id = _make_request(client, seed, db, fake_llm)
+        res = client.post(
+            f"/api/requests/{request_id}/comments",
+            headers=auth(seed["counsel"]),
+            json={"text": "Revisar la cláusula 3."},
+        )
+        assert res.status_code == 201
+        comment = res.json()
+        assert comment["author"] == "abogado@lolailolegal.es"
+        res = client.get(
+            f"/api/requests/{request_id}/comments", headers=auth(seed["client_a"])
+        )
+        assert [c["text"] for c in res.json()] == ["Revisar la cláusula 3."]
+        # Clients cannot write to the thread.
+        res = client.post(
+            f"/api/requests/{request_id}/comments",
+            headers=auth(seed["client_a"]),
+            json={"text": "hola"},
+        )
+        assert res.status_code == 403
+        assert "counsel_comment_added" in [r["action"] for r in db.unscoped_select("audit_log")]
+
+
+class TestPrecedentVersionsEmbedAndSupersede:
+    def test_list_embeds_versions(self, client, seed, db):
+        precedent, version = seed_precedent(db, gestora_id=seed["gestora_a"]["id"])
+        res = client.get("/api/precedents", headers=auth(seed["admin"]))
+        assert res.status_code == 200
+        row = next(p for p in res.json() if p["id"] == precedent["id"])
+        assert [v["id"] for v in row["versions"]] == [version["id"]]
+
+    def test_supersede_active_version(self, client, seed, db):
+        precedent, version = seed_precedent(db, gestora_id=seed["gestora_a"]["id"])
+        res = client.post(
+            f"/api/precedents/versions/{version['id']}/supersede",
+            headers=auth(seed["admin"]),
+        )
+        assert res.status_code == 200
+        assert res.json()["status"] == "superseded"
+        assert res.json()["rag_weight"] == 0.3
+
+    def test_supersede_requires_active(self, client, seed, db):
+        precedent, version = seed_precedent(
+            db, gestora_id=seed["gestora_a"]["id"], status="draft"
+        )
+        res = client.post(
+            f"/api/precedents/versions/{version['id']}/supersede",
+            headers=auth(seed["admin"]),
+        )
+        assert res.status_code == 409
+
+    def test_supersede_admin_only(self, client, seed, db):
+        precedent, version = seed_precedent(db, gestora_id=seed["gestora_a"]["id"])
+        res = client.post(
+            f"/api/precedents/versions/{version['id']}/supersede",
+            headers=auth(seed["client_a"]),
+        )
+        assert res.status_code == 403

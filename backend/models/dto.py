@@ -19,6 +19,7 @@ from models.enums import (
     PrecedentVersionStatus,
     RefinementStatus,
     RequestStatus,
+    SubscriptionTier,
     TabularColType,
     TabularSourceKind,
     UserRole,
@@ -80,6 +81,9 @@ class PrecedentOut(BaseModel):  # doubles as precedents-row mirror and API DTO
     language: str
     source: PrecedentSource = PrecedentSource.manual_upload
     created_at: Optional[datetime] = None
+    # Embedded versions (GET /api/precedents): the admin library UI and the
+    # tabular-review document picker need the versions with the precedent.
+    versions: list[PrecedentVersionOut] = Field(default_factory=list)
 
 
 class PrecedentVersionOut(BaseModel):  # doubles as row mirror and API DTO
@@ -474,3 +478,62 @@ class ShareOut(BaseModel):
     shared_by: str
     shared_by_email: Optional[str] = None
     created_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# Directory + counsel review thread (013_directory_and_comments.sql)
+# ---------------------------------------------------------------------------
+
+class GestoraCreate(BaseModel):
+    """POST /api/gestoras (admin) — onboard a new gestora."""
+
+    name: str = Field(min_length=1, max_length=200)
+    subscription_tier: SubscriptionTier = SubscriptionTier.starter
+    billing_email: Optional[str] = None
+
+
+class UserInviteBody(BaseModel):
+    """POST /api/users (admin) — provision a platform user.
+
+    Mirrors the users-table constraint: a client MUST belong to a gestora;
+    admin/counsel are cross-gestora (gestora_id NULL). In Supabase mode the
+    user is also invited through Supabase Auth so the row id matches the
+    auth id (signup alone does not provision ``public.users``)."""
+
+    email: str = Field(min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: UserRole = UserRole.client
+    gestora_id: Optional[str] = None
+
+
+class CounselCommentCreate(BaseModel):
+    """POST /api/requests/{id}/comments — mirrors the DB CHECK (1..4000)."""
+
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class CounselCommentOut(BaseModel):
+    id: str
+    request_id: str
+    # Display name denormalized at write time (survives author erasure).
+    author: str
+    text: str
+    created_at: Optional[datetime] = None
+
+
+class RedlineSegmentOut(BaseModel):
+    """One diff segment of the draft→redline comparison (eq/ins/del)."""
+
+    type: Literal["eq", "ins", "del"]
+    text: str
+
+
+class ReviewBundleOut(BaseModel):
+    """GET /api/requests/{id}/review — everything the counsel review screen
+    needs in one payload (request + extracted draft text + comment thread).
+    The rendered redline HTML is served separately by
+    GET /api/requests/{id}/documents/redline/html."""
+
+    request: RequestOut
+    draft_text: str = ""
+    redline: list[RedlineSegmentOut] = Field(default_factory=list)
+    comments: list[CounselCommentOut] = Field(default_factory=list)

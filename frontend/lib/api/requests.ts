@@ -27,6 +27,13 @@ import {
   fetchBlob,
   stubCall,
 } from "./http";
+import {
+  type ParsedParamsWire,
+  type RequestWire,
+  mapParsedParams,
+  mapRequest,
+  parsedParamsToWire,
+} from "./wire";
 
 export interface CreateRequestInput {
   fundId: string;
@@ -68,11 +75,21 @@ export async function createRequest(
       return req;
     });
   }
-  return apiFetch<RequestItem>(apiPaths.requests, {
-    method: "POST",
-    // snake_case key expected by the backend (RequestCreate.structured_fields).
-    body: { ...input, structured_fields: input.structuredFields },
-  });
+  // snake_case body per the backend RequestCreate DTO. The intake counsel
+  // toggle travels as validation_requested (SPEC "validación por abogado").
+  return mapRequest(
+    await apiFetch<RequestWire>(apiPaths.requests, {
+      method: "POST",
+      body: {
+        fund_id: input.fundId,
+        doc_type: input.docType,
+        doc_type_custom: input.docTypeCustom ?? null,
+        freetext: input.freetext,
+        validation_requested: input.requiresCounsel,
+        structured_fields: input.structuredFields ?? null,
+      },
+    }),
+  );
 }
 
 export async function parseRequest(id: string): Promise<ParsedParams> {
@@ -87,7 +104,12 @@ export async function parseRequest(id: string): Promise<ParsedParams> {
       return params;
     });
   }
-  return apiFetch<ParsedParams>(apiPaths.parse(id), { method: "POST" });
+  // Backend wraps the result: { request, parsed_params } (both snake_case).
+  const res = await apiFetch<{ parsed_params: ParsedParamsWire }>(
+    apiPaths.parse(id),
+    { method: "POST" },
+  );
+  return mapParsedParams(res.parsed_params);
 }
 
 export async function confirmRequest(
@@ -107,10 +129,14 @@ export async function confirmRequest(
       return req;
     });
   }
-  return apiFetch<RequestItem>(apiPaths.confirm(id), {
-    method: "POST",
-    body: { parsedParams: params, edited },
-  });
+  // ConfirmParamsBody.parsed_params — send the (possibly edited) params in
+  // wire format; the backend audits params_edited by comparing with stored.
+  return mapRequest(
+    await apiFetch<RequestWire>(apiPaths.confirm(id), {
+      method: "POST",
+      body: { parsed_params: edited ? parsedParamsToWire(params) : null },
+    }),
+  );
 }
 
 /** Enqueues generation (202): returns the job to poll via getGenerationJob. */
@@ -170,9 +196,13 @@ export async function acknowledgeExitA(id: string): Promise<RequestItem> {
       return req;
     });
   }
-  return apiFetch<RequestItem>(apiPaths.exitAAcknowledge(id), {
-    method: "POST",
-  });
+  // The backend re-verifies the explicit checkbox value (SPEC guardrail 5).
+  return mapRequest(
+    await apiFetch<RequestWire>(apiPaths.exitAAcknowledge(id), {
+      method: "POST",
+      body: { acknowledged: true },
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -260,23 +290,9 @@ export async function requestExitB(id: string): Promise<RequestItem> {
       return req;
     });
   }
-  return apiFetch<RequestItem>(apiPaths.exitB(id), { method: "POST" });
-}
-
-/** Overlays the collaboration flags (snake_case on the wire) onto a request,
- * leaving the rest of the existing pass-through shape untouched. */
-function withRequestShareFlags(req: RequestItem): RequestItem {
-  const wire = req as RequestItem & {
-    is_owner?: boolean | null;
-    shared_with_me?: boolean | null;
-    shared_by_email?: string | null;
-  };
-  return {
-    ...req,
-    isOwner: req.isOwner ?? wire.is_owner ?? null,
-    sharedWithMe: req.sharedWithMe ?? wire.shared_with_me ?? null,
-    sharedByEmail: req.sharedByEmail ?? wire.shared_by_email ?? null,
-  };
+  return mapRequest(
+    await apiFetch<RequestWire>(apiPaths.exitB(id), { method: "POST" }),
+  );
 }
 
 export async function getRequests(): Promise<RequestItem[]> {
@@ -286,8 +302,8 @@ export async function getRequests(): Promise<RequestItem[]> {
       return [...stub.stubRequests];
     });
   }
-  const rows = await apiFetch<RequestItem[]>(apiPaths.requests);
-  return rows.map(withRequestShareFlags);
+  const rows = await apiFetch<RequestWire[]>(apiPaths.requests);
+  return rows.map(mapRequest);
 }
 
 export async function getRequest(id: string): Promise<RequestItem> {
@@ -299,7 +315,7 @@ export async function getRequest(id: string): Promise<RequestItem> {
       return req;
     });
   }
-  return withRequestShareFlags(await apiFetch<RequestItem>(apiPaths.request(id)));
+  return mapRequest(await apiFetch<RequestWire>(apiPaths.request(id)));
 }
 
 /** Downloads a document version as a Blob (stub: plain-text .docx placeholder).
