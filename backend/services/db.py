@@ -15,7 +15,7 @@ from __future__ import annotations
 import threading
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from config import ServiceNotConfiguredError, get_settings
 
@@ -23,8 +23,94 @@ from config import ServiceNotConfiguredError, get_settings
 _APPEND_ONLY_TABLES = {"audit_log", "usage_events"}
 
 
+class TenantScopeError(RuntimeError):
+    """A select on a tenant table stated no tenant scope.
+
+    Gestora isolation is enforced in this layer (the Supabase service-role key
+    bypasses RLS, so Python is the only guardrail): forgetting the filter must
+    be an error, never a silent cross-gestora leak.
+    """
+
+
+# Tables carrying per-gestora data (they have a gestora_id column, or — like
+# requests — hang off one via fund_id). select() on these MUST state its scope:
+#   - a gestora_id filter (None targets the global template pool), or
+#   - a record/parent id filter (request_id, user_id, created_by, ...).
+# Platform-wide system queries (admin metrics, billing, retention/SLA sweeps)
+# must declare that intent explicitly via unscoped_select().
+_TENANT_SCOPED_TABLES = {
+    "audit_log",
+    "counsel_assignments",
+    "data_retention_policies",
+    "drafting_lessons",
+    "funds",
+    "gestora_model_config",
+    "precedents",
+    "quality_metrics",
+    "request_shares",
+    "requests",
+    "review_playbooks",
+    "tabular_review_shares",
+    "tabular_reviews",
+    "usage_alerts",
+    "usage_events",
+    "users",
+}
+
+# Non-id filter keys that still pin a query to one tenant's data.
+_SCOPE_KEYS = {"created_by"}
+
+
+def _assert_tenant_scoped(table: str, filters: dict[str, Any]) -> None:
+    if table not in _TENANT_SCOPED_TABLES:
+        return
+    if "gestora_id" in filters:  # explicit None = global pool, still a choice
+        return
+    if any(key in _SCOPE_KEYS or key.endswith("_id") for key in filters):
+        return
+    raise TenantScopeError(
+        f"select({table!r}) has no gestora_id or record-id filter. "
+        "Add the tenant filter, or use unscoped_select() if this is a "
+        "deliberate platform-wide system query."
+    )
+
+
+class Database(Protocol):
+    """Behavioral contract shared by DevStore and SupabaseDB.
+
+    Both backends MUST honor the same semantics (enforced by
+    tests/test_db_contract.py):
+
+    - ``select`` returns rows ordered oldest-first by creation time; callers
+      throughout the codebase rely on ``rows[-1]`` being the newest row.
+    - ``select`` filters with ``field=None`` match SQL NULL.
+    - ``select`` on a tenant table without a tenant/record scope raises
+      TenantScopeError; ``unscoped_select`` is the explicit escape hatch for
+      platform-wide system queries.
+    - ``update``/``delete`` on ``_APPEND_ONLY_TABLES`` raise PermissionError.
+    """
+
+    def insert(self, table: str, row: dict[str, Any]) -> dict[str, Any]: ...
+
+    def get(self, table: str, row_id: str) -> Optional[dict[str, Any]]: ...
+
+    def select(self, table: str, **filters: Any) -> list[dict[str, Any]]: ...
+
+    def unscoped_select(self, table: str, **filters: Any) -> list[dict[str, Any]]: ...
+
+    def update(self, table: str, row_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
+
+    def delete(self, table: str, row_id: str) -> None: ...
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _order_column(table: str) -> str:
+    """Creation-time column used to keep select() ordering identical in both
+    backends. audit_log is the one table without created_at (001_initial_schema)."""
+    return "timestamp" if table == "audit_log" else "created_at"
 
 
 class DevStore:
@@ -65,11 +151,19 @@ class DevStore:
 
     def select(self, table: str, **filters: Any) -> list[dict[str, Any]]:
         """Equality-filtered select. ``field=None`` matches SQL NULL."""
+        _assert_tenant_scoped(table, filters)
+        return self._select(table, filters)
+
+    def unscoped_select(self, table: str, **filters: Any) -> list[dict[str, Any]]:
+        """Deliberate platform-wide select (admin metrics, retention/SLA sweeps)."""
+        return self._select(table, filters)
+
+    def _select(self, table: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
         rows = []
         for row in self._table(table).values():
             if all(row.get(k) == v for k, v in filters.items()):
                 rows.append(dict(row))
-        rows.sort(key=lambda r: str(r.get("created_at") or ""))
+        rows.sort(key=lambda r: str(r.get(_order_column(table)) or ""))
         return rows
 
     def update(self, table: str, row_id: str, fields: dict[str, Any]) -> dict[str, Any]:
@@ -110,10 +204,22 @@ class SupabaseDB:
         return res.data[0] if res.data else None
 
     def select(self, table: str, **filters: Any) -> list[dict[str, Any]]:
+        _assert_tenant_scoped(table, filters)
+        return self._select(table, filters)
+
+    def unscoped_select(self, table: str, **filters: Any) -> list[dict[str, Any]]:
+        """Deliberate platform-wide select (admin metrics, retention/SLA sweeps)."""
+        return self._select(table, filters)
+
+    def _select(self, table: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
         query = self._client.table(table).select("*")
         for key, value in filters.items():
-            query = query.is_("null", key) if value is None else query.eq(key, value)  # type: ignore[arg-type]
-        res = query.execute()
+            # PostgREST signature is .is_(column, value); NULL filter must be
+            # .is_(key, "null") — the reversed form silently mismatches rows.
+            query = query.is_(key, "null") if value is None else query.eq(key, value)
+        # Oldest-first, matching DevStore: callers rely on rows[-1] == newest
+        # (llm.resolve_config, jobs.latest_job, retention.policy_months).
+        res = query.order(_order_column(table), desc=False).execute()
         return res.data or []
 
     def update(self, table: str, row_id: str, fields: dict[str, Any]) -> dict[str, Any]:
@@ -127,8 +233,6 @@ class SupabaseDB:
             raise PermissionError(f"{table} is append-only: DELETE not permitted")
         self._client.table(table).delete().eq("id", row_id).execute()
 
-
-Database = Any  # duck-typed: DevStore | SupabaseDB
 
 _dev_store: Optional[DevStore] = None
 _supabase_db: Optional[SupabaseDB] = None
