@@ -91,12 +91,11 @@ class _FakeQuery:
         if self._action == "insert":
             row = dict(self._payload)
             row.setdefault("id", str(uuid.uuid4()))
-            # Mirror the SQL column defaults: audit_log has timestamp (and NO
-            # created_at); every other table has created_at.
-            if self._table_name == "audit_log":
-                row.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
-            else:
-                row.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+            # Mirror the SQL creation-time default of the REAL schema: most
+            # tables have created_at, six use another column (see
+            # dbmod._ORDER_COLUMN_OVERRIDES) — the fake must NOT invent
+            # columns the real table lacks, or ordering bugs stay invisible.
+            row.setdefault(dbmod._order_column(self._table_name), datetime.now(timezone.utc).isoformat())
             self._rows.append(row)
             return _FakeResult(data=[dict(row)])
 
@@ -243,6 +242,38 @@ def test_append_only_tables_reject_update_and_delete(backend: dbmod.Database, ta
         backend.update(table, row["id"], {"gestora_id": "g2"})
     with pytest.raises(PermissionError):
         backend.delete(table, row["id"])
+
+
+def test_order_column_exists_in_every_migrated_table() -> None:
+    """Regression: SupabaseDB.select orders by _order_column(table); ordering
+    by a column the table lacks breaks the query in Postgres (invisible on
+    DevStore, which stamps whatever is asked). Parse the REAL migrations and
+    assert the mapping is valid for every table — a future migration that adds
+    a table without created_at must extend _ORDER_COLUMN_OVERRIDES."""
+    import pathlib
+    import re
+
+    migrations = pathlib.Path(__file__).resolve().parents[2] / "supabase" / "migrations"
+    sql = "\n".join(p.read_text() for p in sorted(migrations.glob("*.sql")))
+    tables = re.findall(r"create table (\w+)\s*\((.*?)\n\);", sql, re.S | re.I)
+    assert tables, "no CREATE TABLE statements found — did the migrations move?"
+    for name, body in tables:
+        column = dbmod._order_column(name)
+        column_names = {
+            m.group(1) for m in re.finditer(r"^\s*(\w+)\s+\w+", body, re.M)
+        }
+        assert column in column_names, (
+            f"_order_column({name!r}) = {column!r} but the table's columns are "
+            f"{sorted(column_names)}; add an override in dbmod._ORDER_COLUMN_OVERRIDES"
+        )
+
+
+def test_select_orders_by_override_column_on_tables_without_created_at(backend: dbmod.Database) -> None:
+    """gestora_model_config (updated_at) was the production bug: selecting it
+    must work and order by the override column on BOTH backends."""
+    backend.insert("gestora_model_config", {"gestora_id": "g1", "llm_provider": "old", "updated_at": _ts(0)})
+    rows = backend.select("gestora_model_config", gestora_id="g1")
+    assert [r["llm_provider"] for r in rows] == ["old"]
 
 
 def test_tenant_scope_enforced_with_unscoped_escape_hatch(backend: dbmod.Database) -> None:

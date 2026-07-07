@@ -107,10 +107,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Tables whose creation-time column is NOT created_at (ordering by a column
+# the table lacks breaks the select in Postgres — invisible on the dev store,
+# which stamps whatever we ask for). tests/test_db_contract.py parses the SQL
+# migrations and asserts this map covers every table, so a future migration
+# cannot silently reintroduce the mismatch.
+_ORDER_COLUMN_OVERRIDES = {
+    "audit_log": "timestamp",
+    "data_retention_policies": "updated_at",
+    "gestora_model_config": "updated_at",
+    "quality_metrics": "computed_at",
+    "sla_events": "sent_at",
+    "usage_alerts": "sent_at",
+}
+
+
 def _order_column(table: str) -> str:
     """Creation-time column used to keep select() ordering identical in both
-    backends. audit_log is the one table without created_at (001_initial_schema)."""
-    return "timestamp" if table == "audit_log" else "created_at"
+    backends (callers rely on rows[-1] being the newest row)."""
+    return _ORDER_COLUMN_OVERRIDES.get(table, "created_at")
 
 
 class DevStore:
@@ -127,12 +142,12 @@ class DevStore:
         with self._lock:
             row = dict(row)
             row.setdefault("id", str(uuid.uuid4()))
-            row.setdefault("created_at", _now())
+            # Mirror the SQL creation-time default: created_at, or the table's
+            # override column (timestamp / updated_at / computed_at / sent_at).
+            row.setdefault(_order_column(table), _now())
             # Mirror the SQL updated_at trigger for every table that has one.
             if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells", "gestora_model_config"):
                 row.setdefault("updated_at", _now())
-            if table == "audit_log":
-                row.setdefault("timestamp", _now())
             if table == "documents":
                 # Mirrors the SQL DEFAULT 0 (003_refinements.sql).
                 row.setdefault("iteration", 0)
