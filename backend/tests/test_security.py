@@ -45,6 +45,22 @@ class TestSignedTokens:
         assert signed_urls.verify("a.b") is None
         assert signed_urls.verify("") is None
 
+    def test_every_final_char_variant_rejected(self):
+        """Regression (former ~1-in-16 flake): the unpadded base64url signature
+        leaves 2 trailing bits the decoder ignores, so up to 3 substitutes of
+        the FINAL char decode to the same 32 bytes. verify() must compare the
+        canonical encoding and reject ALL textual variants, decoded-equal or
+        not."""
+        alphabet = (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        )
+        token = signed_urls.sign_download("req-1", "draft", _expiry())
+        body, signature = token.split(".", 1)
+        for char in alphabet:
+            if char == signature[-1]:
+                continue
+            assert signed_urls.verify(f"{body}.{signature[:-1]}{char}") is None
+
     def test_wrong_secret_rejected(self, monkeypatch):
         monkeypatch.setattr(config.get_settings(), "url_signing_secret", "secret-one")
         token = signed_urls.sign_download("req-1", "draft", _expiry())

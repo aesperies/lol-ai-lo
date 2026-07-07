@@ -88,7 +88,11 @@ def verify(token: str) -> Optional[dict[str, Any]]:
     """
     try:
         body, signature = token.split(".", 1)
-        if not hmac.compare_digest(_signature(body), _b64decode(signature)):
+        # Compare the CANONICAL encoding, not decoded bytes: unpadded
+        # base64url of 32 bytes leaves 2 trailing bits the decoder ignores,
+        # so several distinct strings decode to the same signature. String
+        # comparison rejects every textual variant of a valid token.
+        if not hmac.compare_digest(_b64encode(_signature(body)), signature):
             return None
         payload = json.loads(_b64decode(body))
     except (ValueError, TypeError, binascii.Error):
