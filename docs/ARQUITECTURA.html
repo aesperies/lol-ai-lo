@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lol-AI-lo — Arquitectura y flujo de información</title>
+<style>
+  :root {
+    --bg: #f7f6f2; --surface: #ffffff; --ink: #1c2420; --ink-2: #4a5550; --ink-3: #8a948e;
+    --line: #d9ddd8; --brand: #2f5d49; --brand-soft: #e7efe9; --gold: #a87f3f; --gold-soft: #f4ead9;
+    --client: #3b6ea5; --client-soft: #e3ecf5; --counsel: #8a5a9e; --counsel-soft: #efe6f4;
+    --admin: #a8503f; --admin-soft: #f5e5e1; --ok: #2e7d5b; --warn: #a8763f; --danger: #a84040;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131a16; --surface: #1b2420; --ink: #e8ece9; --ink-2: #b3bdb7; --ink-3: #77817b;
+      --line: #2d3833; --brand: #6fae90; --brand-soft: #22352c; --gold: #cda86a; --gold-soft: #38301f;
+      --client: #7aa8d4; --client-soft: #1f2c3a; --counsel: #b48cc6; --counsel-soft: #2e2436;
+      --admin: #d08a7a; --admin-soft: #38241f; --ok: #6fbf98; --warn: #cfa06a; --danger: #cf7a7a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 2.5rem 1.25rem 5rem; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 1.9rem; letter-spacing: -0.02em; }
+  h1 .ai { color: var(--gold); }
+  .sub { color: var(--ink-2); margin: .5rem 0 2.2rem; max-width: 62ch; }
+  h2 { font-size: 1.25rem; margin: 3rem 0 .4rem; letter-spacing: -0.01em; }
+  h2 + p.lead { color: var(--ink-2); margin-bottom: 1.1rem; max-width: 75ch; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1.2rem 1.3rem; }
+  .cols { display: grid; gap: .9rem; }
+  @media (min-width: 800px) { .cols-3 { grid-template-columns: repeat(3, 1fr); } .cols-2 { grid-template-columns: repeat(2, 1fr); } }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: .15rem .5rem; border-radius: 99px; margin-bottom: .55rem; }
+  .t-client { background: var(--client-soft); color: var(--client); }
+  .t-counsel { background: var(--counsel-soft); color: var(--counsel); }
+  .t-admin { background: var(--admin-soft); color: var(--admin); }
+  .t-brand { background: var(--brand-soft); color: var(--brand); }
+  .t-gold { background: var(--gold-soft); color: var(--gold); }
+  ul.tight { padding-left: 1.1rem; color: var(--ink-2); }
+  ul.tight li { margin: .18rem 0; }
+  code { font-family: var(--mono); font-size: .82em; background: var(--brand-soft); color: var(--brand); padding: .08em .35em; border-radius: 5px; white-space: nowrap; }
+  .layer { position: relative; border: 1px solid var(--line); border-radius: 16px; padding: 1.1rem 1.2rem 1.2rem; margin-top: 1rem; background: var(--surface); }
+  .layer > .lbl { position: absolute; top: -0.72rem; left: 1rem; background: var(--surface); border: 1px solid var(--line); padding: .1rem .6rem; border-radius: 99px; font-size: .7rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); }
+  .flow-arrow { text-align: center; color: var(--ink-3); font-size: 1.15rem; line-height: 1; padding: .35rem 0; }
+  .flow-arrow small { display: block; font-size: .72rem; letter-spacing: .02em; }
+  .box { border: 1px solid var(--line); border-radius: 10px; padding: .6rem .75rem; background: var(--bg); }
+  .box b { display: block; font-size: .85rem; }
+  .box span { font-size: .78rem; color: var(--ink-2); }
+  .grid-mini { display: grid; gap: .55rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: .6rem; }
+  /* state machine */
+  .states { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: .8rem 0 .4rem; }
+  .state { font-family: var(--mono); font-size: .78rem; border: 1.5px solid var(--brand); color: var(--brand); background: var(--brand-soft); padding: .3rem .6rem; border-radius: 8px; font-weight: 600; }
+  .state.terminal { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
+  .arr { color: var(--ink-3); font-weight: 700; }
+  .loopnote { font-size: .8rem; color: var(--ink-2); margin-top: .5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+  td:first-child { white-space: nowrap; font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .lvl { display: flex; gap: .6rem; align-items: baseline; padding: .45rem .6rem; border-left: 3px solid var(--brand); background: var(--bg); border-radius: 0 8px 8px 0; margin: .4rem 0; }
+  .lvl b { font-family: var(--mono); font-size: .78rem; color: var(--brand); min-width: 4.6rem; }
+  .lvl span { font-size: .84rem; color: var(--ink-2); }
+  .lvl.warn { border-left-color: var(--danger); } .lvl.warn b { color: var(--danger); }
+  .pill { font-size: .72rem; border-radius: 99px; padding: .1rem .5rem; font-weight: 700; }
+  .ok  { background: var(--brand-soft); color: var(--ok); }
+  .deg { background: var(--gold-soft); color: var(--warn); }
+  .down{ background: var(--admin-soft); color: var(--danger); }
+  .foot { margin-top: 3.5rem; color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+  .privacy { border-left: 3px solid var(--gold); padding: .7rem .9rem; background: var(--gold-soft); border-radius: 0 10px 10px 0; font-size: .88rem; color: var(--ink-2); margin-top: .9rem; }
+  .privacy b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
+  <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
+  Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
+  Estado a 8-jul-2026 (migración 013).</p>
+
+  <!-- ================= CAPAS ================= -->
+  <h2>1 · Vista por capas</h2>
+  <p class="lead">Tres actores, un backend FastAPI con choke points de aislamiento, y proveedores externos todos opcionales.</p>
+
+  <div class="layer">
+    <span class="lbl">Actores · Frontend Next.js 14 (App Router, puerto 3005)</span>
+    <div class="cols cols-3">
+      <div class="card">
+        <span class="tag t-client">Cliente (gestora)</span>
+        <ul class="tight">
+          <li><code>/dashboard</code> · <code>/new-request</code></li>
+          <li><code>/documents[/id]</code> descargas + HTML</li>
+          <li><code>/tabular-reviews</code> grid de extracción</li>
+          <li><code>/account</code> privacidad (RGPD) + MFA</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="tag t-counsel">Counsel (abogado)</span>
+        <ul class="tight">
+          <li><code>/counsel</code> cola FIFO (Exit B)</li>
+          <li><code>/review/[id]</code> borrador + redline + comentarios, edición inline o subida .docx, validar</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="tag t-admin">Admin (servicer)</span>
+        <ul class="tight">
+          <li><code>/admin/gestoras</code> · <code>/admin/users</code></li>
+          <li><code>/admin/precedents</code> (precedentes + modelos)</li>
+          <li><code>/admin/playbooks</code> · <code>/admin/lessons</code></li>
+          <li><code>/admin/model-config</code> BYO keys cifradas</li>
+          <li><code>/admin/quality</code> · SLA · <code>/admin/billing</code></li>
+        </ul>
+      </div>
+    </div>
+    <div class="grid-mini">
+      <div class="box"><b>middleware.ts</b><span>rol por ruta (JWT o cookie dev)</span></div>
+      <div class="box"><b>lib/api/*</b><span>apiPaths único + fetch tipado</span></div>
+      <div class="box"><b>lib/api/wire.ts</b><span>mappers snake_case → camelCase</span></div>
+      <div class="box"><b>Modo stub</b><span>sin Supabase: fixtures en memoria</span></div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">▼ <small>REST JSON · Authorization: Bearer (Supabase JWT) o X-Dev-User (stub)</small></div>
+
+  <div class="layer">
+    <span class="lbl">Backend · FastAPI (puerto 8000)</span>
+    <div class="grid-mini">
+      <div class="box"><b>auth.py</b><span>require_role + 404-no-leak · choke points de aislamiento</span></div>
+      <div class="box"><b>api/requests</b><span>ciclo de vida + Exit A/B</span></div>
+      <div class="box"><b>api/documents</b><span>generar · descargar · HTML · counsel edit/upload</span></div>
+      <div class="box"><b>api/refinements</b><span>refinamientos (máx. 3)</span></div>
+      <div class="box"><b>api/counsel_review</b><span>cola · bundle · comentarios</span></div>
+      <div class="box"><b>api/directory</b><span>gestoras · funds · users (invite)</span></div>
+      <div class="box"><b>api/precedents</b><span>biblioteca + versiones</span></div>
+      <div class="box"><b>api/playbooks</b><span>reglas del critic</span></div>
+      <div class="box"><b>api/tabular</b><span>revisión tabular</span></div>
+      <div class="box"><b>api/sharing</b><span>colaboración intra-gestora</span></div>
+      <div class="box"><b>api/billing · metrics</b><span>uso · calidad · SLA</span></div>
+      <div class="box"><b>api/account</b><span>RGPD export/erase · MFA · retención</span></div>
+    </div>
+    <div class="grid-mini" style="margin-top:.9rem">
+      <div class="box"><b>services/generation_pipeline</b><span>orquesta RAG → drafter → critic → docx → redline</span></div>
+      <div class="box"><b>services/rag</b><span>niveles 0a→3, silo duro por gestora</span></div>
+      <div class="box"><b>services/llm + providers/</b><span>resolución por gestora, fail-closed a local</span></div>
+      <div class="box"><b>services/jobs</b><span>cola asyncio, 3 reintentos</span></div>
+      <div class="box"><b>services/critic</b><span>2 rondas, issues con cita {where, quote}</span></div>
+      <div class="box"><b>services/lessons</b><span>lecciones por gestora → prompts</span></div>
+      <div class="box"><b>services/redline</b><span>autor “Lol-AI-lo AI”</span></div>
+      <div class="box"><b>services/sla · retention</b><span>sweeps periódicos</span></div>
+      <div class="box"><b>services/storage · drive</b><span>filesystem local / Drive opcional</span></div>
+      <div class="box"><b>services/signed_urls</b><span>HMAC 72h para emails</span></div>
+      <div class="box"><b>services/secrets</b><span>BYO keys cifradas en reposo</span></div>
+      <div class="box"><b>services/audit</b><span>audit_log append-only</span></div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">▼ <small>services/db.py — TenantScopeError si falta el filtro de gestora (la service-role key salta RLS: Python es el guardarraíl)</small></div>
+
+  <div class="layer">
+    <span class="lbl">Datos · Supabase PostgreSQL (27 tablas, RLS) o DevStore en memoria</span>
+    <div class="grid-mini">
+      <div class="box"><b>Tenencia</b><span>gestoras · funds · users</span></div>
+      <div class="box"><b>Workflow</b><span>requests · documents · refinements · generation_jobs · generation_reviews</span></div>
+      <div class="box"><b>Biblioteca RAG</b><span>precedents · precedent_versions</span></div>
+      <div class="box"><b>Aprendizaje</b><span>drafting_lessons · review_playbooks · gestora_model_config</span></div>
+      <div class="box"><b>Counsel/SLA</b><span>counsel_assignments · sla_events · quality_metrics · counsel_comments</span></div>
+      <div class="box"><b>Facturación</b><span>usage_events⁺ · usage_alerts</span></div>
+      <div class="box"><b>Tabular</b><span>4 tablas tabular_review_*</span></div>
+      <div class="box"><b>Colaboración</b><span>request_shares · tabular_review_shares</span></div>
+      <div class="box"><b>RGPD</b><span>data_retention_policies</span></div>
+      <div class="box"><b>Auditoría</b><span>audit_log⁺ (trigger inmutable)</span></div>
+    </div>
+    <p style="font-size:.78rem;color:var(--ink-3);margin-top:.5rem">⁺ append-only: UPDATE/DELETE bloqueados en la capa Python y por trigger en Postgres.</p>
+  </div>
+
+  <div class="flow-arrow">▼ ▲ <small>proveedores externos — todos opcionales, con fallback</small></div>
+
+  <div class="layer">
+    <span class="lbl">Proveedores externos</span>
+    <div class="grid-mini">
+      <div class="box"><b>Ollama (local) <span class="pill ok">defecto</span></b><span>LLM qwen2.5:14b · embeddings bge-m3 — los datos no salen de la máquina</span></div>
+      <div class="box"><b>Anthropic Claude <span class="pill deg">opt-in</span></b><span>fallback LLM cloud, clave global o BYO por gestora</span></div>
+      <div class="box"><b>OpenAI <span class="pill deg">opt-in</span></b><span>fallback embeddings cloud</span></div>
+      <div class="box"><b>Supabase</b><span>PostgreSQL + Auth (JWT, MFA TOTP)</span></div>
+      <div class="box"><b>Resend <span class="pill deg">opcional</span></b><span>email → si falta, consola</span></div>
+      <div class="box"><b>Google Drive <span class="pill deg">opcional</span></b><span>almacenamiento → si falta, ./storage local</span></div>
+    </div>
+    <div class="privacy"><b>Privacidad:</b> por defecto todo el texto de precedentes y borradores se procesa en local (Ollama).
+    Un proveedor cloud solo recibe datos de una gestora si esa gestora (o la plataforma) lo ha activado explícitamente;
+    ante un error al resolver la configuración, el sistema hace <b>fail-closed a local</b>, nunca al cloud.</div>
+  </div>
+
+  <!-- ================= CICLO DE VIDA ================= -->
+  <h2>2 · Ciclo de vida de una solicitud</h2>
+  <p class="lead">Máquina de estados estricta (<code>workflow.transition</code>, 409 si la transición no es legal).</p>
+  <div class="card">
+    <div class="states">
+      <span class="state">parsing</span><span class="arr">→</span>
+      <span class="state">confirmed</span><span class="arr">→</span>
+      <span class="state">generating</span><span class="arr">→</span>
+      <span class="state">review_pending</span><span class="arr">→</span>
+      <span class="state">counsel_review</span><span class="arr">→</span>
+      <span class="state">validated</span><span class="arr">→</span>
+      <span class="state terminal">delivered</span>
+    </div>
+    <ul class="tight">
+      <li><b>Intake:</b> el cliente describe el documento en lenguaje natural (+ campos estructurados por tipo). El parser LLM devuelve partes, fechas, términos y <code>confidence</code>; el cliente <b>confirma o edita</b> (auditado como <code>params_edited</code>).</li>
+      <li><b>Generación:</b> encolada como job (202) con 3 reintentos; si falla definitivamente vuelve a <code>confirmed</code> para reintentar.</li>
+      <li><b>Refinamientos:</b> desde <code>review_pending</code> se puede volver a <code>generating</code> hasta <b>3 veces</b>; el redline siempre compara contra la base original.</li>
+      <li><b>Exit A «Me vale»:</b> checkbox explícito + descarga → <code>delivered</code>. Bloqueado si <code>requires_counsel</code> (Nivel 3) o si el borrador contiene <code>[MISSING: …]</code>. El documento entra en la biblioteca como precedente <b>candidato</b> (draft, peso 0.0) pendiente de activación por admin.</li>
+      <li><b>Exit B «Validación por abogado»:</b> arranca el reloj SLA (recordatorio 24 h, escalado 56 h), notifica al counsel asignado; este edita inline o sube .docx, comenta y <b>valida</b> → email al cliente con URL firmada → descarga final → <code>delivered</code>. El documento validado se incorpora <b>automáticamente como precedente activo</b> (peso 1.0) y se reindexa el silo.</li>
+    </ul>
+    <p class="loopnote">Flechas de retorno: <code>generating → confirmed</code> (fallo definitivo del job) y <code>review_pending → generating</code> (refinamiento).</p>
+  </div>
+
+  <!-- ================= PIPELINE ================= -->
+  <h2>3 · Pipeline de generación</h2>
+  <p class="lead">De solicitud confirmada a borrador + redline (<code>services/generation_pipeline.py</code>).</p>
+  <div class="card">
+    <div class="grid-mini">
+      <div class="box"><b>1 · RAG</b><span>recuperación por silo + doc_type</span></div>
+      <div class="box"><b>2 · Campos estructurados</b><span>se fusionan en key_terms (mandan sobre el parser)</span></div>
+      <div class="box"><b>3 · Drafter especializado</b><span>rama por doc_type + lecciones de la gestora</span></div>
+      <div class="box"><b>4 · Critic (≤2 rondas)</b><span>issues con cita {where, quote} + playbooks; si no aprueba → fuerza Exit B</span></div>
+      <div class="box"><b>5 · Render .docx</b><span>python-docx + disclaimer SLP</span></div>
+      <div class="box"><b>6 · Redline .docx</b><span>diff palabra a palabra, autor «Lol-AI-lo AI»</span></div>
+    </div>
+    <h3 style="font-size:.95rem;margin:1.1rem 0 .3rem">Cadena de fallback RAG (filtro duro por gestora <em>antes</em> de rankear)</h3>
+    <div class="lvl"><b>Nivel 0a</b><span><b>Modelos</b> de la gestora (plantillas maestras, <code>modelos/</code>) — base preferida, peso 1.0</span></div>
+    <div class="lvl"><b>Nivel 0b</b><span><b>Precedentes</b> de la gestora (subidos o validados) — peso 1.0, superseded 0.3</span></div>
+    <div class="lvl"><b>Nivel 1</b><span>Plantillas globales curadas por el SLP — peso 0.7</span></div>
+    <div class="lvl"><b>Nivel 2</b><span>Plantillas base de la plataforma — peso 0.4</span></div>
+    <div class="lvl warn"><b>Nivel 3</b><span>Sin precedente: genera desde cero y <b>fuerza validación por abogado</b> (Exit B obligatorio)</span></div>
+    <p style="font-size:.8rem;color:var(--ink-3);margin-top:.5rem">Solo .docx puede ser base de generación; los PDF (con OCR de respaldo) son contexto de referencia. Sin embeddings disponibles, el ranking degrada a peso×recencia — nunca amplía el pool de candidatos.</p>
+  </div>
+
+  <!-- ================= FLUJO DE INFORMACIÓN ================= -->
+  <h2>4 · Flujo de información y aislamiento</h2>
+  <div class="cols cols-2">
+    <div class="card">
+      <span class="tag t-brand">Dónde viven los datos</span>
+      <ul class="tight">
+        <li><code>storage/gestoras/{id}/modelos/</code> plantillas maestras</li>
+        <li><code>storage/gestoras/{id}/precedentes/</code> biblioteca</li>
+        <li><code>storage/gestoras/{id}/playbooks/</code> reglas del critic</li>
+        <li><code>storage/gestoras/{id}/outputs/{fund}/{request}/</code> draft · redline · counsel_edit · final</li>
+        <li><code>lol-ai-lo-templates/…</code> pool global (sin silo)</li>
+        <li>Descargas por email: URL firmada HMAC, caduca a las 72 h</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="tag t-gold">Choke points de aislamiento</span>
+      <ul class="tight">
+        <li><code>db._assert_tenant_scoped</code>: SELECT sin filtro de gestora → excepción (17 tablas)</li>
+        <li><code>assert_request_access</code>: 404-no-leak (dueño, colega compartido de la misma gestora, o counsel/admin)</li>
+        <li>Acciones mutantes solo del dueño (<code>assert_request_owner</code>)</li>
+        <li>Compartir <b>nunca</b> cruza gestoras (se re-verifica al acceder)</li>
+        <li>RAG: filtro <code>gestora_id</code> en la query, no en el ranking</li>
+        <li>RGPD: export (art. 15/20), borrado/anonimizado (art. 17), retención por gestora (6–120 meses, sweep idempotente)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ================= DEGRADACIÓN ================= -->
+  <h2>5 · Matriz de degradación elegante</h2>
+  <p class="lead">Cada servicio es independiente; <code>/health</code> publica la matriz en tiempo real.</p>
+  <div class="card scroll">
+    <table>
+      <tr><th>Servicio</th><th>Papel</th><th>Si falta o cae</th></tr>
+      <tr><td>Ollama</td><td>LLM + embeddings local (defecto)</td><td><span class="pill deg">degrada</span> 503 claro en parse/generate; critic y lecciones se saltan; RAG rankea por peso×recencia; el job reintenta 3×</td></tr>
+      <tr><td>Anthropic</td><td>LLM cloud opt-in</td><td><span class="pill deg">degrada</span> 503 solo si está seleccionado; BYO key ilegible → clave global → local</td></tr>
+      <tr><td>OpenAI</td><td>Embeddings cloud opt-in</td><td><span class="pill deg">degrada</span> ranking peso×recencia, nunca amplía candidatos</td></tr>
+      <tr><td>Supabase</td><td>BD + Auth</td><td><span class="pill down">503 en datos</span> /health sigue; en dev, <code>DEV_AUTH_STUB=true</code> usa store en memoria</td></tr>
+      <tr><td>Resend</td><td>Email</td><td><span class="pill ok">consola</span> el flujo nunca se bloquea</td></tr>
+      <tr><td>Google Drive</td><td>Almacenamiento</td><td><span class="pill ok">filesystem local</span> <code>./storage</code></td></tr>
+    </table>
+  </div>
+
+  <!-- ================= TABULAR ================= -->
+  <h2>6 · Revisión tabular</h2>
+  <div class="card">
+    <p style="color:var(--ink-2);max-width:75ch">Grid de extracción multi-documento por gestora: el cliente elige documentos
+    (versiones de precedentes o documentos generados), define columnas (texto, fecha, importe, select…) y lanza la extracción;
+    cada celda se responde con LLM citando <code>{page, quote}</code>. Estados por celda (<code>pending → done/error</code>),
+    export CSV, columnas/documentos editables y compartible con colegas de la misma gestora.</p>
+  </div>
+
+  <div class="foot">
+    Generado el 8-jul-2026 a partir del código (migraciones 001–013). Backend FastAPI · Frontend Next.js 14 ·
+    Supabase PostgreSQL · Ollama local-first con fallbacks cloud opt-in. Documentos de referencia: docs/SPEC.md,
+    docs/SECURITY.md, docs/GDPR.md, docs/LAVERN_IDEAS.md.
+  </div>
+</div>
+</body>
+</html>
