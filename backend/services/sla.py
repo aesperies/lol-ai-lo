@@ -125,12 +125,11 @@ def _notify(
 
 def run_sla_sweep(db: Optional[dbmod.Database] = None) -> dict[str, int]:
     """One idempotent pass over all requests stuck in 'counsel_review'."""
-    # Local import: counsel routing helpers live in the API layer.
-    from api.counsel_assignments import (
+    from auth import gestora_of_request
+    from services.counsel_routing import (
         resolve_backup_counsel_recipients,
         resolve_counsel_recipients,
     )
-    from auth import gestora_of_request
 
     db = db if db is not None else dbmod.get_db()
     settings = get_settings()
@@ -138,7 +137,7 @@ def run_sla_sweep(db: Optional[dbmod.Database] = None) -> dict[str, int]:
     reminders_sent = 0
     escalations_sent = 0
 
-    for row in db.select("requests", status=RequestStatus.counsel_review.value):
+    for row in db.unscoped_select("requests", status=RequestStatus.counsel_review.value):
         pending = hours_pending(row, now)
         if pending is None:
             continue

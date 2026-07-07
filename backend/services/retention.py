@@ -84,7 +84,7 @@ def run_retention_sweep(db: Optional[dbmod.Database] = None) -> dict[str, int]:
     # module docstring): collect every live precedent file path once.
     precedent_paths = {v["file_path"] for v in db.select("precedent_versions")}
 
-    for row in db.select("requests", status="delivered"):
+    for row in db.unscoped_select("requests", status="delivered"):
         created = _created_at(row)
         if created is None:
             continue

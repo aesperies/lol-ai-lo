@@ -82,7 +82,7 @@ def _fallback_level(db: dbmod.Database, request_id: str) -> Optional[int]:
     do not carry it, so the original generation entry wins)."""
     levels = [
         entry["metadata"]["rag_level"]
-        for entry in db.select("audit_log", action="document_generated")
+        for entry in db.unscoped_select("audit_log", action="document_generated")
         if (entry.get("metadata") or {}).get("request_id") == request_id
         and "rag_level" in (entry.get("metadata") or {})
     ]
