@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from api import now_iso
+from api import client_ip
 from auth import get_current_user, require_admin
 from models.schema import (
     DATA_DELETE_CONFIRMATION,
@@ -37,9 +37,6 @@ logger = logging.getLogger("lolailo.account")
 
 router = APIRouter(prefix="/api", tags=["account"])
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +81,7 @@ async def set_my_mfa(
         resource_id=user.id,
         gestora_id=user.gestora_id,
         metadata={"enabled": body.enabled, "previous": previous},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     row = db.get("users", user.id) or {}
     return UserProfileOut(
@@ -124,7 +121,7 @@ async def export_my_data(
             "documents": len(bundle.get("documents", [])),
             "tabular_reviews": len(bundle.get("tabular_reviews", [])),
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     payload = json.dumps(bundle, ensure_ascii=False, indent=2, default=str)
     return Response(
@@ -163,7 +160,7 @@ async def delete_my_data(
         resource_id=user.id,
         gestora_id=user.gestora_id,
         metadata={"mode": body.mode, "self_service": True, **counts},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return counts
 
@@ -195,6 +192,6 @@ async def admin_delete_user_data(
         resource_id=user_id,
         gestora_id=subject.get("gestora_id"),
         metadata={"mode": body.mode, "self_service": False, "subject_id": user_id, **counts},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return counts

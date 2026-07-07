@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.counsel_assignments import resolve_counsel_recipients
+from services.counsel_routing import resolve_counsel_recipients
 from auth import gestora_of_request, require_admin
 from config import get_settings
 from models.schema import (
@@ -67,7 +67,7 @@ async def quality_report(
 ) -> Any:
     """Aggregated quality stats: overall + grouped by doc_type and by gestora."""
     db = dbmod.get_db()
-    rows = db.select("quality_metrics")
+    rows = db.unscoped_select("quality_metrics")
     if gestora_id:
         rows = [r for r in rows if r["gestora_id"] == gestora_id]
     if doc_type:
@@ -148,7 +148,7 @@ async def sla_report(user: User = Depends(require_admin)) -> Any:
 
     # Every counsel user appears in the report even with no activity.
     buckets: dict[str, dict[str, Any]] = {
-        u["email"]: empty_bucket() for u in db.select("users", role=UserRole.counsel.value)
+        u["email"]: empty_bucket() for u in db.unscoped_select("users", role=UserRole.counsel.value)
     }
 
     def bucket(email: Optional[str]) -> Optional[dict[str, Any]]:
@@ -160,7 +160,7 @@ async def sla_report(user: User = Depends(require_admin)) -> Any:
 
     # Pending reviews, attributed to the routed counsel (primary -> backup ->
     # broadcast — a broadcast pending shows under every counsel user).
-    for row in db.select("requests", status=RequestStatus.counsel_review.value):
+    for row in db.unscoped_select("requests", status=RequestStatus.counsel_review.value):
         pending = sla_service.hours_pending(row, now)
         past = pending is not None and pending > settings.sla_review_hours
         overall["pending"] += 1
@@ -173,7 +173,7 @@ async def sla_report(user: User = Depends(require_admin)) -> Any:
                 b["past_sla"] += 1 if past else 0
 
     # Completed validations, attributed to the validating counsel.
-    for row in db.select("requests"):
+    for row in db.unscoped_select("requests"):
         hours = _validation_hours(row)
         if hours is None:
             continue

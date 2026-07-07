@@ -324,7 +324,7 @@ def test_pipeline_forces_counsel_when_critic_cannot_approve(wf, db, seed, monkey
 
     # Critic outcome reflected in document_generated audit metadata.
     generated = [
-        e for e in db.select("audit_log", action="document_generated")
+        e for e in db.unscoped_select("audit_log", action="document_generated")
         if (e.get("metadata") or {}).get("request_id") == request_id
     ]
     assert generated

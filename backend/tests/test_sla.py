@@ -26,7 +26,7 @@ def to_counsel_review(wf, client, seed) -> str:
 def sla_audit_entries(db, kind: str) -> list[dict[str, Any]]:
     return [
         row
-        for row in db.select("audit_log", action="counsel_notified")
+        for row in db.unscoped_select("audit_log", action="counsel_notified")
         if (row.get("metadata") or {}).get("sla") == kind
     ]
 

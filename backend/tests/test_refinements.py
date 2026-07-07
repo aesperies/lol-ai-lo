@@ -112,7 +112,7 @@ class TestHappyPath:
         # Audit: document_generated/redline_generated with refinement metadata.
         generated = [
             row
-            for row in db.select("audit_log", action="document_generated")
+            for row in db.unscoped_select("audit_log", action="document_generated")
             if (row.get("metadata") or {}).get("refinement")
         ]
         assert len(generated) == 1
@@ -120,12 +120,12 @@ class TestHappyPath:
         assert generated[0]["metadata"]["instruction"] == INSTRUCTION
         redlined = [
             row
-            for row in db.select("audit_log", action="redline_generated")
+            for row in db.unscoped_select("audit_log", action="redline_generated")
             if (row.get("metadata") or {}).get("refinement")
         ]
         assert len(redlined) == 1
         # Usage: original generation + one billable refinement generation.
-        generated_events = db.select("usage_events", event_type="document_generated")
+        generated_events = db.unscoped_select("usage_events", event_type="document_generated")
         assert len(generated_events) == 2
 
     def test_failed_job_keeps_previous_draft_and_reverts_to_review_pending(
@@ -232,12 +232,12 @@ class TestUnclearInstruction:
         # Audit trail records the unclear failure; usage is NOT billed.
         failed = [
             row
-            for row in db.select("audit_log", action="document_generated")
+            for row in db.unscoped_select("audit_log", action="document_generated")
             if (row.get("metadata") or {}).get("refinement_failed")
         ]
         assert len(failed) == 1
         assert failed[0]["metadata"]["refinement_failed"] == rows[0]["error"]
-        assert len(db.select("usage_events", event_type="document_generated")) == 1
+        assert len(db.unscoped_select("usage_events", event_type="document_generated")) == 1
 
         # A failed refinement does not consume the quota: retry is allowed
         # and gets the next iteration number (numbering gaps by design).

@@ -69,7 +69,7 @@ def estimated_overage_eur(
 
 def _billing_rows(db: dbmod.Database, period: str) -> list[BillingRowOut]:
     """One row per gestora (every gestora appears, even with zero events)."""
-    events = db.select("usage_events", billing_period=period)
+    events = db.unscoped_select("usage_events", billing_period=period)
     by_gestora: dict[str, dict[str, int]] = {}
     for event in events:
         counts = by_gestora.setdefault(event["gestora_id"], {})
@@ -137,7 +137,7 @@ async def billing_periods(user: User = Depends(require_admin)) -> Any:
     """Distinct billing periods present in usage_events (newest first), for
     the period selector. Always includes the current period."""
     db = dbmod.get_db()
-    periods = {e["billing_period"] for e in db.select("usage_events")}
+    periods = {e["billing_period"] for e in db.unscoped_select("usage_events")}
     periods.add(usage.current_billing_period())
     return {"periods": sorted(periods, reverse=True)}
 

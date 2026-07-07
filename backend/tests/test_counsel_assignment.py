@@ -30,7 +30,7 @@ def assign(client, seed, *, gestora: dict, counsel: dict, is_primary: bool = Fal
 
 
 def counsel_notified_entries(db) -> list[dict[str, Any]]:
-    return [row for row in db.select("audit_log") if row["action"] == "counsel_notified"]
+    return [row for row in db.unscoped_select("audit_log") if row["action"] == "counsel_notified"]
 
 
 class TestExitBRouting:
@@ -115,7 +115,7 @@ class TestAssignmentAccess:
     def test_assigning_client_role_user_is_rejected(self, client, db, seed):
         response = assign(client, seed, gestora=seed["gestora_a"], counsel=seed["client_b"], is_primary=True)
         assert response.status_code == 422
-        assert db.select("counsel_assignments") == []
+        assert db.unscoped_select("counsel_assignments") == []
 
 
 class TestMyCounsel:

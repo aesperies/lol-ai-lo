@@ -273,7 +273,7 @@ def wf(client: TestClient, seed: dict[str, Any], fake_llm: dict[str, Any], anthr
             redlines = store.select("documents", request_id=request_id, version_type="redline")
             generated = [
                 entry
-                for entry in store.select("audit_log", action="document_generated")
+                for entry in store.unscoped_select("audit_log", action="document_generated")
                 if (entry.get("metadata") or {}).get("request_id") == request_id
             ]
             rag_level = generated[-1]["metadata"]["rag_level"] if generated else None

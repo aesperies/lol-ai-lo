@@ -93,7 +93,7 @@ class TestRetries:
         # Audit trail: document_generated with failed=true metadata.
         failures = [
             row
-            for row in db.select("audit_log", action="document_generated")
+            for row in db.unscoped_select("audit_log", action="document_generated")
             if (row.get("metadata") or {}).get("failed")
         ]
         assert len(failures) == 1

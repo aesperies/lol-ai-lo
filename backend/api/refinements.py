@@ -16,14 +16,14 @@ client, NO new documents are created, and the request returns to
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api import (
+    client_ip,
     get_request_or_404,
     latest_document,
-    now_iso,
     require_status,
     transition,
 )
@@ -37,165 +37,18 @@ from models.schema import (
     RefinementOut,
     RefinementStatus,
     RequestStatus,
-    UsageEventType,
     User,
 )
 from services import (
     audit,
     db as dbmod,
-    docx_renderer,
-    generator,
+    generation_pipeline,
     jobs,
-    rag,
-    redline as redline_service,
-    storage,
-    usage,
 )
 from services.rate_limit import rate_limit
 
 router = APIRouter(prefix="/api/requests", tags=["refinements"])
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
-
-
-def _run_refinement_pipeline(
-    db: dbmod.Database,
-    request_id: str,
-    refinement_id: str,
-    gestora_id: str,
-    user: User,
-    ip_address: Optional[str],
-) -> None:
-    """Refinement pipeline (extract current draft -> Claude -> docx -> redline
-    vs the ORIGINAL precedent base). Runs inside a generation job
-    (services/jobs.py); raising makes the job runner retry."""
-    settings = get_settings()
-    row = db.get("requests", request_id)
-    refinement = db.get("refinements", refinement_id)
-    if row is None or refinement is None:
-        raise RuntimeError(f"Request {request_id} or refinement {refinement_id} disappeared")
-    iteration = refinement["iteration"]
-    instruction = refinement["instruction"]
-
-    current_draft = latest_document(db, request_id, DocumentVersionType.draft)
-    if current_draft is None:
-        raise RuntimeError(f"No draft to refine for request {request_id}")
-    current_text = docx_renderer.extract_text(storage.read(current_draft["file_path"]))
-
-    text = generator.refine_document(
-        current_text=current_text, instruction=instruction, gestora_id=gestora_id
-    )
-    unclear_reason = generator.refinement_unclear_reason(text)
-    if unclear_reason is not None:
-        # Handled (non-retryable) outcome: the previous iteration stays the
-        # valid draft, no documents are created, the reason reaches the client.
-        db.update(
-            "refinements",
-            refinement_id,
-            {"status": RefinementStatus.failed.value, "error": unclear_reason},
-        )
-        transition(db, db.get("requests", request_id), RequestStatus.review_pending)
-        audit.log_action(
-            db,
-            user=user,
-            action=AuditAction.document_generated,
-            resource_type=AuditResourceType.request,
-            resource_id=request_id,
-            gestora_id=gestora_id,
-            metadata={
-                "refinement": True,
-                "iteration": iteration,
-                "instruction": instruction,
-                "refinement_failed": unclear_reason,
-            },
-            ip_address=ip_address,
-        )
-        return
-
-    # The precedent base id was propagated draft -> draft from iteration 0,
-    # so every redline diffs against the SAME original precedent.
-    base_version_id = current_draft.get("precedent_version_id")
-
-    draft_key = storage.save(
-        storage.outputs_path(gestora_id, row["fund_id"], request_id, f"draft_v{iteration}.docx"),
-        docx_renderer.render_docx(text),
-    )
-    draft_doc = db.insert(
-        "documents",
-        {
-            "request_id": request_id,
-            "version_type": DocumentVersionType.draft.value,
-            "file_path": draft_key,
-            "precedent_version_id": base_version_id,
-            "uploaded_by": None,
-            "iteration": iteration,
-        },
-    )
-    audit.log_action(
-        db,
-        user=user,
-        action=AuditAction.document_generated,
-        resource_type=AuditResourceType.document,
-        resource_id=draft_doc["id"],
-        gestora_id=gestora_id,
-        metadata={
-            "request_id": request_id,
-            "refinement": True,
-            "iteration": iteration,
-            "instruction": instruction,
-            "model": settings.claude_model,
-        },
-        ip_address=ip_address,
-    )
-    # Each applied refinement consumes an LLM generation — billable.
-    usage.record_usage(
-        db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.document_generated
-    )
-
-    base_version = db.get("precedent_versions", base_version_id) if base_version_id else None
-    base_text = rag.load_version_text(base_version) if base_version else None
-    if base_text is not None:
-        redline_key = storage.save(
-            storage.outputs_path(gestora_id, row["fund_id"], request_id, f"redline_v{iteration}.docx"),
-            redline_service.build_redline(base_text, text),
-        )
-        redline_doc = db.insert(
-            "documents",
-            {
-                "request_id": request_id,
-                "version_type": DocumentVersionType.redline.value,
-                "file_path": redline_key,
-                "precedent_version_id": base_version_id,
-                "uploaded_by": None,
-                "iteration": iteration,
-            },
-        )
-        audit.log_action(
-            db,
-            user=user,
-            action=AuditAction.redline_generated,
-            resource_type=AuditResourceType.document,
-            resource_id=redline_doc["id"],
-            gestora_id=gestora_id,
-            metadata={
-                "request_id": request_id,
-                "refinement": True,
-                "iteration": iteration,
-                "instruction": instruction,
-                "base_precedent_version_id": base_version_id,
-                "author": redline_service.REDLINE_AUTHOR,
-            },
-            ip_address=ip_address,
-        )
-
-    db.update(
-        "refinements",
-        refinement_id,
-        {"status": RefinementStatus.applied.value, "applied_at": now_iso()},
-    )
-    transition(db, db.get("requests", request_id), RequestStatus.review_pending)
 
 
 @router.post(
@@ -264,7 +117,7 @@ async def request_refinement(
         },
     )
     transition(db, row, RequestStatus.generating)
-    ip_address = _ip(http_request)
+    ip_address = client_ip(http_request)
 
     def on_final_failure(exc: Exception) -> None:
         # The previous draft is still valid: back to 'review_pending', NOT
@@ -300,7 +153,7 @@ async def request_refinement(
         db,
         request_id=request_id,
         factory=lambda: asyncio.to_thread(
-            _run_refinement_pipeline, db, request_id, refinement["id"], gestora_id, user, ip_address
+            generation_pipeline.run_refinement, db, request_id, refinement["id"], gestora_id, user, ip_address
         ),
         on_final_failure=on_final_failure,
     )

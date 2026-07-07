@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api import now_iso
+from api import client_ip, now_iso
 from auth import require_admin
 from models.schema import (
     AuditAction,
@@ -39,9 +39,6 @@ _PLAIN_FIELDS = (
     "ollama_base_url",
 )
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 def _get_gestora_or_404(db: dbmod.Database, gestora_id: str) -> dict[str, Any]:
@@ -151,6 +148,6 @@ async def put_model_config(
             "anthropic_key_set": bool(row.get("anthropic_api_key_enc")),
             "openai_key_set": bool(row.get("openai_api_key_enc")),
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _serialize(gestora_id, row)

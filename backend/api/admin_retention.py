@@ -6,11 +6,11 @@ setting agreed between the SLP and each gestora, never client-editable.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api import now_iso
+from api import client_ip, now_iso
 from auth import require_admin
 from models.schema import (
     AuditAction,
@@ -23,9 +23,6 @@ from services import audit, db as dbmod, retention
 
 router = APIRouter(prefix="/api/admin", tags=["admin-retention"])
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 def _get_gestora_or_404(db: dbmod.Database, gestora_id: str) -> dict[str, Any]:
@@ -86,7 +83,7 @@ async def put_retention_policy(
         resource_id=gestora_id,
         gestora_id=gestora_id,
         metadata={"months": body.months, "previous_months": previous_months},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return RetentionPolicyOut(
         gestora_id=gestora_id,
@@ -117,6 +114,6 @@ async def trigger_retention_sweep(
         resource_id=None,
         gestora_id=None,
         metadata=counts,
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return counts

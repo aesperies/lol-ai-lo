@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
-from api import now_iso, validate_upload
+from api import client_ip, now_iso, validate_upload
 from auth import assert_precedent_access, get_current_user, require_admin
 from models.schema import (
     AuditAction,
@@ -39,9 +39,6 @@ _TEMPLATE_FOLDER = {
     PrecedentSource.platform_base.value: "platform-base",
 }
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 def _version_path(precedent: dict[str, Any], version_number: int, filename: str) -> str:
@@ -123,7 +120,7 @@ async def upload_precedent(
             gestora_id=gestora_id,
             metadata={"doc_type": doc_type, "language": language, "source": source.value,
                       "filename": file.filename},
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
     return {"precedent": precedent, "version": version}
 
@@ -139,7 +136,7 @@ async def list_precedents(
     if user.role in (UserRole.admin, UserRole.counsel):
         if gestora_id:
             return db.select("precedents", gestora_id=gestora_id)
-        return db.select("precedents")
+        return db.unscoped_select("precedents")
     own = db.select("precedents", gestora_id=user.gestora_id)
     global_templates = [
         p for p in db.select("precedents", gestora_id=None) if p["source"] in _GLOBAL_SOURCES
@@ -196,7 +193,7 @@ async def add_version(
         resource_id=version["id"],
         gestora_id=precedent.get("gestora_id"),
         metadata={"version_number": next_number, "filename": file.filename},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return version
 
@@ -243,7 +240,7 @@ async def activate_version(
             resource_id=other["id"],
             gestora_id=precedent.get("gestora_id"),
             metadata={"superseded_by": version_id, "rag_weight": 0.3},
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
 
     active_weight = _ACTIVE_WEIGHTS.get(precedent["source"], 1.0)
@@ -264,7 +261,7 @@ async def activate_version(
         resource_id=version_id,
         gestora_id=precedent.get("gestora_id"),
         metadata={"rag_weight": active_weight, "superseded": superseded_ids},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
 
     # Re-index the affected silo (or the global pool for SLP/base templates).

@@ -127,13 +127,13 @@ class TestHtmlEndpoint:
         # Audited with the existing download actions + inline_view metadata.
         entries = [
             e
-            for e in db.select("audit_log", action="draft_downloaded")
+            for e in db.unscoped_select("audit_log", action="draft_downloaded")
             if (e.get("metadata") or {}).get("request_id") == request_id
         ]
         assert entries and entries[-1]["metadata"]["mode"] == "inline_view"
         redline_entries = [
             e
-            for e in db.select("audit_log", action="redline_downloaded")
+            for e in db.unscoped_select("audit_log", action="redline_downloaded")
             if (e.get("metadata") or {}).get("request_id") == request_id
         ]
         assert redline_entries and redline_entries[-1]["metadata"]["mode"] == "inline_view"

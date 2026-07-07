@@ -7,6 +7,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 
 from api import (
+    client_ip,
     DOCX_MEDIA_TYPE,
     get_request_or_404,
     latest_document,
@@ -22,7 +23,6 @@ from auth import (
     require_counsel,
 )
 from config import ServiceNotConfiguredError, get_settings
-from models import doc_fields
 from models.schema import (
     AuditAction,
     AuditResourceType,
@@ -30,23 +30,18 @@ from models.schema import (
     DocumentVersionType,
     GenerationJobOut,
     RequestStatus,
-    UsageEventType,
     User,
     UserRole,
 )
-from models.doc_branches import branch_for
 from services import (
     audit,
     db as dbmod,
     docx_html,
     docx_renderer,
-    drafting_agents,
+    generation_pipeline,
     jobs,
-    rag,
-    redline as redline_service,
     signed_urls,
     storage,
-    usage,
 )
 from services.rate_limit import rate_limit
 
@@ -58,175 +53,6 @@ _DOWNLOAD_AUDIT = {
     DocumentVersionType.final: AuditAction.final_downloaded,
 }
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
-
-
-def _run_generation_pipeline(
-    db: dbmod.Database,
-    request_id: str,
-    gestora_id: str,
-    user: User,
-    ip_address: Optional[str],
-) -> None:
-    """The generation pipeline (RAG -> Claude -> docx -> redline), unchanged
-    from the previous synchronous endpoint. Runs inside a generation job
-    (services/jobs.py); raising makes the job runner retry."""
-    settings = get_settings()
-    row = db.get("requests", request_id)
-    if row is None:
-        raise RuntimeError(f"Request {request_id} disappeared during generation")
-    params = row.get("parsed_params") or {}
-    fund = db.get("funds", row["fund_id"]) or {}
-    gestora = db.get("gestoras", gestora_id) or {}
-    language = row.get("language") or params.get("language") or "es"
-
-    # RAG: hard gestora_id + doc_type pre-filter, then fallback chain.
-    # Structured intake fields need no RAG change: retrieval is already keyed
-    # by doc_type (+ gestora/language/freetext); the structured values only
-    # affect the parser and the generation prompt below.
-    retrieval = rag.retrieve(
-        db,
-        gestora_id=gestora_id,
-        doc_type=row["doc_type"],
-        language=language,
-        query_text=row["freetext"],
-    )
-    if retrieval.requires_counsel:
-        # Level 3 ALWAYS forces Exit B (guardrail 10).
-        db.update("requests", request_id, {"requires_counsel": True})
-        row["requires_counsel"] = True
-
-    # Structured intake values travel inside {key_terms} marked as
-    # client-confirmed (source: 'client_confirmed'); they replace any
-    # conflicting parser-derived term. Idempotent when the parser merge
-    # already injected them into parsed_params.
-    key_terms = doc_fields.merge_structured_key_terms(
-        params.get("key_terms", []),
-        row["doc_type"],
-        row.get("structured_fields") or {},
-    )
-
-    # Specialized branch agent (Feature 1) + critic loop (Feature 2). The
-    # branch persona is passed as the LLM system message and the gestora's
-    # learned lessons (Feature 3, siloed) are injected as extra guidance — the
-    # verbatim GENERATION_PROMPT is never edited. The critic runs as extra LLM
-    # passes inside this async job and degrades to a no-op when the LLM is
-    # unreachable.
-    branch = branch_for(row["doc_type"])
-    review_result = drafting_agents.draft_with_review(
-        doc_type=row["doc_type"],
-        language=language,
-        fund_name=fund.get("name", ""),
-        gestora_name=gestora.get("name", ""),
-        jurisdiction=params.get("jurisdiction") or fund.get("jurisdiction", ""),
-        governing_law=params.get("governing_law", ""),
-        parties=params.get("parties", []),
-        key_terms=key_terms,
-        freetext=row["freetext"],
-        precedent_text=retrieval.base_text,
-        parsed_params=params,
-        gestora_id=gestora_id,
-        db=db,
-    )
-    text = review_result.text
-    if retrieval.warning:
-        text = f"{text}\n\n{retrieval.warning}"
-
-    # Persist the critic review trail (one row per round) and, if the critic
-    # could not get the draft approved within budget, force Exit B.
-    for review_round in review_result.rounds:
-        db.insert(
-            "generation_reviews",
-            {
-                "request_id": request_id,
-                "iteration": 0,
-                "round": review_round.round,
-                "approved": review_round.approved,
-                "issues": review_round.issues,
-                "model_note": review_round.model_note,
-            },
-        )
-    if review_result.forced_counsel:
-        db.update("requests", request_id, {"requires_counsel": True})
-        row["requires_counsel"] = True
-
-    draft_key = storage.save(
-        storage.outputs_path(gestora_id, row["fund_id"], request_id, "draft.docx"),
-        docx_renderer.render_docx(text),
-    )
-    draft_doc = db.insert(
-        "documents",
-        {
-            "request_id": request_id,
-            "version_type": DocumentVersionType.draft.value,
-            "file_path": draft_key,
-            "precedent_version_id": retrieval.base_version_id,
-            "uploaded_by": None,
-        },
-    )
-    audit.log_action(
-        db,
-        user=user,
-        action=AuditAction.document_generated,
-        resource_type=AuditResourceType.document,
-        resource_id=draft_doc["id"],
-        gestora_id=gestora_id,
-        metadata={
-            "request_id": request_id,
-            "doc_type": row["doc_type"],
-            "language": language,
-            "rag_level": retrieval.level,
-            "precedent_version_id": retrieval.base_version_id,
-            "model": settings.claude_model,
-            # Specialized drafting branch (Feature 1).
-            "branch": branch.value,
-            # Critic loop outcome (Feature 2): only populated when the critic ran.
-            "critic": {
-                "rounds": len(review_result.rounds),
-                "approved": review_result.approved,
-                "forced_counsel": review_result.forced_counsel,
-            },
-        },
-        ip_address=ip_address,
-    )
-    usage.record_usage(
-        db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.document_generated
-    )
-
-    if retrieval.base_text is not None:
-        redline_key = storage.save(
-            storage.outputs_path(gestora_id, row["fund_id"], request_id, "redline.docx"),
-            redline_service.build_redline(retrieval.base_text, text),
-        )
-        redline_doc = db.insert(
-            "documents",
-            {
-                "request_id": request_id,
-                "version_type": DocumentVersionType.redline.value,
-                "file_path": redline_key,
-                "precedent_version_id": retrieval.base_version_id,
-                "uploaded_by": None,
-            },
-        )
-        audit.log_action(
-            db,
-            user=user,
-            action=AuditAction.redline_generated,
-            resource_type=AuditResourceType.document,
-            resource_id=redline_doc["id"],
-            gestora_id=gestora_id,
-            metadata={
-                "request_id": request_id,
-                "base_precedent_version_id": retrieval.base_version_id,
-                "author": redline_service.REDLINE_AUTHOR,
-            },
-            ip_address=ip_address,
-        )
-
-    # On success the workflow continues exactly as before.
-    transition(db, db.get("requests", request_id), RequestStatus.review_pending)
 
 
 @router.post(
@@ -271,7 +97,7 @@ async def generate(
         )
 
     transition(db, row, RequestStatus.generating)
-    ip_address = _ip(http_request)
+    ip_address = client_ip(http_request)
 
     def on_final_failure(exc: Exception) -> None:
         # Revert to 'confirmed' so the client can retry, and record the
@@ -297,7 +123,7 @@ async def generate(
         # to_thread: the pipeline is blocking (LLM call, docx render); a fresh
         # coroutine is produced per attempt so retries re-run it cleanly.
         factory=lambda: asyncio.to_thread(
-            _run_generation_pipeline, db, request_id, gestora_id, user, ip_address
+            generation_pipeline.run_generation, db, request_id, gestora_id, user, ip_address
         ),
         on_final_failure=on_final_failure,
     )
@@ -363,7 +189,7 @@ async def download_document(
             "version_type": version_type.value,
             "iteration": doc.get("iteration", 0),
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
 
     # Exit B final delivery: first client download closes the workflow.
@@ -427,7 +253,7 @@ async def view_document_html(
             "iteration": doc.get("iteration", 0),
             "mode": "inline_view",
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return rendered
 
@@ -488,7 +314,7 @@ async def signed_download(token: str, http_request: Request) -> Response:
             "iteration": doc.get("iteration", 0),
             "mode": "signed_link",
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return Response(
         content=data,
@@ -539,7 +365,7 @@ async def counsel_edit_inline(
         resource_id=doc["id"],
         gestora_id=gestora_id,
         metadata={"request_id": request_id, "comment": body.comment},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return doc
 
@@ -584,6 +410,6 @@ async def counsel_edit_upload(
         resource_id=doc["id"],
         gestora_id=gestora_id,
         metadata={"request_id": request_id, "filename": file.filename},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return doc

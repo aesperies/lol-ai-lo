@@ -128,9 +128,9 @@ class TestRetentionSweep:
                 "ip_address": None,
             },
         )
-        before = db.select("audit_log")
+        before = db.unscoped_select("audit_log")
         retention.run_retention_sweep(db)
-        assert db.select("audit_log") == before
+        assert db.unscoped_select("audit_log") == before
 
     def test_keeps_files_referenced_by_precedent_library(self, db, seed):
         row, keys = _make_request(db, seed, months_ago=70, n_docs=1)
@@ -211,7 +211,7 @@ class TestRetentionEndpoints:
             headers=auth(seed["admin"]),
         )
         assert len(db.select("data_retention_policies", gestora_id=gestora_id)) == 1
-        entries = db.select("audit_log", action="retention_policy_updated")
+        entries = db.unscoped_select("audit_log", action="retention_policy_updated")
         assert len(entries) == 2
         assert entries[-1]["metadata"] == {"months": 36, "previous_months": 24}
 
@@ -258,6 +258,6 @@ class TestRetentionEndpoints:
         assert response.status_code == 200, response.text
         counts = response.json()
         assert counts["requests_swept"] == 1
-        entries = db.select("audit_log", action="retention_sweep")
+        entries = db.unscoped_select("audit_log", action="retention_sweep")
         assert len(entries) == 1
         assert entries[0]["metadata"] == counts

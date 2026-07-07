@@ -179,3 +179,63 @@ def assert_precedent_access(db: dbmod.Database, user: User, precedent_row: dict[
         return
     if gestora_id != user.gestora_id:
         raise HTTPException(status_code=404, detail="Precedent not found")
+
+
+# ---------------------------------------------------------------------------
+# Tabular-review access model (mirrors the request access model above)
+# ---------------------------------------------------------------------------
+
+def review_is_shared_with(db: dbmod.Database, review: dict[str, Any], user: User) -> bool:
+    """True iff a share row grants ``user`` READ access to this review AND it
+    stays within a single gestora (the inviolable rule, defence in depth).
+
+    Collaboration (012_collaboration.sql): a share only counts when the share
+    row, the sharee and the review all belong to the SAME gestora. Re-checked
+    here at ACCESS time even though it was enforced at CREATE time.
+    """
+    gestora_id = review.get("gestora_id")
+    if user.gestora_id is None or gestora_id is None or gestora_id != user.gestora_id:
+        return False
+    shares = db.select(
+        "tabular_review_shares", review_id=review["id"], shared_with_user_id=user.id
+    )
+    return any(s.get("gestora_id") == user.gestora_id for s in shares)
+
+
+def assert_review_access(db: dbmod.Database, user: User, review: dict[str, Any]) -> str:
+    """404 unless the user may READ this review. Returns the gestora_id.
+
+    Same policy as assert_request_access: owner, same-gestora sharee, or
+    counsel/admin (cross-gestora by role); anyone else gets a 404-no-leak.
+    Owner-only actions are gated separately by assert_review_owner.
+    """
+    gestora_id = review.get("gestora_id")
+    if user.role in (UserRole.counsel, UserRole.admin):
+        return gestora_id or ""
+    if gestora_id is None or user.gestora_id != gestora_id:
+        raise HTTPException(status_code=404, detail="Tabular review not found")
+    if is_review_owner(user, review):
+        return gestora_id
+    if review_is_shared_with(db, review, user):
+        return gestora_id
+    raise HTTPException(status_code=404, detail="Tabular review not found")
+
+
+def is_review_owner(user: User, review: dict[str, Any]) -> bool:
+    """True iff ``user`` is the client who created the review."""
+    return user.role == UserRole.client and review.get("created_by") == user.id
+
+
+def assert_review_owner(db: dbmod.Database, user: User, review: dict[str, Any]) -> str:
+    """404/403 unless ``user`` OWNS this review. Returns the gestora_id.
+
+    Same policy as assert_request_owner: mutating actions are owner-only; a
+    read-only collaborator gets 403 after the 404-no-leak read check.
+    """
+    gestora_id = assert_review_access(db, user, review)
+    if not is_review_owner(user, review):
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el propietario de la revisión puede realizar esta acción.",
+        )
+    return gestora_id

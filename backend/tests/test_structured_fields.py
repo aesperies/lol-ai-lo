@@ -98,7 +98,7 @@ class TestIntakeValidation:
         assert body["structured_fields"] == structured
         assert db.get("requests", body["id"])["structured_fields"] == structured
         # Audit metadata records WHICH keys were provided (not just that some were).
-        entry = db.select("audit_log", action="document_requested")[-1]
+        entry = db.unscoped_select("audit_log", action="document_requested")[-1]
         assert entry["metadata"]["structured_field_keys"] == ["asistentes", "fecha_reunion"]
 
     def test_required_structured_keys_may_be_missing_at_submit(self, client, seed):

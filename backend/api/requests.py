@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from api import (
+    client_ip,
     DOCX_MEDIA_TYPE,
     exit_a_blockers,
     get_request_or_404,
@@ -16,7 +17,7 @@ from api import (
     require_status,
     transition,
 )
-from api.counsel_assignments import resolve_counsel_recipients
+from services.counsel_routing import resolve_counsel_recipients
 from auth import (
     assert_request_access,
     assert_request_owner,
@@ -37,8 +38,6 @@ from models.schema import (
     DocumentVersionType,
     ExitAAcknowledgeBody,
     GenerationReviewOut,
-    PrecedentSource,
-    PrecedentVersionStatus,
     RequestBranchOut,
     RequestCreate,
     RequestOut,
@@ -50,11 +49,10 @@ from models.schema import (
 from services import (
     audit,
     db as dbmod,
+    delivery,
     email_service,
     intake_parser,
-    lessons,
     quality,
-    rag,
     signed_urls,
     storage,
     usage,
@@ -65,9 +63,6 @@ router = APIRouter(prefix="/api/requests", tags=["requests"])
 
 logger = logging.getLogger("lolailo.requests")
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 def _effective_doc_type(request_row: dict[str, Any]) -> str:
@@ -135,7 +130,7 @@ async def submit_request(
             "freetext_length": len(body.freetext),
             "structured_field_keys": sorted(body.structured_fields or {}),
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return row
 
@@ -206,7 +201,7 @@ async def confirm_params(
             resource_id=request_id,
             gestora_id=gestora_id,
             metadata={"edited_fields": edited_fields},
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
 
     if not params.get("generation_ready"):
@@ -226,7 +221,7 @@ async def confirm_params(
         resource_id=request_id,
         gestora_id=gestora_id,
         metadata={"edited": edited, "language": params.get("language")},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return row
 
@@ -259,7 +254,7 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
     each row is flagged is_owner / shared_with_me so the UI can show a
     "Compartido contigo" badge and hide owner-only actions."""
     db = dbmod.get_db()
-    rows = db.select("requests")
+    rows = db.unscoped_select("requests")
     if user.role in (UserRole.counsel, UserRole.admin):
         return rows
     # Client: requests they OWN, plus requests a same-gestora colleague SHARED
@@ -361,7 +356,7 @@ async def exit_a_acknowledge(
         resource_id=request_id,
         gestora_id=gestora_id,
         metadata={"checkbox_text": EXIT_A_CHECKBOX_TEXT},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return row
 
@@ -391,17 +386,7 @@ async def exit_a_download(
     data = storage.read(draft["file_path"])
 
     # The delivered draft becomes the 'final' version record.
-    db.insert(
-        "documents",
-        {
-            "request_id": request_id,
-            "version_type": DocumentVersionType.final.value,
-            "file_path": draft["file_path"],
-            "precedent_version_id": draft.get("precedent_version_id"),
-            "uploaded_by": None,
-            "iteration": draft.get("iteration", 0),
-        },
-    )
+    delivery.create_final_document(db, request_id=request_id, source_doc=draft, uploaded_by=None)
     transition(db, row, RequestStatus.delivered)
     audit.log_action(
         db,
@@ -411,64 +396,40 @@ async def exit_a_download(
         resource_id=request_id,
         gestora_id=gestora_id,
         metadata={"document_id": draft["id"], "acknowledged_at": row["exit_a_acknowledged_at"]},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     usage.record_usage(db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.exit_a)
 
-    # Quality KPI (improvement #6): accepted as-is → similarity 1.0 (the
-    # strongest quality signal). Once per request (UNIQUE on request_id);
-    # a metric failure must NEVER block delivery.
-    try:
-        quality.record_exit_a_metric(db, request_row=row, gestora_id=gestora_id, draft_doc=draft)
-    except Exception:  # noqa: BLE001 — metrics are best-effort by design
-        logger.exception("Quality metric failed for request %s (delivery continues)", request_id)
-
-    # Learning (Feature 3): Exit A accepted-as-is is a strong positive signal.
-    # final ≈ draft here, so the similarity short-circuit usually makes this a
-    # no-op; still enqueue (async + best-effort, NEVER blocks delivery).
-    try:
-        lessons.enqueue_extraction(
-            db,
-            gestora_id=gestora_id,
-            doc_type=row["doc_type"],
-            request_id=request_id,
-            ai_draft_path=draft["file_path"],
-            final_path=draft["file_path"],
-        )
-    except Exception:  # noqa: BLE001 — learning is best-effort by design
-        logger.exception("Lessons enqueue failed for request %s (delivery continues)", request_id)
-
-    # Precedent candidate: NOT active until an admin approves (guardrail 8).
-    precedent = db.insert(
-        "precedents",
-        {
-            "gestora_id": gestora_id,
-            "fund_id": row["fund_id"],
-            "doc_type": row["doc_type"],
-            "language": row.get("language") or "es",
-            "source": PrecedentSource.validated_output.value,
-        },
+    # Quality KPI (improvement #6): accepted as-is → similarity 1.0, once per
+    # request. Learning (Feature 3): accepted-as-is is a strong positive
+    # signal (final ≈ draft, usually a no-op). Both best-effort — a failure
+    # NEVER blocks delivery (services/delivery.py).
+    delivery.best_effort(
+        "Quality metric",
+        request_id,
+        lambda: quality.record_exit_a_metric(
+            db, request_row=row, gestora_id=gestora_id, draft_doc=draft
+        ),
     )
-    version = db.insert(
-        "precedent_versions",
-        {
-            "precedent_id": precedent["id"],
-            "version_number": 1,
-            "file_path": draft["file_path"],
-            "status": PrecedentVersionStatus.draft.value,
-            "rag_weight": 0.0,
-            "created_by": user.id,
-        },
+    delivery.enqueue_lessons(
+        db,
+        gestora_id=gestora_id,
+        doc_type=row["doc_type"],
+        request_id=request_id,
+        ai_draft_path=draft["file_path"],
+        final_path=draft["file_path"],
     )
-    audit.log_action(
+
+    # Precedent CANDIDATE: not active until an admin approves (guardrail 8).
+    delivery.register_precedent(
         db,
         user=user,
-        action=AuditAction.precedent_version_created,
-        resource_type=AuditResourceType.precedent_version,
-        resource_id=version["id"],
         gestora_id=gestora_id,
-        metadata={"origin": "exit_a", "request_id": request_id, "pending_admin_activation": True},
-        ip_address=_ip(http_request),
+        request_row=row,
+        file_path=draft["file_path"],
+        origin="exit_a",
+        activate=False,
+        ip_address=client_ip(http_request),
     )
 
     return Response(
@@ -506,7 +467,7 @@ async def exit_b_request_validation(
         resource_id=request_id,
         gestora_id=gestora_id,
         metadata={"doc_type": row["doc_type"], "requires_counsel": row.get("requires_counsel", False)},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     usage.record_usage(
         db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.exit_b_requested
@@ -546,7 +507,7 @@ async def exit_b_request_validation(
                 "routing": routing,
                 "recipients": recipient_emails,
             },
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
     return row
 
@@ -570,7 +531,7 @@ async def counsel_review_start(
         resource_id=request_id,
         gestora_id=gestora_id,
         metadata={"doc_type": row["doc_type"]},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return row
 
@@ -596,49 +557,37 @@ async def counsel_validate(
     if source_doc is None:
         raise HTTPException(status_code=409, detail="No document available to validate")
 
-    final_doc = db.insert(
-        "documents",
-        {
-            "request_id": request_id,
-            "version_type": DocumentVersionType.final.value,
-            "file_path": source_doc["file_path"],
-            "precedent_version_id": source_doc.get("precedent_version_id"),
-            "uploaded_by": user.id,
-            "iteration": source_doc.get("iteration", 0),
-        },
+    final_doc = delivery.create_final_document(
+        db, request_id=request_id, source_doc=source_doc, uploaded_by=user.id
     )
     transition(db, row, RequestStatus.validated)
     # SLA clock stops now (counsel response metrics, services/sla.py).
     row = db.update("requests", request_id, {"counsel_validated_at": now_iso()})
 
     # Quality KPI (improvement #6): how much did counsel change the AI draft?
-    # A metric failure must NEVER block validation.
-    try:
-        quality.record_exit_b_metric(
+    # Learning (Feature 3): distill gestora-siloed lessons from the AI draft
+    # vs. the counsel-validated final. Both best-effort — a failure NEVER
+    # blocks validation (services/delivery.py).
+    draft_doc = latest_document(db, request_id, DocumentVersionType.draft)
+    delivery.best_effort(
+        "Quality metric",
+        request_id,
+        lambda: quality.record_exit_b_metric(
             db,
             request_row=row,
             gestora_id=gestora_id,
-            draft_doc=latest_document(db, request_id, DocumentVersionType.draft),
+            draft_doc=draft_doc,
             final_doc_path=source_doc["file_path"],
-        )
-    except Exception:  # noqa: BLE001 — metrics are best-effort by design
-        logger.exception("Quality metric failed for request %s (validation continues)", request_id)
-
-    # Learning (Feature 3): distill gestora-siloed drafting lessons from the
-    # AI draft vs. the counsel-validated final. Async + best-effort: NEVER
-    # blocks delivery; failures are swallowed + logged inside the helper.
-    try:
-        draft_doc = latest_document(db, request_id, DocumentVersionType.draft)
-        lessons.enqueue_extraction(
-            db,
-            gestora_id=gestora_id,
-            doc_type=row["doc_type"],
-            request_id=request_id,
-            ai_draft_path=draft_doc["file_path"] if draft_doc else None,
-            final_path=source_doc["file_path"],
-        )
-    except Exception:  # noqa: BLE001 — learning is best-effort by design
-        logger.exception("Lessons enqueue failed for request %s (validation continues)", request_id)
+        ),
+    )
+    delivery.enqueue_lessons(
+        db,
+        gestora_id=gestora_id,
+        doc_type=row["doc_type"],
+        request_id=request_id,
+        ai_draft_path=draft_doc["file_path"] if draft_doc else None,
+        final_path=source_doc["file_path"],
+    )
 
     audit.log_action(
         db,
@@ -648,50 +597,24 @@ async def counsel_validate(
         resource_id=request_id,
         gestora_id=gestora_id,
         metadata={"final_document_id": final_doc["id"], "from_document_id": source_doc["id"]},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     usage.record_usage(
         db, gestora_id=gestora_id, request_id=request_id, event_type=UsageEventType.exit_b_validated
     )
 
-    # Counsel-validated output enters the precedent library automatically (ACTIVE).
-    precedent = db.insert(
-        "precedents",
-        {
-            "gestora_id": gestora_id,
-            "fund_id": row["fund_id"],
-            "doc_type": row["doc_type"],
-            "language": row.get("language") or "es",
-            "source": PrecedentSource.validated_output.value,
-        },
+    # Counsel-validated output enters the precedent library automatically
+    # (ACTIVE, guardrail 8 exception) and the gestora's RAG index refreshes.
+    delivery.register_precedent(
+        db,
+        user=user,
+        gestora_id=gestora_id,
+        request_row=row,
+        file_path=source_doc["file_path"],
+        origin="counsel_validation",
+        activate=True,
+        ip_address=client_ip(http_request),
     )
-    version = db.insert(
-        "precedent_versions",
-        {
-            "precedent_id": precedent["id"],
-            "version_number": 1,
-            "file_path": source_doc["file_path"],
-            "status": PrecedentVersionStatus.active.value,
-            "rag_weight": 1.0,
-            "activated_at": now_iso(),
-            "created_by": user.id,
-        },
-    )
-    for action, metadata in (
-        (AuditAction.precedent_version_created, {"origin": "counsel_validation", "request_id": request_id}),
-        (AuditAction.precedent_activated, {"automatic": True, "reason": "counsel_validated"}),
-    ):
-        audit.log_action(
-            db,
-            user=user,
-            action=action,
-            resource_type=AuditResourceType.precedent_version,
-            resource_id=version["id"],
-            gestora_id=gestora_id,
-            metadata=metadata,
-            ip_address=_ip(http_request),
-        )
-    rag.reindex_gestora(gestora_id)
 
     # Notify the client that the validated document is ready.
     client_user = db.get("users", row["user_id"]) or {}

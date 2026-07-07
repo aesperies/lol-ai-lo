@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api import get_request_or_404
-from api.counsel_assignments import resolve_counsel_recipients
+from api import client_ip, get_request_or_404
+from services.counsel_routing import resolve_counsel_recipients
 from auth import assert_request_access, get_current_user, require_counsel_or_admin
 from config import get_settings
 from models.schema import (
@@ -22,9 +22,6 @@ from services import audit, db as dbmod, email_service, signed_urls
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 @router.post("/requests/{request_id}/counsel")
@@ -78,7 +75,7 @@ async def notify_counsel(
                 "routing": routing,
                 "recipients": recipient_emails,
             },
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
     return {"sent": len(deliveries), "routing": routing, "deliveries": deliveries}
 

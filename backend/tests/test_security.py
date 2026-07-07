@@ -69,7 +69,7 @@ class TestSignedDownloadEndpoint:
 
         entries = [
             e
-            for e in db.select("audit_log", action="draft_downloaded")
+            for e in db.unscoped_select("audit_log", action="draft_downloaded")
             if (e.get("metadata") or {}).get("request_id") == request_id
         ]
         assert entries, "signed download must be audited as draft_downloaded"

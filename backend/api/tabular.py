@@ -16,7 +16,16 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from auth import get_current_user, require_client
+from api import client_ip
+
+from auth import (
+    assert_review_access,
+    assert_review_owner,
+    get_current_user,
+    is_review_owner,
+    require_client,
+    review_is_shared_with,
+)
 from models.schema import (
     AuditAction,
     AuditResourceType,
@@ -44,9 +53,6 @@ logger = logging.getLogger("lolailo.tabular")
 _NOT_FOUND = "Tabular review not found"
 
 
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
-
 
 # ---------------------------------------------------------------------------
 # Gestora isolation helpers (SPEC guardrail 1) — same 404-no-leak pattern as
@@ -60,68 +66,6 @@ def _get_review_or_404(db: dbmod.Database, review_id: str) -> dict[str, Any]:
     return row
 
 
-def _review_is_shared_with(db: dbmod.Database, review: dict[str, Any], user: User) -> bool:
-    """True iff a share row grants ``user`` READ access to this review AND it
-    stays within a single gestora (the inviolable rule, defence in depth).
-
-    Collaboration (012_collaboration.sql): a share only counts when the share
-    row, the sharee and the review all belong to the SAME gestora. Re-checked
-    here at ACCESS time even though it was enforced at CREATE time.
-    """
-    gestora_id = review.get("gestora_id")
-    if user.gestora_id is None or gestora_id is None or gestora_id != user.gestora_id:
-        return False
-    shares = db.select(
-        "tabular_review_shares", review_id=review["id"], shared_with_user_id=user.id
-    )
-    return any(s.get("gestora_id") == user.gestora_id for s in shares)
-
-
-def _assert_review_access(db: dbmod.Database, user: User, review: dict[str, Any]) -> str:
-    """404 unless the user may READ this review. Returns the gestora_id.
-
-    Read access is granted to: the review's OWNER (its creator); a same-gestora
-    colleague the owner SHARED it with (collaboration, 012_collaboration.sql);
-    and counsel/admin (cross-gestora by role). A review is otherwise PRIVATE to
-    its owner: a different same-gestora client who was not shared with gets 404
-    (not 403) so existence is never leaked. Sharing NEVER crosses gestoras:
-    _review_is_shared_with re-checks share-row / sharee / review gestora
-    equality. Owner-only actions are gated separately by _assert_review_owner.
-    """
-    gestora_id = review.get("gestora_id")
-    if user.role in (UserRole.counsel, UserRole.admin):
-        return gestora_id or ""
-    if gestora_id is None or user.gestora_id != gestora_id:
-        raise HTTPException(status_code=404, detail=_NOT_FOUND)
-    if _is_review_owner(user, review):
-        return gestora_id
-    if _review_is_shared_with(db, review, user):
-        return gestora_id
-    raise HTTPException(status_code=404, detail=_NOT_FOUND)
-
-
-def _is_review_owner(user: User, review: dict[str, Any]) -> bool:
-    """True iff ``user`` is the client who created the review."""
-    return user.role == UserRole.client and review.get("created_by") == user.id
-
-
-def _assert_review_owner(db: dbmod.Database, user: User, review: dict[str, Any]) -> str:
-    """404/403 unless ``user`` OWNS this review. Returns the gestora_id.
-
-    Collaboration (012_collaboration.sql): mutating actions (run, add/delete
-    columns & documents, managing the share list) are reserved to the OWNER;
-    a read-only collaborator is rejected here (403). Runs the 404-no-leak read
-    check first so a stranger still gets 404, never 403.
-    """
-    gestora_id = _assert_review_access(db, user, review)
-    if not _is_review_owner(user, review):
-        raise HTTPException(
-            status_code=403,
-            detail="Solo el propietario de la revisión puede realizar esta acción.",
-        )
-    return gestora_id
-
-
 def _ownership_flags(db: dbmod.Database, user: User, review: dict[str, Any]) -> dict[str, Any]:
     """Per-caller is_owner / shared_with_me / shared_by_email flags for a review.
 
@@ -130,8 +74,8 @@ def _ownership_flags(db: dbmod.Database, user: User, review: dict[str, Any]) -> 
     counsel/admin (cross-gestora by role; not part of the sharing model)."""
     if user.role in (UserRole.counsel, UserRole.admin):
         return {"is_owner": None, "shared_with_me": None, "shared_by_email": None}
-    owner = _is_review_owner(user, review)
-    shared = (not owner) and _review_is_shared_with(db, review, user)
+    owner = is_review_owner(user, review)
+    shared = (not owner) and review_is_shared_with(db, review, user)
     shared_by_email = None
     if shared:
         owner_row = db.get("users", review.get("created_by")) if review.get("created_by") else None
@@ -315,7 +259,7 @@ async def create_review(
             "column_count": len(column_ids),
             "document_count": len(document_ids),
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _serialize_detail(db, review, user)
 
@@ -336,7 +280,7 @@ async def run_review_endpoint(
     collaborator is rejected (403)."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_owner(db, user, review)
+    gestora_id = assert_review_owner(db, user, review)
 
     db.update("tabular_reviews", review_id, {"status": TabularReviewStatus.running.value})
     job = get_runner().enqueue(
@@ -356,7 +300,7 @@ async def run_review_endpoint(
         resource_id=review_id,
         gestora_id=gestora_id,
         metadata={"job_id": job["id"]},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return {"review_id": review_id, "status": TabularReviewStatus.running.value, "job_id": job["id"]}
 
@@ -373,7 +317,7 @@ async def list_reviews(user: User = Depends(get_current_user)) -> Any:
     shared_with_me so the UI can show a "Compartido contigo" badge."""
     db = dbmod.get_db()
     if user.role in (UserRole.counsel, UserRole.admin):
-        return db.select("tabular_reviews")
+        return db.unscoped_select("tabular_reviews")
     rows = db.select("tabular_reviews", gestora_id=user.gestora_id)
     shared_ids = {
         s["review_id"]
@@ -381,7 +325,7 @@ async def list_reviews(user: User = Depends(get_current_user)) -> Any:
         if s.get("gestora_id") == user.gestora_id
     }
     visible = [
-        r for r in rows if _is_review_owner(user, r) or r["id"] in shared_ids
+        r for r in rows if is_review_owner(user, r) or r["id"] in shared_ids
     ]
     return [{**r, **_ownership_flags(db, user, r)} for r in visible]
 
@@ -390,7 +334,7 @@ async def list_reviews(user: User = Depends(get_current_user)) -> Any:
 async def get_review(review_id: str, user: User = Depends(get_current_user)) -> Any:
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    _assert_review_access(db, user, review)
+    assert_review_access(db, user, review)
     return _serialize_detail(db, review, user)
 
 
@@ -399,7 +343,7 @@ async def get_review_status(review_id: str, user: User = Depends(get_current_use
     """Lightweight progress payload for the polling loop while a review runs."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    _assert_review_access(db, user, review)
+    assert_review_access(db, user, review)
     cells = db.select("tabular_review_cells", review_id=review_id)
     return TabularReviewStatusOut(
         id=review_id,
@@ -426,7 +370,7 @@ async def add_column(
     Owner-only (collaboration): mutating; collaborators get 403."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_owner(db, user, review)
+    gestora_id = assert_review_owner(db, user, review)
 
     existing = db.select("tabular_review_columns", review_id=review_id)
     position = max((c.get("position", 0) for c in existing), default=-1) + 1
@@ -453,7 +397,7 @@ async def add_column(
         resource_id=review_id,
         gestora_id=gestora_id,
         metadata={"column_id": column["id"], "name": body.name, "col_type": body.col_type.value},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _serialize_detail(db, review, user)
 
@@ -468,7 +412,7 @@ async def delete_column(
     """Delete a column and its cells. Owner-only (collaboration; 403 for collaborators)."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_owner(db, user, review)
+    gestora_id = assert_review_owner(db, user, review)
     column = db.get("tabular_review_columns", column_id)
     if column is None or column["review_id"] != review_id:
         raise HTTPException(status_code=404, detail="Column not found")
@@ -483,7 +427,7 @@ async def delete_column(
         resource_id=review_id,
         gestora_id=gestora_id,
         metadata={"column_id": column_id},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _serialize_detail(db, review, user)
 
@@ -498,7 +442,7 @@ async def delete_document(
     """Delete a document (grid row) and its cells. Owner-only (collaboration; 403 for collaborators)."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_owner(db, user, review)
+    gestora_id = assert_review_owner(db, user, review)
     document = db.get("tabular_review_documents", document_id)
     if document is None or document["review_id"] != review_id:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -513,7 +457,7 @@ async def delete_document(
         resource_id=review_id,
         gestora_id=gestora_id,
         metadata={"document_id": document_id},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _serialize_detail(db, review, user)
 
@@ -534,7 +478,7 @@ async def export_review_csv(
     CSV export approach (csv.writer over a StringIO buffer)."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_access(db, user, review)
+    gestora_id = assert_review_access(db, user, review)
 
     columns = sorted(
         db.select("tabular_review_columns", review_id=review_id),
@@ -568,7 +512,7 @@ async def export_review_csv(
         resource_id=review_id,
         gestora_id=gestora_id,
         metadata={"document_count": len(documents), "column_count": len(columns)},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return Response(
         content=buffer.getvalue(),

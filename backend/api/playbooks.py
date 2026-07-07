@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
-from api import now_iso, validate_upload
+from api import client_ip, now_iso, validate_upload
 from auth import get_current_user, require_admin
 from models.schema import (
     AuditAction,
@@ -32,9 +32,6 @@ router = APIRouter(prefix="/api/playbooks", tags=["playbooks"])
 # Optional attachment kinds (same hardening as precedent/counsel uploads).
 _PLAYBOOK_EXTENSIONS = (".docx", ".pdf")
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 def _get_playbook_for_user(db: dbmod.Database, playbook_id: str, user: User) -> dict[str, Any]:
@@ -107,7 +104,7 @@ async def create_playbook(
         gestora_id=gestora_id,
         metadata={"title": title, "branch": branch, "doc_type": doc_type,
                   "has_file": playbook.get("file_path") is not None},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return playbook
 
@@ -123,7 +120,7 @@ async def list_playbooks(
     if user.role in (UserRole.admin, UserRole.counsel):
         if gestora_id:
             return db.select("review_playbooks", gestora_id=gestora_id)
-        return db.select("review_playbooks")
+        return db.unscoped_select("review_playbooks")
     # Hard gestora_id filter — a client never sees another gestora's playbooks.
     return db.select("review_playbooks", gestora_id=user.gestora_id)
 
@@ -161,7 +158,7 @@ async def update_playbook(
         resource_id=playbook_id,
         gestora_id=playbook.get("gestora_id"),
         metadata={"updated": sorted(k for k in fields if k != "updated_at")},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return playbook
 
@@ -202,7 +199,7 @@ async def _set_active(
         resource_id=playbook_id,
         gestora_id=playbook.get("gestora_id"),
         metadata={"is_active": is_active},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return playbook
 
@@ -228,5 +225,5 @@ async def delete_playbook(
         resource_id=playbook_id,
         gestora_id=playbook.get("gestora_id"),
         metadata={"title": playbook.get("title")},
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )

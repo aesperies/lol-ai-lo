@@ -15,7 +15,7 @@ from tests.conftest import auth
 
 
 def _audit_snapshot(db: dbmod.DevStore) -> list[dict]:
-    return db.select("audit_log")
+    return db.unscoped_select("audit_log")
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ class TestMfaMirror:
 
     def test_mfa_change_is_audited(self, client, seed, db):
         client.post("/api/me/mfa", json={"enabled": True}, headers=auth(seed["client_a"]))
-        events = [e for e in db.select("audit_log") if e["action"] == "mfa_status_changed"]
+        events = [e for e in db.unscoped_select("audit_log") if e["action"] == "mfa_status_changed"]
         assert events
         assert events[-1]["metadata"]["enabled"] is True
         assert events[-1]["resource_id"] == seed["client_a"]["id"]
@@ -85,7 +85,7 @@ class TestExport:
 
     def test_export_is_audited(self, client, seed, db):
         client.get("/api/me/export", headers=auth(seed["client_a"]))
-        assert any(e["action"] == "data_exported" for e in db.select("audit_log"))
+        assert any(e["action"] == "data_exported" for e in db.unscoped_select("audit_log"))
 
 
 # ---------------------------------------------------------------------------
@@ -156,13 +156,13 @@ class TestDeletion:
     def test_erase_does_not_touch_audit_log_rows(self, wf, client, seed, db):
         """Explicitly assert the pre-existing audit rows are all still present."""
         request_id, _ = wf.to_review_pending()
-        ids_before = {e["id"] for e in db.select("audit_log")}
+        ids_before = {e["id"] for e in db.unscoped_select("audit_log")}
         client.post(
             "/api/me/delete",
             json={"confirm": DATA_DELETE_CONFIRMATION, "mode": "erase"},
             headers=auth(seed["client_a"]),
         )
-        ids_after = {e["id"] for e in db.select("audit_log")}
+        ids_after = {e["id"] for e in db.unscoped_select("audit_log")}
         # Every prior audit row survives (append-only); only additions allowed.
         assert ids_before <= ids_after
 
@@ -175,7 +175,7 @@ class TestDeletion:
         )
         assert res.status_code == 200
         assert db.get("requests", request_id) is None
-        events = [e for e in db.select("audit_log") if e["action"] == "data_subject_deleted"]
+        events = [e for e in db.unscoped_select("audit_log") if e["action"] == "data_subject_deleted"]
         assert events and events[-1]["metadata"]["self_service"] is False
 
     def test_admin_delete_requires_confirmation(self, client, seed):

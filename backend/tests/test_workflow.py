@@ -8,11 +8,11 @@ from tests.conftest import auth, seed_precedent
 
 
 def _audit_actions(db) -> list[str]:
-    return [row["action"] for row in db.select("audit_log")]
+    return [row["action"] for row in db.unscoped_select("audit_log")]
 
 
 def _usage_types(db) -> list[str]:
-    return [row["event_type"] for row in db.select("usage_events")]
+    return [row["event_type"] for row in db.unscoped_select("usage_events")]
 
 
 class TestGenerationGuards:
@@ -95,10 +95,10 @@ class TestExitA:
 
         # Usage events for billing (YYYY-MM period).
         assert sorted(_usage_types(db)) == ["document_generated", "exit_a"]
-        assert all(len(e["billing_period"]) == 7 for e in db.select("usage_events"))
+        assert all(len(e["billing_period"]) == 7 for e in db.unscoped_select("usage_events"))
 
         # Exit A output becomes a precedent CANDIDATE (draft, admin approval pending).
-        candidates = db.select("precedents", source="validated_output")
+        candidates = db.unscoped_select("precedents", source="validated_output")
         assert len(candidates) == 1
         versions = db.select("precedent_versions", precedent_id=candidates[0]["id"])
         assert versions[0]["status"] == PrecedentVersionStatus.draft.value
@@ -173,7 +173,7 @@ class TestLevel3ForcesExitB:
         assert validated.json()["status"] == "validated"
 
         # Counsel-validated output enters the library automatically as ACTIVE.
-        precedents = db.select("precedents", source="validated_output")
+        precedents = db.unscoped_select("precedents", source="validated_output")
         assert len(precedents) == 1
         version = db.select("precedent_versions", precedent_id=precedents[0]["id"])[0]
         assert version["status"] == PrecedentVersionStatus.active.value
@@ -246,7 +246,7 @@ class TestStateMachine:
 class TestAuditImmutability:
     def test_audit_log_is_append_only(self, wf, db):
         wf.create()
-        audit_row = db.select("audit_log")[0]
+        audit_row = db.unscoped_select("audit_log")[0]
         with pytest.raises(PermissionError):
             db.update("audit_log", audit_row["id"], {"action": "document_validated"})
         with pytest.raises(PermissionError):

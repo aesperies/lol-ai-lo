@@ -29,15 +29,17 @@ There is NO cross-gestora share, ever.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api import get_request_or_404
+from api import client_ip, get_request_or_404
 from api.tabular import _get_review_or_404
 from auth import (
     assert_request_access,
     assert_request_owner,
+    assert_review_access,
+    assert_review_owner,
     get_current_user,
     require_client,
 )
@@ -60,9 +62,6 @@ colleagues_router = APIRouter(prefix="/api/my", tags=["collaboration"])
 request_shares_router = APIRouter(prefix="/api/requests", tags=["collaboration"])
 review_shares_router = APIRouter(prefix="/api/tabular-reviews", tags=["collaboration"])
 
-
-def _ip(http_request: Request) -> Optional[str]:
-    return http_request.client.host if http_request.client else None
 
 
 def _name_from_email(email: str) -> str:
@@ -203,7 +202,7 @@ async def create_request_share(
             "resource_id": request_id,
             "shared_with": body.user_id,
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _share_out(db, share)
 
@@ -238,27 +237,13 @@ async def delete_request_share(
                 "resource_id": request_id,
                 "shared_with": user_id,
             },
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
 
 
 # ---------------------------------------------------------------------------
 # Tabular-review shares
 # ---------------------------------------------------------------------------
-
-def _assert_review_access_local(db: dbmod.Database, user: User, review: dict[str, Any]) -> str:
-    # Imported lazily to avoid a circular import at module load (api.tabular
-    # imports nothing from this module, but keep the boundary explicit).
-    from api.tabular import _assert_review_access
-
-    return _assert_review_access(db, user, review)
-
-
-def _assert_review_owner_local(db: dbmod.Database, user: User, review: dict[str, Any]) -> str:
-    from api.tabular import _assert_review_owner
-
-    return _assert_review_owner(db, user, review)
-
 
 @review_shares_router.get("/{review_id}/shares", response_model=list[ShareOut])
 async def list_review_shares(
@@ -267,7 +252,7 @@ async def list_review_shares(
     """Collaborators on a tabular review (owner and collaborators may view)."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    _assert_review_access_local(db, user, review)
+    assert_review_access(db, user, review)
     shares = db.select("tabular_review_shares", review_id=review_id)
     shares.sort(key=lambda s: str(s.get("created_at") or ""))
     return [_share_out(db, s) for s in shares]
@@ -286,7 +271,7 @@ async def create_review_share(
     single-gestora rule as request sharing."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_owner_local(db, user, review)
+    gestora_id = assert_review_owner(db, user, review)
 
     _validate_sharee(db, owner=user, gestora_id=gestora_id, sharee_user_id=body.user_id)
 
@@ -317,7 +302,7 @@ async def create_review_share(
             "resource_id": review_id,
             "shared_with": body.user_id,
         },
-        ip_address=_ip(http_request),
+        ip_address=client_ip(http_request),
     )
     return _share_out(db, share)
 
@@ -332,7 +317,7 @@ async def delete_review_share(
     """Revoke a colleague's access to a tabular review (OWNER only; idempotent)."""
     db = dbmod.get_db()
     review = _get_review_or_404(db, review_id)
-    gestora_id = _assert_review_owner_local(db, user, review)
+    gestora_id = assert_review_owner(db, user, review)
 
     existing = db.select(
         "tabular_review_shares", review_id=review_id, shared_with_user_id=user_id
@@ -352,5 +337,5 @@ async def delete_review_share(
                 "resource_id": review_id,
                 "shared_with": user_id,
             },
-            ip_address=_ip(http_request),
+            ip_address=client_ip(http_request),
         )
