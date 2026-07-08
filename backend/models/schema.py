@@ -69,6 +69,7 @@ from models.dto import (  # noqa: F401
     ExitAAcknowledgeBody,
     GenerationJobOut,
     GenerationReviewOut,
+    FundCreate,
     GestoraCreate,
     MfaStatusBody,
     ModelConfigBody,

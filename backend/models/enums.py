@@ -107,6 +107,8 @@ class AuditAction(str, Enum):
     gestora_created = "gestora_created"
     user_invited = "user_invited"
     counsel_comment_added = "counsel_comment_added"
+    # Alta de fondos/vehículos (014_fund_creation.sql).
+    fund_created = "fund_created"
 
 
 class AuditResourceType(str, Enum):
@@ -123,6 +125,8 @@ class AuditResourceType(str, Enum):
     # Account & security (011_account_security.sql).
     user = "user"
     model_config = "model_config"
+    # Alta de fondos/vehículos (014_fund_creation.sql).
+    fund = "fund"
 
 
 class UsageEventType(str, Enum):

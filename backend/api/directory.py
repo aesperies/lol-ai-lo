@@ -24,6 +24,7 @@ from models.schema import (
     AuditAction,
     AuditResourceType,
     Fund,
+    FundCreate,
     Gestora,
     GestoraCreate,
     User,
@@ -94,6 +95,56 @@ async def list_funds(
     if user.gestora_id is None:
         return []
     return db.select("funds", gestora_id=user.gestora_id)
+
+
+@router.post("/funds", response_model=Fund, status_code=201)
+async def create_fund(
+    body: FundCreate,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Register a fund/vehicle. A client creates it in their OWN gestora —
+    naming a foreign gestora is rejected (isolation); admin must say which
+    gestora. Counsel cannot create funds (read-only actor for the directory).
+    """
+    db = dbmod.get_db()
+    if user.role == UserRole.counsel:
+        raise HTTPException(status_code=403, detail="Counsel cannot create funds")
+    if user.role == UserRole.client:
+        if user.gestora_id is None:
+            raise HTTPException(status_code=403, detail="Client user has no gestora")
+        if body.gestora_id and body.gestora_id != user.gestora_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo puedes crear fondos en tu propia gestora.",
+            )
+        gestora_id = user.gestora_id
+    else:  # admin
+        if not body.gestora_id:
+            raise HTTPException(status_code=422, detail="gestora_id is required")
+        gestora_id = body.gestora_id
+    if db.get("gestoras", gestora_id) is None:
+        raise HTTPException(status_code=404, detail="Gestora not found")
+
+    row = db.insert(
+        "funds",
+        {
+            "gestora_id": gestora_id,
+            "name": body.name.strip(),
+            "jurisdiction": body.jurisdiction.strip(),
+        },
+    )
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.fund_created,
+        resource_type=AuditResourceType.fund,
+        resource_id=row["id"],
+        gestora_id=gestora_id,
+        metadata={"name": row["name"], "jurisdiction": row["jurisdiction"]},
+        ip_address=client_ip(http_request),
+    )
+    return row
 
 
 @router.get("/users", response_model=list[UserProfileOut])

@@ -73,6 +73,35 @@ export async function getFunds(): Promise<Fund[]> {
   return rows.map(mapFund);
 }
 
+/** Register a new fund/vehicle. Clients create it in their own gestora. */
+export async function createFund(input: {
+  name: string;
+  jurisdiction?: string;
+}): Promise<Fund> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 2);
+      const fund: Fund = {
+        id: `f-${Date.now()}`,
+        gestoraId: stub.STUB_GESTORA.id,
+        name: input.name,
+        jurisdiction: input.jurisdiction ?? "España",
+        createdAt: new Date().toISOString(),
+      };
+      stub.STUB_FUNDS.push(fund);
+      return fund;
+    });
+  }
+  const row = await apiFetch<FundWire>(apiPaths.funds, {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name,
+      jurisdiction: input.jurisdiction ?? "España",
+    }),
+  });
+  return mapFund(row);
+}
+
 export async function getGestoras(): Promise<Gestora[]> {
   if (isStubMode()) {
     return stubCall(async (stub) => {

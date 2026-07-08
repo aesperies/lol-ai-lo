@@ -62,6 +62,61 @@ class TestFunds:
         assert [f["id"] for f in res.json()] == [seed["fund_a"]["id"]]
 
 
+class TestFundCreation:
+    def test_client_creates_fund_in_own_gestora(self, client, seed, db):
+        res = client.post(
+            "/api/funds",
+            headers=auth(seed["client_a"]),
+            json={"name": "Alfa Ventures II, FCR", "jurisdiction": "España"},
+        )
+        assert res.status_code == 201
+        body = res.json()
+        assert body["gestora_id"] == seed["gestora_a"]["id"]
+        assert body["name"] == "Alfa Ventures II, FCR"
+        actions = [r["action"] for r in db.unscoped_select("audit_log")]
+        assert "fund_created" in actions
+
+    def test_client_cannot_create_in_foreign_gestora(self, client, seed):
+        res = client.post(
+            "/api/funds",
+            headers=auth(seed["client_a"]),
+            json={"name": "Intruso FCR", "gestora_id": seed["gestora_b"]["id"]},
+        )
+        assert res.status_code == 403
+
+    def test_new_fund_usable_for_requests(self, client, seed, wf):
+        """El fondo recién creado sirve inmediatamente para el intake."""
+        res = client.post(
+            "/api/funds", headers=auth(seed["client_a"]), json={"name": "Alfa III, FCR"}
+        )
+        fund_id = res.json()["id"]
+        res = client.post(
+            "/api/requests",
+            headers=auth(seed["client_a"]),
+            json={"fund_id": fund_id, "doc_type": DOC_TYPE, "freetext": FREETEXT,
+                  "validation_requested": False},
+        )
+        assert res.status_code == 201
+
+    def test_admin_requires_gestora_id(self, client, seed):
+        res = client.post(
+            "/api/funds", headers=auth(seed["admin"]), json={"name": "Sin gestora"}
+        )
+        assert res.status_code == 422
+        res = client.post(
+            "/api/funds",
+            headers=auth(seed["admin"]),
+            json={"name": "Beta Growth I", "gestora_id": seed["gestora_b"]["id"]},
+        )
+        assert res.status_code == 201
+
+    def test_counsel_cannot_create(self, client, seed):
+        res = client.post(
+            "/api/funds", headers=auth(seed["counsel"]), json={"name": "X"}
+        )
+        assert res.status_code == 403
+
+
 class TestUsers:
     def test_admin_lists_users(self, client, seed):
         res = client.get("/api/users", headers=auth(seed["admin"]))

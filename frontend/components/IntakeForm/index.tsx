@@ -14,6 +14,7 @@ import {
 import {
   getAssignedCounsel,
   getDocFields,
+  createFund,
   getFunds,
   type CreateRequestInput,
 } from "@/lib/api";
@@ -49,6 +50,11 @@ export default function IntakeForm({
   const [counsel, setCounsel] = useState<AssignedCounsel | null>(null);
 
   const [fundId, setFundId] = useState("");
+  const [showNewFund, setShowNewFund] = useState(false);
+  const [newFundName, setNewFundName] = useState("");
+  const [newFundJurisdiction, setNewFundJurisdiction] = useState("España");
+  const [creatingFund, setCreatingFund] = useState(false);
+  const [newFundError, setNewFundError] = useState(false);
   const [docType, setDocType] = useState("");
   const [docTypeCustom, setDocTypeCustom] = useState("");
   const [freetext, setFreetext] = useState("");
@@ -196,6 +202,64 @@ export default function IntakeForm({
               </option>
             ))}
           </Select>
+          {!showNewFund ? (
+            <button
+              type="button"
+              className="mt-1 text-sm text-sage-700 underline-offset-2 hover:underline dark:text-sage-300"
+              onClick={() => setShowNewFund(true)}
+            >
+              {t("intake.newFund")}
+            </button>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+              <div className="min-w-[220px] flex-1">
+                <Label htmlFor={`${formId}-newfund-name`}>{t("intake.newFundName")}</Label>
+                <Input
+                  id={`${formId}-newfund-name`}
+                  value={newFundName}
+                  onChange={(e) => setNewFundName(e.target.value)}
+                  placeholder="Esperies Capital Fund II, FCR"
+                />
+              </div>
+              <div className="w-40">
+                <Label htmlFor={`${formId}-newfund-jur`}>{t("intake.newFundJurisdiction")}</Label>
+                <Input
+                  id={`${formId}-newfund-jur`}
+                  value={newFundJurisdiction}
+                  onChange={(e) => setNewFundJurisdiction(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                disabled={creatingFund || newFundName.trim().length === 0}
+                onClick={() => {
+                  setCreatingFund(true);
+                  setNewFundError(false);
+                  createFund({ name: newFundName.trim(), jurisdiction: newFundJurisdiction.trim() || undefined })
+                    .then((fund) => {
+                      setFunds((prev) => [...prev, fund]);
+                      setFundId(fund.id);
+                      setShowNewFund(false);
+                      setNewFundName("");
+                    })
+                    .catch(() => setNewFundError(true))
+                    .finally(() => setCreatingFund(false));
+                }}
+              >
+                {t("intake.newFundCreate")}
+              </Button>
+              <button
+                type="button"
+                className="text-sm text-neutral-500 hover:underline"
+                onClick={() => setShowNewFund(false)}
+              >
+                {t("common.cancel")}
+              </button>
+              {newFundError && (
+                <p className="w-full text-sm text-red-600">{t("common.error")}</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Document type — grouped dropdown with exact catalog labels */}

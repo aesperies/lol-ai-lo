@@ -497,6 +497,16 @@ class GestoraCreate(BaseModel):
     billing_email: Optional[str] = None
 
 
+class FundCreate(BaseModel):
+    """POST /api/funds — a client registers a fund/vehicle in their own
+    gestora (admin must name the target gestora)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    jurisdiction: str = Field(default="España", min_length=1, max_length=100)
+    # Ignored for clients (always their own gestora); required for admin.
+    gestora_id: Optional[str] = None
+
+
 class UserInviteBody(BaseModel):
     """POST /api/users (admin) — provision a platform user.
 
