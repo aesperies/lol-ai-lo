@@ -45,6 +45,7 @@ _TENANT_SCOPED_TABLES = {
     "drafting_lessons",
     "funds",
     "gestora_model_config",
+    "notifications",
     "precedents",
     "quality_metrics",
     "request_shares",

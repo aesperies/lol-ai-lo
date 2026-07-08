@@ -1,4 +1,4 @@
-"""Notification endpoints: (re)send counsel review and client-ready emails."""
+"""Notification endpoints: in-app inbox (016) + (re)send email helpers."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -12,16 +12,40 @@ from auth import assert_request_access, get_current_user, require_counsel_or_adm
 from config import get_settings
 from models.schema import (
     AuditAction,
+    NotificationOut,
+    NotificationsMarkReadBody,
     AuditResourceType,
     DocumentVersionType,
     RequestStatus,
     User,
     UserRole,
 )
-from services import audit, db as dbmod, email_service, signed_urls
+from services import audit, db as dbmod, email_service, notifications, signed_urls
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
+
+
+@router.get("/inbox", response_model=list[NotificationOut])
+async def inbox(user: User = Depends(get_current_user)) -> Any:
+    """The caller's in-app notifications, newest first (max 50)."""
+    return notifications.for_user(dbmod.get_db(), user.id)
+
+
+@router.get("/inbox/unread-count")
+async def inbox_unread_count(user: User = Depends(get_current_user)) -> Any:
+    """Badge de la campana: número de notificaciones sin leer."""
+    return {"unread": notifications.unread_count(dbmod.get_db(), user.id)}
+
+
+@router.post("/read")
+async def mark_notifications_read(
+    body: NotificationsMarkReadBody,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Mark the caller's notifications read (ids concretos, o todas)."""
+    marked = notifications.mark_read(dbmod.get_db(), user.id, body.ids)
+    return {"marked": marked}
 
 
 @router.post("/requests/{request_id}/counsel")

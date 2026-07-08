@@ -25,11 +25,15 @@ from models.schema import (
     AuditResourceType,
     Fund,
     FundCreate,
+    FundUpdate,
     Gestora,
     GestoraCreate,
     User,
     UserInviteBody,
     UserProfileOut,
+    Vehicle,
+    VehicleCreate,
+    VehicleUpdate,
     UserRole,
 )
 from services import audit, db as dbmod
@@ -145,6 +149,197 @@ async def create_fund(
         ip_address=client_ip(http_request),
     )
     return row
+
+
+def _fund_for_user_or_404(db: dbmod.Database, user: User, fund_id: str) -> dict[str, Any]:
+    """404-no-leak access to a fund: clients only within their own gestora;
+    admin cross-gestora; counsel read-only (mutations rejected at each endpoint)."""
+    fund = db.get("funds", fund_id)
+    if fund is None:
+        raise HTTPException(status_code=404, detail="Fund not found")
+    if user.role == UserRole.client and fund["gestora_id"] != user.gestora_id:
+        raise HTTPException(status_code=404, detail="Fund not found")
+    return fund
+
+
+def _require_fund_mutator(user: User) -> None:
+    if user.role == UserRole.counsel:
+        raise HTTPException(status_code=403, detail="Counsel cannot manage funds")
+
+
+@router.patch("/funds/{fund_id}", response_model=Fund)
+async def update_fund(
+    fund_id: str,
+    body: FundUpdate,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Rename / re-jurisdiction a fund (client within own gestora, or admin)."""
+    db = dbmod.get_db()
+    _require_fund_mutator(user)
+    fund = _fund_for_user_or_404(db, user, fund_id)
+    fields = {k: v.strip() for k, v in (("name", body.name), ("jurisdiction", body.jurisdiction)) if v}
+    if not fields:
+        return fund
+    row = db.update("funds", fund_id, fields)
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.fund_updated,
+        resource_type=AuditResourceType.fund,
+        resource_id=fund_id,
+        gestora_id=fund["gestora_id"],
+        metadata=fields,
+        ip_address=client_ip(http_request),
+    )
+    return row
+
+
+@router.delete("/funds/{fund_id}", status_code=204)
+async def delete_fund(
+    fund_id: str,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> None:
+    """Delete a fund. Refused (409) while any request references it — the
+    request/document history is immutable evidence and must never be orphaned.
+    Its vehicles are deleted with it (they only exist within the fund)."""
+    db = dbmod.get_db()
+    _require_fund_mutator(user)
+    fund = _fund_for_user_or_404(db, user, fund_id)
+    if db.select("requests", fund_id=fund_id):
+        raise HTTPException(
+            status_code=409,
+            detail="El fondo tiene solicitudes asociadas y no puede eliminarse.",
+        )
+    for vehicle in db.select("vehicles", fund_id=fund_id):
+        db.delete("vehicles", vehicle["id"])
+    db.delete("funds", fund_id)
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.fund_deleted,
+        resource_type=AuditResourceType.fund,
+        resource_id=fund_id,
+        gestora_id=fund["gestora_id"],
+        metadata={"name": fund.get("name")},
+        ip_address=client_ip(http_request),
+    )
+
+
+@router.get("/funds/{fund_id}/vehicles", response_model=list[Vehicle])
+async def list_vehicles(
+    fund_id: str,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """The fund's SPVs/vehicles (isolation inherited from the fund)."""
+    db = dbmod.get_db()
+    _fund_for_user_or_404(db, user, fund_id)
+    return db.select("vehicles", fund_id=fund_id)
+
+
+@router.post("/funds/{fund_id}/vehicles", response_model=Vehicle, status_code=201)
+async def create_vehicle(
+    fund_id: str,
+    body: VehicleCreate,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Register an SPV/vehicle under a fund (client in own gestora, or admin)."""
+    db = dbmod.get_db()
+    _require_fund_mutator(user)
+    fund = _fund_for_user_or_404(db, user, fund_id)
+    row = db.insert(
+        "vehicles",
+        {
+            "fund_id": fund_id,
+            "name": body.name.strip(),
+            "vehicle_type": body.vehicle_type,
+            "jurisdiction": body.jurisdiction.strip() if body.jurisdiction else None,
+        },
+    )
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.vehicle_created,
+        resource_type=AuditResourceType.vehicle,
+        resource_id=row["id"],
+        gestora_id=fund["gestora_id"],
+        metadata={"fund_id": fund_id, "name": row["name"], "vehicle_type": row["vehicle_type"]},
+        ip_address=client_ip(http_request),
+    )
+    return row
+
+
+def _vehicle_for_user_or_404(
+    db: dbmod.Database, user: User, vehicle_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    vehicle = db.get("vehicles", vehicle_id)
+    if vehicle is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    fund = _fund_for_user_or_404(db, user, vehicle["fund_id"])
+    return vehicle, fund
+
+
+@router.patch("/vehicles/{vehicle_id}", response_model=Vehicle)
+async def update_vehicle(
+    vehicle_id: str,
+    body: VehicleUpdate,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> Any:
+    db = dbmod.get_db()
+    _require_fund_mutator(user)
+    vehicle, fund = _vehicle_for_user_or_404(db, user, vehicle_id)
+    fields: dict[str, Any] = {}
+    if body.name:
+        fields["name"] = body.name.strip()
+    if body.vehicle_type:
+        fields["vehicle_type"] = body.vehicle_type
+    if body.jurisdiction is not None:
+        fields["jurisdiction"] = body.jurisdiction.strip() or None
+    if not fields:
+        return vehicle
+    row = db.update("vehicles", vehicle_id, fields)
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.vehicle_updated,
+        resource_type=AuditResourceType.vehicle,
+        resource_id=vehicle_id,
+        gestora_id=fund["gestora_id"],
+        metadata=fields,
+        ip_address=client_ip(http_request),
+    )
+    return row
+
+
+@router.delete("/vehicles/{vehicle_id}", status_code=204)
+async def delete_vehicle(
+    vehicle_id: str,
+    http_request: Request,
+    user: User = Depends(get_current_user),
+) -> None:
+    """Delete a vehicle. Refused (409) while any request references it."""
+    db = dbmod.get_db()
+    _require_fund_mutator(user)
+    vehicle, fund = _vehicle_for_user_or_404(db, user, vehicle_id)
+    if db.select("requests", vehicle_id=vehicle_id):
+        raise HTTPException(
+            status_code=409,
+            detail="El vehículo tiene solicitudes asociadas y no puede eliminarse.",
+        )
+    db.delete("vehicles", vehicle_id)
+    audit.log_action(
+        db,
+        user=user,
+        action=AuditAction.vehicle_deleted,
+        resource_type=AuditResourceType.vehicle,
+        resource_id=vehicle_id,
+        gestora_id=fund["gestora_id"],
+        metadata={"fund_id": vehicle["fund_id"], "name": vehicle.get("name")},
+        ip_address=client_ip(http_request),
+    )
 
 
 @router.get("/users", response_model=list[UserProfileOut])

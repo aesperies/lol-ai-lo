@@ -45,6 +45,7 @@ from models.content import (  # noqa: F401
 from models.entities import (  # noqa: F401
     CounselAssignment,
     Fund,
+    Vehicle,
     GenerationJob,
     Gestora,
     KeyDate,
@@ -69,7 +70,11 @@ from models.dto import (  # noqa: F401
     ExitAAcknowledgeBody,
     GenerationJobOut,
     GenerationReviewOut,
+    CounselQueueItemOut,
+    NotificationOut,
+    NotificationsMarkReadBody,
     FundCreate,
+    FundUpdate,
     GestoraCreate,
     MfaStatusBody,
     ModelConfigBody,
@@ -99,5 +104,7 @@ from models.dto import (  # noqa: F401
     TabularReviewOut,
     TabularReviewStatusOut,
     UserInviteBody,
+    VehicleCreate,
+    VehicleUpdate,
     UserProfileOut,
 )

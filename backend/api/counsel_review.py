@@ -19,17 +19,24 @@ from fastapi import APIRouter, Depends, Request
 
 from api import client_ip, get_request_or_404, load_draft_text
 from auth import assert_request_access, get_current_user, require_counsel_or_admin
+from typing import Optional
+
+from auth import gestora_of_request
+from config import get_settings
 from models.schema import (
     AuditAction,
     AuditResourceType,
     CounselCommentCreate,
     CounselCommentOut,
+    CounselQueueItemOut,
     RequestOut,
     RequestStatus,
     ReviewBundleOut,
     User,
 )
 from services import audit, db as dbmod
+from services import notifications as notif
+from services.sla import hours_pending as sla_hours_pending
 
 router = APIRouter(prefix="/api", tags=["counsel-review"])
 
@@ -44,15 +51,54 @@ def _comment_out(row: dict[str, Any]) -> CounselCommentOut:
     )
 
 
-@router.get("/counsel/queue", response_model=list[RequestOut])
-async def counsel_queue(user: User = Depends(require_counsel_or_admin)) -> Any:
-    """Requests awaiting counsel review, oldest first (FIFO queue)."""
+@router.get("/counsel/queue", response_model=list[CounselQueueItemOut])
+async def counsel_queue(
+    gestora_id: Optional[str] = None,
+    urgency: Optional[str] = None,
+    user: User = Depends(require_counsel_or_admin),
+) -> Any:
+    """Requests awaiting counsel review, MOST URGENT first.
+
+    Each item carries hours_pending / sla_hours / urgency (green|amber|red,
+    thresholds from config sla_reminder_hours / sla_review_hours) plus the
+    gestora id+name so the inbox can badge and filter without extra calls.
+    Optional filters: ?gestora_id= and ?urgency=red|amber|green.
+    """
     db = dbmod.get_db()
+    settings = get_settings()
     rows = db.unscoped_select("requests", status=RequestStatus.counsel_review.value)
-    def fund_name(row: dict[str, Any]) -> Any:
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
         fund = db.get("funds", row["fund_id"]) if row.get("fund_id") else None
-        return (fund or {}).get("name")
-    return [{**r, "fund_name": fund_name(r)} for r in rows]
+        row_gestora_id = gestora_of_request(db, row)
+        gestora = db.get("gestoras", row_gestora_id) if row_gestora_id else None
+        pending = sla_hours_pending(row)
+        if pending is None:
+            level = "green"
+        elif pending >= settings.sla_review_hours:
+            level = "red"
+        elif pending >= settings.sla_reminder_hours:
+            level = "amber"
+        else:
+            level = "green"
+        items.append({
+            **row,
+            "fund_name": (fund or {}).get("name"),
+            "gestora_id": row_gestora_id,
+            "gestora_name": (gestora or {}).get("name"),
+            "hours_pending": pending,
+            "sla_hours": settings.sla_review_hours,
+            "urgency": level,
+        })
+
+    if gestora_id:
+        items = [i for i in items if i["gestora_id"] == gestora_id]
+    if urgency:
+        items = [i for i in items if i["urgency"] == urgency]
+    # Más urgente primero; los sin timestamp al final (estables por antigüedad).
+    items.sort(key=lambda i: -(i["hours_pending"] or -1))
+    return items
 
 
 @router.get("/requests/{request_id}/review", response_model=ReviewBundleOut)
@@ -113,4 +159,15 @@ async def add_comment(
         metadata={"comment_id": comment["id"]},
         ip_address=client_ip(http_request),
     )
+    # Campana del cliente propietario: hay mensaje nuevo del abogado.
+    if row.get("user_id") and row["user_id"] != user.id:
+        notif.notify(
+            db,
+            user_id=row["user_id"],
+            kind=notif.KIND_COMMENT_ADDED,
+            title="Nuevo comentario del abogado",
+            body=body.text[:200],
+            request_id=request_id,
+            gestora_id=gestora_id or None,
+        )
     return _comment_out(comment)

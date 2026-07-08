@@ -40,6 +40,7 @@ from services import (
     docx_renderer,
     generation_pipeline,
     jobs,
+    notifications,
     signed_urls,
     storage,
 )
@@ -115,6 +116,15 @@ async def generate(
             gestora_id=gestora_id,
             metadata={"failed": True, "error": str(exc)},
             ip_address=ip_address,
+        )
+        notifications.notify(
+            db,
+            user_id=user.id,
+            kind=notifications.KIND_GENERATION_FAILED,
+            title="La generación ha fallado",
+            body="Puedes reintentarla desde la solicitud; el estado ha vuelto a 'confirmado'.",
+            request_id=request_id,
+            gestora_id=gestora_id,
         )
 
     job = jobs.get_runner().enqueue(

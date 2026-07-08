@@ -34,6 +34,17 @@ class Fund(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class Vehicle(BaseModel):
+    """SPV / vehículo de inversión colgando de un fondo (015_vehicles.sql)."""
+
+    id: str
+    fund_id: str
+    name: str
+    vehicle_type: str = "spv"
+    jurisdiction: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
 class User(BaseModel):
     id: str
     email: str

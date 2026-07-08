@@ -117,6 +117,145 @@ class TestFundCreation:
         assert res.status_code == 403
 
 
+class TestVehicles:
+    def _create(self, client, seed, fund_key="fund_a", user_key="client_a", **kw):
+        payload = {"name": "SPV Alfa I", "vehicle_type": "spv", **kw}
+        return client.post(
+            f"/api/funds/{seed[fund_key]['id']}/vehicles",
+            headers=auth(seed[user_key]), json=payload,
+        )
+
+    def test_client_creates_and_lists_vehicle(self, client, seed, db):
+        res = self._create(client, seed)
+        assert res.status_code == 201
+        res = client.get(
+            f"/api/funds/{seed['fund_a']['id']}/vehicles", headers=auth(seed["client_a"])
+        )
+        assert [v["name"] for v in res.json()] == ["SPV Alfa I"]
+        assert "vehicle_created" in [r["action"] for r in db.unscoped_select("audit_log")]
+
+    def test_cross_gestora_fund_is_404(self, client, seed):
+        res = self._create(client, seed, fund_key="fund_b")
+        assert res.status_code == 404
+        res = client.get(
+            f"/api/funds/{seed['fund_b']['id']}/vehicles", headers=auth(seed["client_a"])
+        )
+        assert res.status_code == 404
+
+    def test_update_and_delete_vehicle(self, client, seed):
+        vid = self._create(client, seed).json()["id"]
+        res = client.patch(
+            f"/api/vehicles/{vid}", headers=auth(seed["client_a"]),
+            json={"name": "SPV Alfa I bis", "vehicle_type": "feeder"},
+        )
+        assert res.status_code == 200 and res.json()["vehicle_type"] == "feeder"
+        assert client.delete(f"/api/vehicles/{vid}", headers=auth(seed["client_a"])).status_code == 204
+
+    def test_vehicle_with_requests_cannot_be_deleted(self, client, seed):
+        vid = self._create(client, seed).json()["id"]
+        res = client.post(
+            "/api/requests", headers=auth(seed["client_a"]),
+            json={"fund_id": seed["fund_a"]["id"], "vehicle_id": vid,
+                  "doc_type": DOC_TYPE, "freetext": FREETEXT, "validation_requested": False},
+        )
+        assert res.status_code == 201
+        assert res.json()["vehicle_id"] == vid
+        assert client.delete(f"/api/vehicles/{vid}", headers=auth(seed["client_a"])).status_code == 409
+
+    def test_request_rejects_foreign_or_mismatched_vehicle(self, client, seed):
+        vid = self._create(client, seed).json()["id"]
+        # Vehículo de otro fondo de la misma gestora: crear fondo 2 y usar el vid del fondo 1.
+        fund2 = client.post(
+            "/api/funds", headers=auth(seed["client_a"]), json={"name": "Alfa II"}
+        ).json()
+        res = client.post(
+            "/api/requests", headers=auth(seed["client_a"]),
+            json={"fund_id": fund2["id"], "vehicle_id": vid,
+                  "doc_type": DOC_TYPE, "freetext": FREETEXT, "validation_requested": False},
+        )
+        assert res.status_code == 404
+
+    def test_counsel_cannot_mutate(self, client, seed):
+        res = self._create(client, seed, user_key="counsel")
+        assert res.status_code == 403
+
+
+class TestFundLifecycle:
+    def test_update_fund(self, client, seed, db):
+        res = client.patch(
+            f"/api/funds/{seed['fund_a']['id']}", headers=auth(seed["client_a"]),
+            json={"name": "Alfa Renombrado, FCR"},
+        )
+        assert res.status_code == 200 and res.json()["name"] == "Alfa Renombrado, FCR"
+        assert "fund_updated" in [r["action"] for r in db.unscoped_select("audit_log")]
+
+    def test_delete_fund_without_requests(self, client, seed):
+        fund = client.post(
+            "/api/funds", headers=auth(seed["client_a"]), json={"name": "Efímero FCR"}
+        ).json()
+        assert client.delete(f"/api/funds/{fund['id']}", headers=auth(seed["client_a"])).status_code == 204
+
+    def test_delete_fund_with_requests_is_409(self, client, seed):
+        res = client.post(
+            "/api/requests", headers=auth(seed["client_a"]),
+            json={"fund_id": seed["fund_a"]["id"], "doc_type": DOC_TYPE,
+                  "freetext": FREETEXT, "validation_requested": False},
+        )
+        assert res.status_code == 201
+        assert client.delete(
+            f"/api/funds/{seed['fund_a']['id']}", headers=auth(seed["client_a"])
+        ).status_code == 409
+
+    def test_cross_gestora_fund_mutation_is_404(self, client, seed):
+        res = client.patch(
+            f"/api/funds/{seed['fund_b']['id']}", headers=auth(seed["client_a"]),
+            json={"name": "Intruso"},
+        )
+        assert res.status_code == 404
+
+
+class TestCounselQueueUrgency:
+    def _to_review(self, client, seed, wf):
+        rid, _ = wf.to_review_pending(user=seed["client_a"], fund=seed["fund_a"])
+        res = client.post(f"/api/requests/{rid}/exit-b", headers=auth(seed["client_a"]))
+        assert res.status_code == 200
+        return rid
+
+    def test_fresh_request_is_green_with_sla_context(self, client, seed, wf):
+        rid = self._to_review(client, seed, wf)
+        res = client.get("/api/counsel/queue", headers=auth(seed["counsel"]))
+        item = next(i for i in res.json() if i["id"] == rid)
+        assert item["urgency"] == "green"
+        assert item["sla_hours"] == 48.0
+        assert item["gestora_name"] == seed["gestora_a"]["name"]
+        assert 0 <= item["hours_pending"] < 1
+
+    def test_stale_request_goes_red_and_sorts_first(self, client, seed, wf, db):
+        fresh = self._to_review(client, seed, wf)
+        stale = self._to_review(client, seed, wf)
+        # Simular 3 días pendiente (más allá de sla_review_hours=48).
+        from datetime import datetime, timedelta, timezone
+        old = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+        db.update("requests", stale, {"counsel_requested_at": old})
+
+        res = client.get("/api/counsel/queue", headers=auth(seed["counsel"]))
+        items = {i["id"]: i for i in res.json()}
+        assert items[stale]["urgency"] == "red"
+        assert items[fresh]["urgency"] == "green"
+        assert res.json()[0]["id"] == stale  # más urgente primero
+
+        res = client.get("/api/counsel/queue?urgency=red", headers=auth(seed["counsel"]))
+        assert [i["id"] for i in res.json()] == [stale]
+
+    def test_gestora_filter(self, client, seed, wf):
+        rid = self._to_review(client, seed, wf)
+        res = client.get(
+            f"/api/counsel/queue?gestora_id={seed['gestora_b']['id']}",
+            headers=auth(seed["counsel"]),
+        )
+        assert rid not in [i["id"] for i in res.json()]
+
+
 class TestUsers:
     def test_admin_lists_users(self, client, seed):
         res = client.get("/api/users", headers=auth(seed["admin"]))

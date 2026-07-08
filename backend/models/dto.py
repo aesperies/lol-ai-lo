@@ -36,6 +36,9 @@ class RequestOut(BaseModel):  # doubles as requests-row mirror and API DTO
     # Display enrichment (list/detail endpoints): the fund's name, so the UI
     # never has to show a bare fund UUID. Not stored on the row.
     fund_name: Optional[str] = None
+    vehicle_id: Optional[str] = None
+    # Display enrichment, como fund_name (no almacenado en la fila).
+    vehicle_name: Optional[str] = None
     user_id: str
     doc_type: str
     doc_type_custom: Optional[str] = None
@@ -108,6 +111,9 @@ class PrecedentVersionOut(BaseModel):  # doubles as row mirror and API DTO
 
 class RequestCreate(BaseModel):
     fund_id: str
+    # SPV/vehículo del fondo al que se refiere el documento (opcional; se
+    # valida que pertenezca al fondo — 015_vehicles.sql).
+    vehicle_id: Optional[str] = None
     doc_type: str
     doc_type_custom: Optional[str] = None
     freetext: str = Field(min_length=50, max_length=2000)
@@ -505,6 +511,62 @@ class FundCreate(BaseModel):
     jurisdiction: str = Field(default="España", min_length=1, max_length=100)
     # Ignored for clients (always their own gestora); required for admin.
     gestora_id: Optional[str] = None
+
+
+class NotificationOut(BaseModel):
+    """GET /api/notifications/inbox — una fila de la campana in-app (016)."""
+
+    id: str
+    kind: str
+    title: str
+    body: Optional[str] = None
+    request_id: Optional[str] = None
+    read_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+
+class NotificationsMarkReadBody(BaseModel):
+    """POST /api/notifications/read — ids concretos, o null = todas."""
+
+    ids: Optional[list[str]] = None
+
+
+class CounselQueueItemOut(RequestOut):
+    """GET /api/counsel/queue — RequestOut + contexto de urgencia SLA.
+
+    urgency: 'green' (dentro de plazo) | 'amber' (pasada la mitad del SLA,
+    umbral del recordatorio) | 'red' (SLA vencido). Server-side para que la
+    UI no reimplemente la política de sla_*_hours (config.py).
+    """
+
+    gestora_id: Optional[str] = None
+    gestora_name: Optional[str] = None
+    hours_pending: Optional[float] = None
+    sla_hours: float = 48.0
+    urgency: str = "green"
+
+
+class FundUpdate(BaseModel):
+    """PATCH /api/funds/{id} — rename / re-jurisdiction a fund."""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    jurisdiction: Optional[str] = Field(default=None, min_length=1, max_length=100)
+
+
+class VehicleCreate(BaseModel):
+    """POST /api/funds/{fund_id}/vehicles — register an SPV/vehicle."""
+
+    name: str = Field(min_length=1, max_length=200)
+    vehicle_type: str = Field(default="spv", pattern="^(spv|feeder|coinvest|holdco|other)$")
+    jurisdiction: Optional[str] = Field(default=None, max_length=100)
+
+
+class VehicleUpdate(BaseModel):
+    """PATCH /api/vehicles/{id}."""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    vehicle_type: Optional[str] = Field(default=None, pattern="^(spv|feeder|coinvest|holdco|other)$")
+    jurisdiction: Optional[str] = Field(default=None, max_length=100)
 
 
 class UserInviteBody(BaseModel):

@@ -52,6 +52,7 @@ from services import (
     delivery,
     email_service,
     intake_parser,
+    notifications,
     quality,
     signed_urls,
     storage,
@@ -88,6 +89,13 @@ async def submit_request(
         # 404 (not 403) so other gestoras' fund ids are not discoverable.
         raise HTTPException(status_code=404, detail="Fund not found")
 
+    # SPV/vehículo opcional: debe existir Y pertenecer al fondo indicado
+    # (015_vehicles.sql). Mismo patrón 404-no-leak que el fondo.
+    if body.vehicle_id:
+        vehicle = db.get("vehicles", body.vehicle_id)
+        if vehicle is None or vehicle["fund_id"] != body.fund_id:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+
     # Structured intake values: unknown keys are rejected; required keys may
     # be missing at submit time (the parser flags them as unclear).
     if body.structured_fields:
@@ -100,6 +108,7 @@ async def submit_request(
         "requests",
         {
             "fund_id": body.fund_id,
+            "vehicle_id": body.vehicle_id,
             "user_id": user.id,
             "doc_type": body.doc_type,
             "doc_type_custom": body.doc_type_custom,
@@ -230,6 +239,12 @@ async def confirm_params(
 # Listing / detail (gestora-siloed for clients)
 # ---------------------------------------------------------------------------
 
+def _vehicle_name(db: dbmod.Database, row: dict[str, Any]) -> dict[str, Any]:
+    """Display enrichment (015): the vehicle's name, mirroring _fund_name."""
+    vehicle = db.get("vehicles", row["vehicle_id"]) if row.get("vehicle_id") else None
+    return {"vehicle_name": (vehicle or {}).get("name")}
+
+
 def _fund_name(db: dbmod.Database, row: dict[str, Any]) -> dict[str, Any]:
     """Display enrichment: the request's fund name (never a bare UUID in the UI)."""
     fund = db.get("funds", row["fund_id"]) if row.get("fund_id") else None
@@ -262,7 +277,7 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
     db = dbmod.get_db()
     rows = db.unscoped_select("requests")
     if user.role in (UserRole.counsel, UserRole.admin):
-        return [{**r, **_fund_name(db, r)} for r in rows]
+        return [{**r, **_fund_name(db, r), **_vehicle_name(db, r)} for r in rows]
     # Client: requests they OWN, plus requests a same-gestora colleague SHARED
     # with them (collaboration). A request is private to its owner otherwise.
     fund_ids = {f["id"] for f in db.select("funds", gestora_id=user.gestora_id)}
@@ -277,7 +292,7 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
         if r["fund_id"] in fund_ids
         and (is_request_owner(user, r) or r["id"] in shared_ids)
     ]
-    return [{**r, **_request_flags(db, user, r), **_fund_name(db, r)} for r in visible]
+    return [{**r, **_request_flags(db, user, r), **_fund_name(db, r), **_vehicle_name(db, r)} for r in visible]
 
 
 @router.get("/{request_id}", response_model=RequestOut)
@@ -285,7 +300,7 @@ async def get_request(request_id: str, user: User = Depends(get_current_user)) -
     db = dbmod.get_db()
     row = get_request_or_404(db, request_id)
     assert_request_access(db, user, row)
-    return {**row, **_request_flags(db, user, row), **_fund_name(db, row)}
+    return {**row, **_request_flags(db, user, row), **_fund_name(db, row), **_vehicle_name(db, row)}
 
 
 @router.get("/{request_id}/branch", response_model=RequestBranchOut)
@@ -490,6 +505,15 @@ async def exit_b_request_validation(
     routing, recipients = resolve_counsel_recipients(db, gestora_id)
     recipient_emails = [u["email"] for u in recipients]
     for counsel_user in recipients:
+        notifications.notify(
+            db,
+            user_id=counsel_user["id"],
+            kind=notifications.KIND_COUNSEL_REQUESTED,
+            title=f"Nueva validación pendiente: {_effective_doc_type(row)}",
+            body=f"{fund.get('name', '')} — solicitada por {user.email}",
+            request_id=request_id,
+            gestora_id=gestora_id,
+        )
         delivery = email_service.send_counsel_notification(
             counsel_name=counsel_user["email"].split("@")[0],
             counsel_email=counsel_user["email"],
@@ -623,6 +647,15 @@ async def counsel_validate(
     )
 
     # Notify the client that the validated document is ready.
+    notifications.notify(
+        db,
+        user_id=row["user_id"],
+        kind=notifications.KIND_DOCUMENT_VALIDATED,
+        title=f"Documento validado: {_effective_doc_type(row)}",
+        body=f"Validado por {user.email}. Ya puedes descargar la versión final.",
+        request_id=request_id,
+        gestora_id=gestora_id,
+    )
     client_user = db.get("users", row["user_id"]) or {}
     fund = db.get("funds", row["fund_id"]) or {}
     if client_user.get("email"):
