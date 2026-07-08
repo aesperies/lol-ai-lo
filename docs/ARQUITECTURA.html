@@ -100,7 +100,7 @@
       <div class="card">
         <span class="tag t-counsel">Counsel (abogado)</span>
         <ul class="tight">
-          <li><code>/counsel</code> cola FIFO (Exit B)</li>
+          <li><code>/counsel</code> cola por urgencia SLA (verde · ámbar · rojo) con filtros por gestora/urgencia y contador de vencidas (Exit B)</li>
           <li><code>/review/[id]</code> borrador + redline + comentarios, edición inline o subida .docx, validar</li>
         </ul>
       </div>
@@ -120,6 +120,7 @@
       <div class="box"><b>lib/api/*</b><span>apiPaths único + fetch tipado</span></div>
       <div class="box"><b>lib/api/wire.ts</b><span>mappers snake_case → camelCase</span></div>
       <div class="box"><b>Modo stub</b><span>sin Supabase: fixtures en memoria</span></div>
+      <div class="box"><b>Campana</b><span>NotificationsBell en la cabecera (todos los roles): badge de no leídas con poll cada 60 s, panel con marcar-leídas y salto a /documents/{id} o /review/{id} según rol</span></div>
     </div>
   </div>
 
@@ -132,7 +133,7 @@
       <div class="box"><b>api/requests</b><span>ciclo de vida + Exit A/B</span></div>
       <div class="box"><b>api/documents</b><span>generar · descargar · HTML · counsel edit/upload</span></div>
       <div class="box"><b>api/refinements</b><span>refinamientos (máx. 3)</span></div>
-      <div class="box"><b>api/counsel_review</b><span>cola · bundle · comentarios</span></div>
+      <div class="box"><b>api/counsel_review</b><span>cola con urgencia SLA (?gestora_id/?urgency) · bundle · comentarios</span></div>
       <div class="box"><b>api/directory</b><span>gestoras · funds (CRUD por gestora, 409 con solicitudes) · vehicles/SPVs (015) · users (invite)</span></div>
       <div class="box"><b>api/precedents</b><span>biblioteca + versiones</span></div>
       <div class="box"><b>api/playbooks</b><span>reglas del critic</span></div>
@@ -140,6 +141,7 @@
       <div class="box"><b>api/sharing</b><span>colaboración intra-gestora</span></div>
       <div class="box"><b>api/billing · metrics</b><span>uso · calidad · SLA</span></div>
       <div class="box"><b>api/account</b><span>RGPD export/erase · MFA · retención</span></div>
+      <div class="box"><b>api/notifications</b><span>campana in-app (016): inbox · unread-count · read + reenvío de emails</span></div>
     </div>
     <div class="grid-mini" style="margin-top:.9rem">
       <div class="box"><b>services/generation_pipeline</b><span>orquesta RAG → drafter → critic → docx → redline</span></div>
@@ -161,7 +163,7 @@
   <div class="flow-arrow">▼ <small>services/db.py — TenantScopeError si falta el filtro de gestora (la service-role key salta RLS: Python es el guardarraíl)</small></div>
 
   <div class="layer">
-    <span class="lbl">Datos · Supabase PostgreSQL (27 tablas, RLS) o DevStore en memoria</span>
+    <span class="lbl">Datos · Supabase PostgreSQL (29 tablas, RLS) o DevStore en memoria</span>
     <div class="grid-mini">
       <div class="box"><b>Tenencia</b><span>gestoras · funds · users</span></div>
       <div class="box"><b>Workflow</b><span>requests · documents · refinements · generation_jobs · generation_reviews</span></div>
@@ -172,6 +174,7 @@
       <div class="box"><b>Tabular</b><span>4 tablas tabular_review_*</span></div>
       <div class="box"><b>Colaboración</b><span>request_shares · tabular_review_shares</span></div>
       <div class="box"><b>RGPD</b><span>data_retention_policies</span></div>
+      <div class="box"><b>Notificaciones</b><span>notifications (016) — campana in-app por usuario</span></div>
       <div class="box"><b>Auditoría</b><span>audit_log⁺ (trigger inmutable)</span></div>
     </div>
     <p style="font-size:.78rem;color:var(--ink-3);margin-top:.5rem">⁺ append-only: UPDATE/DELETE bloqueados en la capa Python y por trigger en Postgres.</p>
