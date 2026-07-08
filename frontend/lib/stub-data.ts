@@ -9,15 +9,19 @@
  * In-memory only: state resets on full page reload (good enough for dev).
  */
 
+import { ApiError } from "@/lib/api/http";
 import { DOC_TYPE_CATALOG, docTypeLabel } from "@/lib/catalog";
 import { translate, type DictKey } from "@/lib/i18n";
 import { readDevRoleCookie } from "@/lib/supabase/client";
 import type {
   AccountProfile,
+  AppNotification,
   Colleague,
+  CounselQueueItem,
   DeleteMode,
   ModelConfig,
   Share,
+  SlaUrgency,
   AssignedCounsel,
   BillingReport,
   BillingRow,
@@ -55,6 +59,7 @@ import type {
   TabularReviewDetail,
   TabularReviewStatusInfo,
   UserProfile,
+  Vehicle,
 } from "@/lib/types";
 import { RETENTION_MONTHS_DEFAULT } from "@/lib/types";
 
@@ -86,6 +91,34 @@ export const STUB_FUNDS: Fund[] = [
     name: "Iberia Ventures Fund II, FCRE",
     jurisdiction: "España",
     createdAt: "2026-02-01T10:00:00Z",
+  },
+];
+
+/** SPVs/vehicles hanging from STUB_FUNDS[0] (015_vehicles.sql). */
+export const STUB_VEHICLES: Vehicle[] = [
+  {
+    id: "v-1",
+    fundId: STUB_FUNDS[0].id,
+    name: "Iberia Solaria SPV, S.L.",
+    vehicleType: "spv",
+    jurisdiction: "España",
+    createdAt: "2026-03-10T09:00:00Z",
+  },
+  {
+    id: "v-2",
+    fundId: STUB_FUNDS[0].id,
+    name: "Iberia Feeder Lux SCSp",
+    vehicleType: "feeder",
+    jurisdiction: "Luxemburgo",
+    createdAt: "2026-04-02T10:00:00Z",
+  },
+  {
+    id: "v-3",
+    fundId: STUB_FUNDS[0].id,
+    name: "Iberia Coinvest Robotics, SCR",
+    vehicleType: "coinvest",
+    jurisdiction: "España",
+    createdAt: "2026-05-20T11:00:00Z",
   },
 ];
 
@@ -233,6 +266,8 @@ export const stubRequests: RequestItem[] = [
     id: "r-1",
     fundId: "f-1",
     fundName: STUB_FUNDS[0].name,
+    vehicleId: "v-1",
+    vehicleName: "Iberia Solaria SPV, S.L.",
     gestoraId: STUB_GESTORA.id,
     userId: "u-client-1",
     requestedByName: "Lucía Fernández",
@@ -476,6 +511,120 @@ const stubComments: CounselComment[] = [
     createdAt: "2026-06-09T10:00:00Z",
   },
 ];
+
+/* ------------------------------------------------------------------ */
+/* Counsel queue with SLA urgency (GET /api/counsel/queue)             */
+/* ------------------------------------------------------------------ */
+
+/** Mirror of backend sla_review_hours (red threshold). */
+const STUB_SLA_HOURS = 48;
+
+/** Mirror of the backend urgency policy: red past the SLA, amber past the
+ * reminder threshold (half the SLA), green otherwise. */
+function stubSlaUrgency(hoursPending: number | null): SlaUrgency {
+  if (hoursPending === null) return "green";
+  if (hoursPending >= STUB_SLA_HOURS) return "red";
+  if (hoursPending >= STUB_SLA_HOURS / 2) return "amber";
+  return "green";
+}
+
+/**
+ * The counsel review queue, most urgent first, each row carrying the SLA and
+ * gestora context the real endpoint computes server-side. The seed requests
+ * above are timed to always demo all three urgencies (r-6 red at 55h, r-2
+ * amber at 30h, r-5 green at 4h).
+ */
+export function stubCounselQueue(
+  filters: { gestoraId?: string; urgency?: SlaUrgency } = {},
+): CounselQueueItem[] {
+  let items: CounselQueueItem[] = stubRequests
+    .filter((r) => r.status === "counsel_review")
+    .map((r) => {
+      const since = r.counselRequestedAt ?? r.createdAt;
+      const hoursPending = since
+        ? Math.max(0, (Date.now() - new Date(since).getTime()) / 3_600_000)
+        : null;
+      const gestoraId = r.gestoraId ?? STUB_GESTORA.id;
+      return {
+        ...r,
+        gestoraId,
+        gestoraName:
+          stubGestoras.find((g) => g.id === gestoraId)?.name ?? null,
+        hoursPending,
+        slaHours: STUB_SLA_HOURS,
+        urgency: stubSlaUrgency(hoursPending),
+      };
+    });
+  if (filters.gestoraId) {
+    items = items.filter((i) => i.gestoraId === filters.gestoraId);
+  }
+  if (filters.urgency) {
+    items = items.filter((i) => i.urgency === filters.urgency);
+  }
+  // Más urgente primero (los sin reloj al final), como el backend.
+  return items.sort(
+    (a, b) => (b.hoursPending ?? -1) - (a.hoursPending ?? -1),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* In-app notifications (bell inbox, 016_notifications.sql)            */
+/* ------------------------------------------------------------------ */
+
+/** In-memory bell inbox: two unread + one read so the demo shows the badge,
+ * the unread styling and the "mark all read" flow. */
+const stubNotifications: AppNotification[] = [
+  {
+    id: "n-1",
+    kind: "comment_added",
+    title: "Nuevo comentario del abogado",
+    body: "Revisar el plazo de pago: el reglamento del fondo fija 12 días hábiles, no 10.",
+    requestId: "r-2",
+    readAt: null,
+    createdAt: hoursAgoIso(2),
+  },
+  {
+    id: "n-2",
+    kind: "document_validated",
+    title: "Documento validado y entregado",
+    body: "El NDA con Solaria Robotics SL ha sido validado por María Llopis y está listo para descargar.",
+    requestId: "r-1",
+    readAt: null,
+    createdAt: hoursAgoIso(26),
+  },
+  {
+    id: "n-3",
+    kind: "counsel_requested",
+    title: "Enviado a revisión de abogado",
+    body: "La llamada de capital del Fund I ha entrado en la cola de revisión (SLA 48 h).",
+    requestId: "r-2",
+    readAt: hoursAgoIso(40),
+    createdAt: hoursAgoIso(50),
+  },
+];
+
+/** Newest first, like GET /api/notifications/inbox. */
+export function stubGetNotifications(): AppNotification[] {
+  return [...stubNotifications].sort((a, b) =>
+    (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
+  );
+}
+
+export function stubUnreadCount(): number {
+  return stubNotifications.filter((n) => !n.readAt).length;
+}
+
+/** Mark ids (or ALL when ids is null) read; returns how many changed. */
+export function stubMarkNotificationsRead(ids: string[] | null): number {
+  let marked = 0;
+  for (const n of stubNotifications) {
+    if (n.readAt) continue;
+    if (ids !== null && !ids.includes(n.id)) continue;
+    n.readAt = now();
+    marked += 1;
+  }
+  return marked;
+}
 
 /* ------------------------------------------------------------------ */
 /* Stub behaviors                                                      */
@@ -1202,6 +1351,106 @@ export function stubUploadModel(input: {
       },
     ],
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Funds & vehicles (015_vehicles.sql) — in-memory CRUD                */
+/* ------------------------------------------------------------------ */
+
+function stubFindFundOr404(fundId: string): Fund {
+  const fund = STUB_FUNDS.find((f) => f.id === fundId);
+  if (!fund) throw new ApiError(404, "Fund not found");
+  return fund;
+}
+
+export function stubGetVehicles(fundId: string): Vehicle[] {
+  stubFindFundOr404(fundId);
+  return STUB_VEHICLES.filter((v) => v.fundId === fundId).map((v) => ({ ...v }));
+}
+
+export function stubCreateVehicle(
+  fundId: string,
+  input: {
+    name: string;
+    vehicleType?: Vehicle["vehicleType"];
+    jurisdiction?: string;
+  },
+): Vehicle {
+  stubFindFundOr404(fundId);
+  const vehicle: Vehicle = {
+    id: `v-${Date.now()}`,
+    fundId,
+    name: input.name,
+    vehicleType: input.vehicleType ?? "spv",
+    jurisdiction: input.jurisdiction || null,
+    createdAt: now(),
+  };
+  STUB_VEHICLES.push(vehicle);
+  return { ...vehicle };
+}
+
+export function stubUpdateVehicle(
+  id: string,
+  input: {
+    name?: string;
+    vehicleType?: Vehicle["vehicleType"];
+    jurisdiction?: string;
+  },
+): Vehicle {
+  const vehicle = STUB_VEHICLES.find((v) => v.id === id);
+  if (!vehicle) throw new ApiError(404, "Vehicle not found");
+  if (input.name) vehicle.name = input.name;
+  if (input.vehicleType) vehicle.vehicleType = input.vehicleType;
+  if (input.jurisdiction !== undefined)
+    vehicle.jurisdiction = input.jurisdiction || null;
+  // Keep denormalized names on requests in sync (backend joins live).
+  for (const req of stubRequests) {
+    if (req.vehicleId === id) req.vehicleName = vehicle.name;
+  }
+  return { ...vehicle };
+}
+
+/** Mirrors DELETE /api/vehicles/{id}: 409 while any request references it. */
+export function stubDeleteVehicle(id: string): void {
+  const idx = STUB_VEHICLES.findIndex((v) => v.id === id);
+  if (idx === -1) throw new ApiError(404, "Vehicle not found");
+  if (stubRequests.some((r) => r.vehicleId === id)) {
+    throw new ApiError(
+      409,
+      "El vehículo tiene solicitudes asociadas y no puede eliminarse.",
+    );
+  }
+  STUB_VEHICLES.splice(idx, 1);
+}
+
+export function stubUpdateFund(
+  id: string,
+  input: { name?: string; jurisdiction?: string },
+): Fund {
+  const fund = stubFindFundOr404(id);
+  if (input.name) fund.name = input.name;
+  if (input.jurisdiction) fund.jurisdiction = input.jurisdiction;
+  for (const req of stubRequests) {
+    if (req.fundId === id) req.fundName = fund.name;
+  }
+  return { ...fund };
+}
+
+/** Mirrors DELETE /api/funds/{id}: 409 while any request references it;
+ * its vehicles are deleted with it. */
+export function stubDeleteFund(id: string): void {
+  const idx = STUB_FUNDS.findIndex((f) => f.id === id);
+  if (idx === -1) throw new ApiError(404, "Fund not found");
+  if (stubRequests.some((r) => r.fundId === id)) {
+    throw new ApiError(
+      409,
+      "El fondo tiene solicitudes asociadas y no puede eliminarse.",
+    );
+  }
+  for (let i = STUB_VEHICLES.length - 1; i >= 0; i -= 1) {
+    if (STUB_VEHICLES[i].fundId === id) STUB_VEHICLES.splice(i, 1);
+  }
+  STUB_FUNDS.splice(idx, 1);
 }
 
 /* ------------------------------------------------------------------ */

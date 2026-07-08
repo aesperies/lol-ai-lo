@@ -12,7 +12,9 @@
 import { docTypeLabel } from "@/lib/catalog";
 import type {
   AppLanguage,
+  AppNotification,
   CounselComment,
+  CounselQueueItem,
   Fund,
   Gestora,
   ParsedParams,
@@ -21,7 +23,9 @@ import type {
   RequestItem,
   RequestStatus,
   ReviewBundle,
+  SlaUrgency,
   UserProfile,
+  Vehicle,
 } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -82,6 +86,8 @@ export interface RequestWire {
   id: string;
   fund_id: string;
   fund_name?: string | null;
+  vehicle_id?: string | null;
+  vehicle_name?: string | null;
   user_id: string;
   doc_type: string;
   doc_type_custom?: string | null;
@@ -106,6 +112,8 @@ export function mapRequest(wire: RequestWire): RequestItem {
     id: wire.id,
     fundId: wire.fund_id,
     fundName: wire.fund_name ?? undefined,
+    vehicleId: wire.vehicle_id ?? null,
+    vehicleName: wire.vehicle_name ?? null,
     userId: wire.user_id,
     docType: wire.doc_type,
     docTypeLabel: docTypeLabel(wire.doc_type),
@@ -124,6 +132,52 @@ export function mapRequest(wire: RequestWire): RequestItem {
     sharedByEmail: wire.shared_by_email ?? null,
     createdAt: wire.created_at ?? "",
     updatedAt: wire.updated_at ?? "",
+  };
+}
+
+/** GET /api/counsel/queue row: RequestWire + SLA/gestora context. */
+export interface CounselQueueItemWire extends RequestWire {
+  gestora_id?: string | null;
+  gestora_name?: string | null;
+  hours_pending?: number | null;
+  sla_hours?: number | null;
+  urgency?: SlaUrgency | null;
+}
+
+export function mapCounselQueueItem(wire: CounselQueueItemWire): CounselQueueItem {
+  return {
+    ...mapRequest(wire),
+    gestoraId: wire.gestora_id ?? undefined,
+    gestoraName: wire.gestora_name ?? null,
+    hoursPending: wire.hours_pending ?? null,
+    slaHours: wire.sla_hours ?? 48,
+    urgency: wire.urgency ?? "green",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications (bell inbox, 016)                                     */
+/* ------------------------------------------------------------------ */
+
+export interface NotificationWire {
+  id: string;
+  kind: string;
+  title: string;
+  body?: string | null;
+  request_id?: string | null;
+  read_at?: string | null;
+  created_at?: string | null;
+}
+
+export function mapNotification(wire: NotificationWire): AppNotification {
+  return {
+    id: wire.id,
+    kind: wire.kind,
+    title: wire.title,
+    body: wire.body ?? null,
+    requestId: wire.request_id ?? null,
+    readAt: wire.read_at ?? null,
+    createdAt: wire.created_at ?? null,
   };
 }
 
@@ -165,6 +219,26 @@ export function mapFund(wire: FundWire): Fund {
     gestoraId: wire.gestora_id,
     name: wire.name,
     jurisdiction: wire.jurisdiction,
+    createdAt: wire.created_at ?? "",
+  };
+}
+
+export interface VehicleWire {
+  id: string;
+  fund_id: string;
+  name: string;
+  vehicle_type: Vehicle["vehicleType"];
+  jurisdiction?: string | null;
+  created_at?: string | null;
+}
+
+export function mapVehicle(wire: VehicleWire): Vehicle {
+  return {
+    id: wire.id,
+    fundId: wire.fund_id,
+    name: wire.name,
+    vehicleType: wire.vehicle_type,
+    jurisdiction: wire.jurisdiction ?? null,
     createdAt: wire.created_at ?? "",
   };
 }

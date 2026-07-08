@@ -16,11 +16,12 @@ import {
   getDocFields,
   createFund,
   getFunds,
+  getVehicles,
   type CreateRequestInput,
 } from "@/lib/api";
 import { DOC_TYPE_CATALOG, docTypeGroupLabel } from "@/lib/catalog";
 import type { DictKey } from "@/lib/i18n";
-import type { AssignedCounsel, FieldSpec, Fund } from "@/lib/types";
+import type { AssignedCounsel, FieldSpec, Fund, Vehicle } from "@/lib/types";
 
 export const FREETEXT_MIN = 50;
 export const FREETEXT_MAX = 2000;
@@ -50,6 +51,9 @@ export default function IntakeForm({
   const [counsel, setCounsel] = useState<AssignedCounsel | null>(null);
 
   const [fundId, setFundId] = useState("");
+  // SPVs/vehicles of the selected fund (optional pick, "" = the fund itself).
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleId, setVehicleId] = useState("");
   const [showNewFund, setShowNewFund] = useState(false);
   const [newFundName, setNewFundName] = useState("");
   const [newFundJurisdiction, setNewFundJurisdiction] = useState("España");
@@ -70,6 +74,24 @@ export default function IntakeForm({
     void getFunds().then(setFunds).catch(() => setFunds([]));
     void getAssignedCounsel().then(setCounsel).catch(() => setCounsel(null));
   }, []);
+
+  // Changing the fund loads its vehicles and RESETS the vehicle pick.
+  useEffect(() => {
+    setVehicleId("");
+    setVehicles([]);
+    if (!fundId) return;
+    let stale = false;
+    void getVehicles(fundId)
+      .then((rows) => {
+        if (!stale) setVehicles(rows);
+      })
+      .catch(() => {
+        if (!stale) setVehicles([]);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [fundId]);
 
   // Changing the doc type loads its field specs and RESETS entered values.
   useEffect(() => {
@@ -174,6 +196,7 @@ export default function IntakeForm({
             .filter(([, v]) => v.length > 0);
           onSubmit({
             fundId,
+            vehicleId: vehicleId || undefined,
             docType,
             docTypeCustom:
               docType === "other" ? docTypeCustom.trim() : undefined,
@@ -260,6 +283,25 @@ export default function IntakeForm({
               )}
             </div>
           )}
+
+          {/* Optional SPV/vehicle of the selected fund */}
+          {fundId && vehicles.length > 0 ? (
+            <div className="mt-3">
+              <Label htmlFor={`${formId}-vehicle`}>{t("intake.vehicle")}</Label>
+              <Select
+                id={`${formId}-vehicle`}
+                value={vehicleId}
+                onChange={(e) => setVehicleId(e.target.value)}
+              >
+                <option value="">{t("intake.vehiclePlaceholder")}</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} — {t(`funds.vehicleType.${v.vehicleType}` as DictKey)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
         </div>
 
         {/* Document type — grouped dropdown with exact catalog labels */}

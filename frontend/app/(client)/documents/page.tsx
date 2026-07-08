@@ -123,7 +123,12 @@ export default function DocumentsHistoryPage() {
                   <td className="px-6 py-4 font-medium text-ink-800">
                     {r.docTypeLabel ?? r.docType}
                   </td>
-                  <td className="px-6 py-4 text-ink-600">{r.fundName ?? r.fundId}</td>
+                  <td className="px-6 py-4 text-ink-600">
+                    {r.fundName ?? r.fundId}
+                    {r.vehicleName ? (
+                      <span className="text-ink-400"> — {r.vehicleName}</span>
+                    ) : null}
+                  </td>
                   <td className="px-6 py-4">
                     <StatusBadge status={r.status} />
                   </td>

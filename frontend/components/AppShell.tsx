@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import NotificationsBell from "@/components/NotificationsBell";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Wordmark } from "@/components/Logo";
 import { useSession } from "@/components/SessionProvider";
@@ -22,6 +23,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: "/dashboard", labelKey: "nav.dashboard" },
     { href: "/new-request", labelKey: "nav.newRequest" },
     { href: "/documents", labelKey: "nav.documents" },
+    { href: "/funds", labelKey: "nav.funds" },
     { href: "/tabular-reviews", labelKey: "nav.tabular" },
     { href: "/account/security", labelKey: "nav.account" },
   ],
@@ -121,6 +123,7 @@ export default function AppShell({
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <NotificationsBell />
             <ThemeToggle />
             <LanguageSwitcher />
             <span className="hidden text-xs text-ink-400 lg:inline">

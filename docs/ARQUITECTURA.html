@@ -78,7 +78,7 @@
   <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
   <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
   Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
-  Estado a 8-jul-2026 (migración 014).</p>
+  Estado a 8-jul-2026 (migración 015: vehículos/SPVs).</p>
 
   <!-- ================= CAPAS ================= -->
   <h2>1 · Vista por capas</h2>
@@ -90,8 +90,9 @@
       <div class="card">
         <span class="tag t-client">Cliente (gestora)</span>
         <ul class="tight">
-          <li><code>/dashboard</code> · <code>/new-request</code></li>
+          <li><code>/dashboard</code> · <code>/new-request</code> (fondo + vehículo/SPV opcional)</li>
           <li><code>/documents[/id]</code> descargas + HTML</li>
+          <li><code>/funds</code> fondos y vehículos/SPVs (CRUD)</li>
           <li><code>/tabular-reviews</code> grid de extracción</li>
           <li><code>/account</code> privacidad (RGPD) + MFA</li>
         </ul>
@@ -132,7 +133,7 @@
       <div class="box"><b>api/documents</b><span>generar · descargar · HTML · counsel edit/upload</span></div>
       <div class="box"><b>api/refinements</b><span>refinamientos (máx. 3)</span></div>
       <div class="box"><b>api/counsel_review</b><span>cola · bundle · comentarios</span></div>
-      <div class="box"><b>api/directory</b><span>gestoras · funds (alta por gestora) · users (invite)</span></div>
+      <div class="box"><b>api/directory</b><span>gestoras · funds (CRUD por gestora, 409 con solicitudes) · vehicles/SPVs (015) · users (invite)</span></div>
       <div class="box"><b>api/precedents</b><span>biblioteca + versiones</span></div>
       <div class="box"><b>api/playbooks</b><span>reglas del critic</span></div>
       <div class="box"><b>api/tabular</b><span>revisión tabular</span></div>

@@ -8,8 +8,10 @@ import { isStubMode } from "@/lib/supabase/client";
 import type {
   AssignedCounsel,
   CounselComment,
+  CounselQueueItem,
   RequestItem,
   ReviewBundle,
+  SlaUrgency,
 } from "@/lib/types";
 import {
   ApiError,
@@ -21,22 +23,38 @@ import {
 } from "./http";
 import {
   type CounselCommentWire,
+  type CounselQueueItemWire,
   type RequestWire,
   type ReviewBundleWire,
   mapCounselComment,
+  mapCounselQueueItem,
   mapRequest,
   mapReviewBundle,
 } from "./wire";
 
-export async function getCounselQueue(): Promise<RequestItem[]> {
+export interface CounselQueueFilters {
+  gestoraId?: string;
+  urgency?: SlaUrgency;
+}
+
+/** Pending counsel reviews, most urgent first (server-side ordering). */
+export async function getCounselQueue(
+  filters: CounselQueueFilters = {},
+): Promise<CounselQueueItem[]> {
   if (isStubMode()) {
     return stubCall(async (stub) => {
       await stub.delay(STUB_LATENCY / 2);
-      return stub.stubRequests.filter((r) => r.status === "counsel_review");
+      return stub.stubCounselQueue(filters);
     });
   }
-  const rows = await apiFetch<RequestWire[]>(apiPaths.counselQueue);
-  return rows.map(mapRequest);
+  const params = new URLSearchParams();
+  if (filters.gestoraId) params.set("gestora_id", filters.gestoraId);
+  if (filters.urgency) params.set("urgency", filters.urgency);
+  const qs = params.toString();
+  const rows = await apiFetch<CounselQueueItemWire[]>(
+    `${apiPaths.counselQueue}${qs ? `?${qs}` : ""}`,
+  );
+  return rows.map(mapCounselQueueItem);
 }
 
 export async function getReviewBundle(id: string): Promise<ReviewBundle> {

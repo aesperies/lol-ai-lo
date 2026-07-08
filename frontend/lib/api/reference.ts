@@ -14,12 +14,15 @@ import type {
   Role,
   SubscriptionTier,
   UserProfile,
+  Vehicle,
+  VehicleType,
 } from "@/lib/types";
 import {
   STUB_LATENCY,
   apiFetch,
   apiPaths,
   fetchMultipart,
+  fetchVoid,
   stubCall,
 } from "./http";
 import {
@@ -27,10 +30,12 @@ import {
   type GestoraWire,
   type PrecedentWire,
   type UserWire,
+  type VehicleWire,
   mapFund,
   mapGestora,
   mapPrecedent,
   mapUser,
+  mapVehicle,
 } from "./wire";
 
 /** Structured intake field specs for a doc_type ([] = freetext-only). */
@@ -94,12 +99,122 @@ export async function createFund(input: {
   }
   const row = await apiFetch<FundWire>(apiPaths.funds, {
     method: "POST",
-    body: JSON.stringify({
+    // Plain object: apiFetch JSON-stringifies the body itself.
+    body: {
       name: input.name,
       jurisdiction: input.jurisdiction ?? "España",
-    }),
+    },
   });
   return mapFund(row);
+}
+
+/** Rename / re-jurisdiction a fund (PATCH /api/funds/{id}). */
+export async function updateFund(
+  id: string,
+  input: { name?: string; jurisdiction?: string },
+): Promise<Fund> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 2);
+      return stub.stubUpdateFund(id, input);
+    });
+  }
+  const row = await apiFetch<FundWire>(apiPaths.fund(id), {
+    method: "PATCH",
+    body: {
+      name: input.name ?? null,
+      jurisdiction: input.jurisdiction ?? null,
+    },
+  });
+  return mapFund(row);
+}
+
+/** Delete a fund (DELETE /api/funds/{id}); 409 while it has requests. */
+export async function deleteFund(id: string): Promise<void> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 2);
+      stub.stubDeleteFund(id);
+    });
+  }
+  await fetchVoid(apiPaths.fund(id), { method: "DELETE" });
+}
+
+/* ------------------------------------------------------------------ */
+/* SPVs / vehicles (015_vehicles.sql)                                  */
+/* ------------------------------------------------------------------ */
+
+export interface VehicleInput {
+  name?: string;
+  vehicleType?: VehicleType;
+  jurisdiction?: string;
+}
+
+/** The fund's SPVs/vehicles (GET /api/funds/{id}/vehicles). */
+export async function getVehicles(fundId: string): Promise<Vehicle[]> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 3);
+      return stub.stubGetVehicles(fundId);
+    });
+  }
+  const rows = await apiFetch<VehicleWire[]>(apiPaths.fundVehicles(fundId));
+  return rows.map(mapVehicle);
+}
+
+/** Register an SPV/vehicle under a fund (POST /api/funds/{id}/vehicles). */
+export async function createVehicle(
+  fundId: string,
+  input: VehicleInput & { name: string },
+): Promise<Vehicle> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 2);
+      return stub.stubCreateVehicle(fundId, input);
+    });
+  }
+  const row = await apiFetch<VehicleWire>(apiPaths.fundVehicles(fundId), {
+    method: "POST",
+    body: {
+      name: input.name,
+      vehicle_type: input.vehicleType ?? "spv",
+      jurisdiction: input.jurisdiction ?? null,
+    },
+  });
+  return mapVehicle(row);
+}
+
+/** Edit an SPV/vehicle (PATCH /api/vehicles/{id}). */
+export async function updateVehicle(
+  id: string,
+  input: VehicleInput,
+): Promise<Vehicle> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 2);
+      return stub.stubUpdateVehicle(id, input);
+    });
+  }
+  const row = await apiFetch<VehicleWire>(apiPaths.vehicle(id), {
+    method: "PATCH",
+    body: {
+      name: input.name ?? null,
+      vehicle_type: input.vehicleType ?? null,
+      jurisdiction: input.jurisdiction ?? null,
+    },
+  });
+  return mapVehicle(row);
+}
+
+/** Delete an SPV/vehicle (DELETE /api/vehicles/{id}); 409 while referenced. */
+export async function deleteVehicle(id: string): Promise<void> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 2);
+      stub.stubDeleteVehicle(id);
+    });
+  }
+  await fetchVoid(apiPaths.vehicle(id), { method: "DELETE" });
 }
 
 export async function getGestoras(): Promise<Gestora[]> {

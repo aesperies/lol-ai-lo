@@ -54,6 +54,10 @@ export const apiPaths = {
   validate: (id: string) => `/api/requests/${id}/validate`,
   comments: (id: string) => `/api/requests/${id}/comments`,
   counselQueue: "/api/counsel/queue",
+  // In-app notifications bell (016_notifications.sql).
+  notificationsInbox: "/api/notifications/inbox",
+  notificationsUnreadCount: "/api/notifications/inbox/unread-count",
+  notificationsRead: "/api/notifications/read",
   myCounsel: "/api/my/counsel",
   counselAssignments: (gestoraId: string) =>
     `/api/counsel-assignments?gestora_id=${gestoraId}`,
@@ -63,6 +67,9 @@ export const apiPaths = {
   docFields: (docType: string) =>
     `/api/doc-types/${encodeURIComponent(docType)}/fields`,
   funds: "/api/funds",
+  fund: (id: string) => `/api/funds/${id}`,
+  fundVehicles: (fundId: string) => `/api/funds/${fundId}/vehicles`,
+  vehicle: (id: string) => `/api/vehicles/${id}`,
   gestoras: "/api/gestoras",
   precedents: "/api/precedents",
   precedentVersions: (precedentId: string) =>

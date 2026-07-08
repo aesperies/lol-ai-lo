@@ -20,6 +20,7 @@ const ROUTE_ROLES: Array<{ prefix: string; role: Role }> = [
   { prefix: "/dashboard", role: "client" },
   { prefix: "/new-request", role: "client" },
   { prefix: "/documents", role: "client" },
+  { prefix: "/funds", role: "client" },
   { prefix: "/tabular-reviews", role: "client" },
   { prefix: "/account", role: "client" },
   { prefix: "/review", role: "counsel" },

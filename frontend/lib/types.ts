@@ -140,6 +140,27 @@ export interface Fund {
   createdAt: string;
 }
 
+/** SPV / vehicle kind (backend VehicleCreate pattern, 015_vehicles.sql). */
+export type VehicleType = "spv" | "feeder" | "coinvest" | "holdco" | "other";
+
+export const VEHICLE_TYPES: VehicleType[] = [
+  "spv",
+  "feeder",
+  "coinvest",
+  "holdco",
+  "other",
+];
+
+/** SPV / investment vehicle hanging from a fund (015_vehicles.sql). */
+export interface Vehicle {
+  id: string;
+  fundId: string;
+  name: string;
+  vehicleType: VehicleType;
+  jurisdiction?: string | null;
+  createdAt: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -214,6 +235,9 @@ export interface RequestItem {
   id: string;
   fundId: string;
   fundName?: string;
+  /** Optional SPV/vehicle the document belongs to (null = the fund itself). */
+  vehicleId?: string | null;
+  vehicleName?: string | null;
   gestoraId?: string;
   userId: string;
   requestedByName?: string;
@@ -247,6 +271,38 @@ export interface RequestItem {
   sharedByEmail?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Server-computed SLA urgency of a pending counsel review
+ * (GET /api/counsel/queue). Thresholds live in backend config (sla_*_hours). */
+export type SlaUrgency = "green" | "amber" | "red";
+
+/** Most-urgent-first, matching the backend queue ordering. */
+export const SLA_URGENCIES: SlaUrgency[] = ["red", "amber", "green"];
+
+/** One row of the counsel review queue: the request plus SLA/gestora context
+ * so the inbox can badge and filter without extra calls. */
+export interface CounselQueueItem extends RequestItem {
+  gestoraName?: string | null;
+  /** Hours the review has been pending; null when the clock never started. */
+  hoursPending: number | null;
+  /** Promised review turnaround (backend sla_review_hours). */
+  slaHours: number;
+  urgency: SlaUrgency;
+}
+
+/** One in-app notification (bell inbox, GET /api/notifications/inbox). */
+export interface AppNotification {
+  id: string;
+  /** Free-text event kind (counsel_requested, document_validated, …). */
+  kind: string;
+  title: string;
+  body: string | null;
+  /** When set, the notification links to the request's detail/review page. */
+  requestId: string | null;
+  /** null = unread. */
+  readAt: string | null;
+  createdAt: string | null;
 }
 
 export interface DocumentItem {

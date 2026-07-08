@@ -37,6 +37,8 @@ import {
 
 export interface CreateRequestInput {
   fundId: string;
+  /** Optional SPV/vehicle of the fund the document belongs to. */
+  vehicleId?: string;
   docType: string;
   docTypeCustom?: string;
   freetext: string;
@@ -53,10 +55,15 @@ export async function createRequest(
     return stubCall(async (stub) => {
       await stub.delay(STUB_LATENCY);
       const fund = stub.STUB_FUNDS.find((f) => f.id === input.fundId);
+      const vehicle = input.vehicleId
+        ? stub.STUB_VEHICLES.find((v) => v.id === input.vehicleId)
+        : undefined;
       const req: RequestItem = {
         id: stub.nextRequestId(),
         fundId: input.fundId,
         fundName: fund?.name,
+        vehicleId: vehicle?.id ?? null,
+        vehicleName: vehicle?.name ?? null,
         gestoraId: fund?.gestoraId,
         userId: "u-client-1",
         requestedByName: "Lucía Fernández",
@@ -82,6 +89,7 @@ export async function createRequest(
       method: "POST",
       body: {
         fund_id: input.fundId,
+        vehicle_id: input.vehicleId ?? null,
         doc_type: input.docType,
         doc_type_custom: input.docTypeCustom ?? null,
         freetext: input.freetext,

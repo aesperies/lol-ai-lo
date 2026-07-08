@@ -11,6 +11,7 @@ export { ApiError, MAX_REFINEMENTS, SLA_REVIEW_HOURS, apiPaths } from "./http";
 
 export * from "./requests";
 export * from "./counsel";
+export * from "./notifications";
 export * from "./reference";
 export * from "./playbooks";
 export * from "./assignments";

@@ -3,9 +3,16 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000,
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-antonio-bitkraft-dev-2-lol-ai-lo/759d2239-1a5e-4744-bb3f-3e51a18fa739/scratchpad/run-frontend-dev.sh",
+      "runtimeArgs": ["3005"],
+      "port": 3005,
+      "cwd": "frontend"
+    },
+    {
+      "name": "frontend-stub",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-antonio-bitkraft-dev-2-lol-ai-lo/759d2239-1a5e-4744-bb3f-3e51a18fa739/scratchpad/run-frontend-stub.sh",
+      "runtimeArgs": ["3010"],
+      "port": 3010,
       "cwd": "frontend"
     }
   ]
