@@ -16,6 +16,7 @@ export * from "./reference";
 export * from "./playbooks";
 export * from "./assignments";
 export * from "./metrics";
+export * from "./dashboard";
 export * from "./billing";
 export * from "./tabular";
 export * from "./account";

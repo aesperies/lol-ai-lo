@@ -280,6 +280,13 @@ export type SlaUrgency = "green" | "amber" | "red";
 /** Most-urgent-first, matching the backend queue ordering. */
 export const SLA_URGENCIES: SlaUrgency[] = ["red", "amber", "green"];
 
+/** Assignment policy scope of a queue item for the calling counsel
+ * (GET /api/counsel/queue): "mine" = gestora assigned to this lawyer;
+ * "pool" = gestora with NO lawyer assigned yet (visible to every counsel
+ * until an admin assigns one). Items of gestoras assigned to OTHER lawyers
+ * never reach the caller. */
+export type CounselAssignmentScope = "mine" | "pool";
+
 /** One row of the counsel review queue: the request plus SLA/gestora context
  * so the inbox can badge and filter without extra calls. */
 export interface CounselQueueItem extends RequestItem {
@@ -289,6 +296,8 @@ export interface CounselQueueItem extends RequestItem {
   /** Promised review turnaround (backend sla_review_hours). */
   slaHours: number;
   urgency: SlaUrgency;
+  /** Sectioning: own gestora vs. unassigned-gestora pool. */
+  assignment: CounselAssignmentScope;
 }
 
 /** One in-app notification (bell inbox, GET /api/notifications/inbox). */
@@ -575,6 +584,59 @@ export interface MyUsage {
   docsGenerated: number;
   /** null = unlimited (custom tier). */
   docsLimit: number | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Gestora dashboard aggregates (GET /api/dashboard/stats, Roadmap D)  */
+/* ------------------------------------------------------------------ */
+
+/** Status counts for the gestora dashboard metric cards. */
+export interface DashboardCounts {
+  /** parsing + confirmed + generating. */
+  inProgress: number;
+  /** review_pending: drafts waiting for the client's own review. */
+  awaitingYou: number;
+  /** counsel_review: out with the lawyer (Exit B). */
+  inCounselReview: number;
+  /** validated: ready to download. */
+  ready: number;
+  /** delivered during the current calendar month. */
+  deliveredThisMonth: number;
+}
+
+/** One upcoming counsel-SLA validation deadline (soonest first). */
+export interface DashboardDeadline {
+  requestId: string;
+  docType: string;
+  fundName: string | null;
+  /** ISO deadline (counsel_requested_at + sla_hours); null when unknown. */
+  deadline: string | null;
+  /** Hours until the SLA elapses; negative once overdue. */
+  hoursRemaining: number;
+  overdue: boolean;
+}
+
+/** One recent audit-log entry (already gestora-scoped server-side). */
+export interface DashboardActivityItem {
+  /** Raw audit action literal (AuditAction enum); UI humanizes common ones. */
+  action: string;
+  timestamp: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+}
+
+/** Everything the enriched client dashboard needs in one call
+ * (GET /api/dashboard/stats, client role only). */
+export interface DashboardStats {
+  counts: DashboardCounts;
+  upcomingDeadlines: DashboardDeadline[];
+  /** Mean counsel validation turnaround (last 20 completed); null = none yet. */
+  avgValidationHours: number | null;
+  /** Promised review turnaround (backend sla_review_hours). */
+  slaHours: number;
+  /** Newest first. */
+  recentActivity: DashboardActivityItem[];
+  fundsCount: number;
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import StatusBadge from "@/components/StatusBadge";
 import { Button, Card, PageHeader, Spinner, UsageBar } from "@/components/ui";
-import { getMyUsage, getRequests } from "@/lib/api";
+import { getDashboardStats, getMyUsage, getRequests } from "@/lib/api";
+import { docTypeLabel } from "@/lib/catalog";
 import { useAsync } from "@/lib/hooks";
-import type { MyUsage } from "@/lib/types";
+import type { DictKey } from "@/lib/i18n";
+import type {
+  DashboardActivityItem,
+  DashboardStats,
+  MyUsage,
+} from "@/lib/types";
 
 /** Small monthly-consumption widget (improvement #7). Hidden when the
  * /api/my/usage call fails — consumption is informative, never blocking. */
@@ -36,6 +43,180 @@ function UsageWidget({ usage }: { usage: MyUsage }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Enriched dashboard (GET /api/dashboard/stats, Roadmap D)            */
+/* ------------------------------------------------------------------ */
+
+function StatCard({
+  label,
+  value,
+  secondary,
+}: {
+  label: string;
+  value: number;
+  secondary?: string;
+}) {
+  return (
+    <Card className="p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold text-ink-900">{value}</p>
+      {secondary ? (
+        <p className="mt-0.5 text-xs text-ink-400">{secondary}</p>
+      ) : null}
+    </Card>
+  );
+}
+
+/** Row of 4 status-count metric cards, with delivered-this-month and the mean
+ * validation turnaround as secondary lines where they fit. */
+function StatsRow({ stats }: { stats: DashboardStats }) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <StatCard
+        label={t("dashboard.stats.inProgress")}
+        value={stats.counts.inProgress}
+      />
+      <StatCard
+        label={t("dashboard.stats.awaitingYou")}
+        value={stats.counts.awaitingYou}
+      />
+      <StatCard
+        label={t("dashboard.stats.inCounselReview")}
+        value={stats.counts.inCounselReview}
+        secondary={
+          stats.avgValidationHours === null
+            ? undefined
+            : t("dashboard.stats.avgValidation", {
+                hours: stats.avgValidationHours,
+              })
+        }
+      />
+      <StatCard
+        label={t("dashboard.stats.ready")}
+        value={stats.counts.ready}
+        secondary={t("dashboard.stats.deliveredThisMonth", {
+          n: stats.counts.deliveredThisMonth,
+        })}
+      />
+    </div>
+  );
+}
+
+/** Upcoming counsel-SLA deadlines (soonest first); hidden when none. */
+function DeadlinesCard({ stats }: { stats: DashboardStats }) {
+  const { t } = useI18n();
+  if (stats.upcomingDeadlines.length === 0) return null;
+  return (
+    <Card className="mb-6 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-ink-400">
+          {t("dashboard.deadlines.title")}
+        </span>
+        <span className="text-xs text-ink-400">
+          {t("dashboard.deadlines.subtitle", {
+            sla: Math.round(stats.slaHours),
+          })}
+        </span>
+      </div>
+      <ul className="mt-3 divide-y divide-ink-100">
+        {stats.upcomingDeadlines.map((d) => (
+          <li key={d.requestId}>
+            <Link
+              href={`/documents/${d.requestId}`}
+              className="flex flex-wrap items-center justify-between gap-2 py-2.5 hover:bg-ink-50"
+            >
+              <span className="text-sm font-medium text-ink-800">
+                {docTypeLabel(d.docType)}
+                {d.fundName ? (
+                  <span className="ml-2 font-normal text-ink-500">
+                    {d.fundName}
+                  </span>
+                ) : null}
+              </span>
+              {d.overdue ? (
+                <span className="text-sm font-semibold text-red-600">
+                  {t("dashboard.deadlines.overdue")}
+                </span>
+              ) : (
+                <span className="text-sm text-ink-600">
+                  {t("dashboard.deadlines.hoursLeft", {
+                    hours: Math.max(0, Math.round(d.hoursRemaining)),
+                  })}
+                </span>
+              )}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+/** Humanized labels for the most common audit actions; anything else falls
+ * back to the raw literal (the audit enum keeps growing). */
+const ACTIVITY_ACTION_KEYS: Record<string, DictKey> = {
+  document_requested: "dashboard.activity.action.document_requested",
+  params_confirmed: "dashboard.activity.action.params_confirmed",
+  document_generated: "dashboard.activity.action.document_generated",
+  counsel_requested: "dashboard.activity.action.counsel_requested",
+  counsel_comment_added: "dashboard.activity.action.counsel_comment_added",
+  document_validated: "dashboard.activity.action.document_validated",
+  draft_downloaded: "dashboard.activity.action.draft_downloaded",
+  final_downloaded: "dashboard.activity.action.final_downloaded",
+  exit_a_acknowledged: "dashboard.activity.action.exit_a_acknowledged",
+  precedent_uploaded: "dashboard.activity.action.precedent_uploaded",
+  fund_created: "dashboard.activity.action.fund_created",
+};
+
+/** Compact collapsible recent-activity trail (gestora audit log). */
+function ActivityCard({ items }: { items: DashboardActivityItem[] }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  return (
+    <Card className="mt-6 p-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span className="text-xs font-medium uppercase tracking-wide text-ink-400">
+          {t("dashboard.activity.title")}
+        </span>
+        <span className="text-xs font-medium text-brand-700">
+          {open ? t("dashboard.activity.hide") : t("dashboard.activity.show")}
+        </span>
+      </button>
+      {open ? (
+        <ul className="mt-3 divide-y divide-ink-100">
+          {items.map((a, i) => {
+            const key = ACTIVITY_ACTION_KEYS[a.action];
+            return (
+              <li
+                key={`${a.action}-${a.timestamp ?? i}`}
+                className="flex flex-wrap items-center justify-between gap-2 py-1.5"
+              >
+                <span className="text-sm text-ink-700">
+                  {key ? t(key) : a.action}
+                </span>
+                <span className="text-xs text-ink-400">
+                  {a.timestamp
+                    ? new Date(a.timestamp).toLocaleString()
+                    : null}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </Card>
+  );
+}
+
 export default function ClientDashboardPage() {
   const { t } = useI18n();
   const { data, error } = useAsync(() => getRequests(), []);
@@ -44,6 +225,11 @@ export default function ClientDashboardPage() {
   const requests = data ?? (error ? [] : null);
   // Graceful: hide the widget entirely if the usage call fails.
   const { data: usage } = useAsync<MyUsage | null>(() => getMyUsage(), []);
+  // Graceful too: the enriched cards are informative, never blocking.
+  const { data: stats } = useAsync<DashboardStats | null>(
+    () => getDashboardStats(),
+    [],
+  );
 
   return (
     <div>
@@ -56,6 +242,13 @@ export default function ClientDashboardPage() {
           </Link>
         }
       />
+
+      {stats !== null ? (
+        <>
+          <StatsRow stats={stats} />
+          <DeadlinesCard stats={stats} />
+        </>
+      ) : null}
 
       {usage !== null ? <UsageWidget usage={usage} /> : null}
 
@@ -111,6 +304,8 @@ export default function ClientDashboardPage() {
           </table>
         </Card>
       )}
+
+      {stats !== null ? <ActivityCard items={stats.recentActivity} /> : null}
     </div>
   );
 }

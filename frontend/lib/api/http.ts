@@ -101,6 +101,8 @@ export const apiPaths = {
   adminBillingExport: (period?: string) =>
     `/api/admin/billing/export${period ? `?period=${period}` : ""}`,
   myUsage: "/api/my/usage",
+  // Gestora dashboard aggregates (Roadmap D, clients only).
+  dashboardStats: "/api/dashboard/stats",
   // GDPR data retention per gestora (improvement #10).
   adminRetention: (gestoraId: string) =>
     `/api/admin/gestoras/${gestoraId}/retention`,

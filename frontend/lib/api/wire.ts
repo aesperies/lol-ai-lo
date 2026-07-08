@@ -13,6 +13,7 @@ import { docTypeLabel } from "@/lib/catalog";
 import type {
   AppLanguage,
   AppNotification,
+  CounselAssignmentScope,
   CounselComment,
   CounselQueueItem,
   Fund,
@@ -142,6 +143,8 @@ export interface CounselQueueItemWire extends RequestWire {
   hours_pending?: number | null;
   sla_hours?: number | null;
   urgency?: SlaUrgency | null;
+  /** "mine" (gestora assigned to this lawyer) | "pool" (no lawyer assigned). */
+  assignment?: CounselAssignmentScope | null;
 }
 
 export function mapCounselQueueItem(wire: CounselQueueItemWire): CounselQueueItem {
@@ -152,6 +155,7 @@ export function mapCounselQueueItem(wire: CounselQueueItemWire): CounselQueueIte
     hoursPending: wire.hours_pending ?? null,
     slaHours: wire.sla_hours ?? 48,
     urgency: wire.urgency ?? "green",
+    assignment: wire.assignment ?? "mine",
   };
 }
 

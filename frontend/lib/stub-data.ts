@@ -28,6 +28,7 @@ import type {
   Branch,
   CounselAssignment,
   CounselComment,
+  DashboardStats,
   DocumentHtml,
   DocumentVersionType,
   DraftingLesson,
@@ -528,11 +529,18 @@ function stubSlaUrgency(hoursPending: number | null): SlaUrgency {
   return "green";
 }
 
+/** Demo assignment policy (backend counsel_gestora_scope): queue rows in this
+ * set belong to a gestora with NO counsel assigned (assignment="pool"), shown
+ * to every lawyer with the amber pool styling. Mapped to the second demo
+ * gestora so "Mis gestoras" and the pool visibly differ. */
+const STUB_POOL_QUEUE_IDS = new Set(["r-5"]);
+
 /**
  * The counsel review queue, most urgent first, each row carrying the SLA and
  * gestora context the real endpoint computes server-side. The seed requests
  * above are timed to always demo all three urgencies (r-6 red at 55h, r-2
- * amber at 30h, r-5 green at 4h).
+ * amber at 30h, r-5 green at 4h), and mix assignments (r-2/r-6 "mine",
+ * r-5 "pool").
  */
 export function stubCounselQueue(
   filters: { gestoraId?: string; urgency?: SlaUrgency } = {},
@@ -544,7 +552,10 @@ export function stubCounselQueue(
       const hoursPending = since
         ? Math.max(0, (Date.now() - new Date(since).getTime()) / 3_600_000)
         : null;
-      const gestoraId = r.gestoraId ?? STUB_GESTORA.id;
+      const isPool = STUB_POOL_QUEUE_IDS.has(r.id);
+      const gestoraId = isPool
+        ? stubGestoras[1].id
+        : r.gestoraId ?? STUB_GESTORA.id;
       return {
         ...r,
         gestoraId,
@@ -553,6 +564,7 @@ export function stubCounselQueue(
         hoursPending,
         slaHours: STUB_SLA_HOURS,
         urgency: stubSlaUrgency(hoursPending),
+        assignment: isPool ? ("pool" as const) : ("mine" as const),
       };
     });
   if (filters.gestoraId) {
@@ -565,6 +577,117 @@ export function stubCounselQueue(
   return items.sort(
     (a, b) => (b.hoursPending ?? -1) - (a.hoursPending ?? -1),
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Gestora dashboard aggregates (GET /api/dashboard/stats, Roadmap D)  */
+/* ------------------------------------------------------------------ */
+
+const IN_PROGRESS_STATUSES = new Set(["parsing", "confirmed", "generating"]);
+
+/**
+ * Mirror of backend/api/dashboard.py: counts and SLA deadlines are derived
+ * live from the seed requests (so they stay consistent with the table below
+ * them), while the validation average and the activity trail are varied demo
+ * fixtures.
+ */
+export function stubDashboardStats(): DashboardStats {
+  const counts = {
+    inProgress: 0,
+    awaitingYou: 0,
+    inCounselReview: 0,
+    ready: 0,
+    // r-1 was delivered in June 2026; keep the demo card non-zero.
+    deliveredThisMonth: stubRequests.filter((r) => r.status === "delivered")
+      .length,
+  };
+  for (const r of stubRequests) {
+    if (IN_PROGRESS_STATUSES.has(r.status)) counts.inProgress += 1;
+    else if (r.status === "review_pending") counts.awaitingYou += 1;
+    else if (r.status === "counsel_review") counts.inCounselReview += 1;
+    else if (r.status === "validated") counts.ready += 1;
+  }
+
+  // Same rows the counsel queue shows, seen from the gestora side: r-6 is
+  // overdue (55h > 48h SLA), r-2 close (30h), r-5 comfortable (4h).
+  const upcomingDeadlines = stubRequests
+    .filter((r) => r.status === "counsel_review" && r.counselRequestedAt)
+    .map((r) => {
+      const started = new Date(r.counselRequestedAt as string).getTime();
+      const hoursPending = (Date.now() - started) / 3_600_000;
+      const remaining = STUB_SLA_HOURS - hoursPending;
+      return {
+        requestId: r.id,
+        docType: r.docType,
+        fundName: r.fundName ?? null,
+        deadline: new Date(
+          started + STUB_SLA_HOURS * 3_600_000,
+        ).toISOString(),
+        hoursRemaining: Math.round(remaining * 10) / 10,
+        overdue: remaining < 0,
+      };
+    })
+    .sort((a, b) => a.hoursRemaining - b.hoursRemaining);
+
+  return {
+    counts,
+    upcomingDeadlines,
+    avgValidationHours: 26.4,
+    slaHours: STUB_SLA_HOURS,
+    recentActivity: [
+      {
+        action: "counsel_comment_added",
+        timestamp: hoursAgoIso(2),
+        resourceType: "request",
+        resourceId: "r-2",
+      },
+      {
+        action: "document_generated",
+        timestamp: hoursAgoIso(5),
+        resourceType: "document",
+        resourceId: "r-5",
+      },
+      {
+        action: "counsel_requested",
+        timestamp: hoursAgoIso(5),
+        resourceType: "request",
+        resourceId: "r-5",
+      },
+      {
+        action: "draft_downloaded",
+        timestamp: hoursAgoIso(20),
+        resourceType: "document",
+        resourceId: "r-3",
+      },
+      {
+        action: "document_validated",
+        timestamp: hoursAgoIso(26),
+        resourceType: "request",
+        resourceId: "r-1",
+      },
+      {
+        action: "document_requested",
+        timestamp: hoursAgoIso(29),
+        resourceType: "request",
+        resourceId: "r-4",
+      },
+      {
+        action: "precedent_uploaded",
+        timestamp: hoursAgoIso(48),
+        resourceType: "precedent",
+        resourceId: "p-2",
+      },
+      // Uncommon action left untranslated on purpose: demos the literal
+      // fallback of the dashboard activity map.
+      {
+        action: "tabular_review_exported",
+        timestamp: hoursAgoIso(70),
+        resourceType: "tabular_review",
+        resourceId: "tr-1",
+      },
+    ],
+    fundsCount: STUB_FUNDS.length,
+  };
 }
 
 /* ------------------------------------------------------------------ */

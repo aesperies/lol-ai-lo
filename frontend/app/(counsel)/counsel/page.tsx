@@ -5,6 +5,12 @@
  * ordering), each row showing the backend-computed SLA urgency badge (green
  * "en plazo" · amber "mitad de SLA" · red "SLA vencido") plus filters by
  * gestora and urgency and a pending/overdue counter.
+ *
+ * Assignment policy sections: the queue only contains this lawyer's own
+ * gestoras (assignment="mine") plus the pool of gestoras with NO lawyer
+ * assigned yet (assignment="pool", amber-highlighted — any counsel may pick
+ * them up). Filters apply to both sections; empty sections are hidden.
+ *
  * NOTE: lives at /counsel (not /dashboard) because Next.js route groups do
  * not namespace URLs and /dashboard belongs to the client area; middleware
  * protects /counsel and /review for the counsel role.
@@ -45,6 +51,70 @@ function UrgencyBadge({ item }: { item: CounselQueueItem }) {
   );
 }
 
+/** One queue row; pool rows get the amber border + "no assigned lawyer" badge. */
+function QueueCard({ item }: { item: CounselQueueItem }) {
+  const { t } = useI18n();
+  const pool = item.assignment === "pool";
+  return (
+    // !border: Card sets border-ink-200 and stylesheet order, not class
+    // order, decides ties between two border-color utilities.
+    <Card className={pool ? "!border-amber-400" : undefined}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="font-medium text-ink-800">
+            {item.docTypeLabel ?? item.docType}
+          </p>
+          <p className="mt-0.5 text-sm text-ink-500">
+            {item.gestoraName
+              ? `${item.gestoraName} — ${item.fundName ?? ""}`
+              : item.fundName}
+          </p>
+          <p className="mt-0.5 text-xs text-ink-400">
+            {t("counsel.requestedBy")}: {item.requestedByName ?? item.userId} —{" "}
+            {new Date(item.createdAt).toLocaleDateString()}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {pool ? (
+            <Badge tone="amber">{t("counsel.sections.poolBadge")}</Badge>
+          ) : null}
+          <UrgencyBadge item={item} />
+          <StatusBadge status={item.status} />
+          <Link href={`/review/${item.id}`}>
+            <Button>{t("counsel.review")}</Button>
+          </Link>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** A titled queue section; hidden entirely when it has no rows. */
+function QueueSection({
+  title,
+  hint,
+  items,
+}: {
+  title: string;
+  hint?: string;
+  items: CounselQueueItem[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">
+        {title}
+      </h2>
+      {hint ? <p className="mt-0.5 text-xs text-ink-400">{hint}</p> : null}
+      <div className="mt-3 space-y-4">
+        {items.map((r) => (
+          <QueueCard key={r.id} item={r} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function CounselDashboardPage() {
   const { t } = useI18n();
   // Single unfiltered fetch: the queue is small, so gestora options and the
@@ -74,6 +144,10 @@ export default function CounselDashboardPage() {
       ),
     [queue, gestoraFilter, urgencyFilter],
   );
+
+  // Assignment policy sections; filters above apply to both.
+  const mine = filtered.filter((i) => i.assignment !== "pool");
+  const pool = filtered.filter((i) => i.assignment === "pool");
 
   const overdue = (queue ?? []).filter((i) => i.urgency === "red").length;
 
@@ -127,34 +201,13 @@ export default function CounselDashboardPage() {
               {t("counsel.queueEmpty")}
             </Card>
           ) : (
-            <div className="space-y-4">
-              {filtered.map((r) => (
-                <Card key={r.id}>
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-ink-800">
-                        {r.docTypeLabel ?? r.docType}
-                      </p>
-                      <p className="mt-0.5 text-sm text-ink-500">
-                        {r.gestoraName
-                          ? `${r.gestoraName} — ${r.fundName ?? ""}`
-                          : r.fundName}
-                      </p>
-                      <p className="mt-0.5 text-xs text-ink-400">
-                        {t("counsel.requestedBy")}: {r.requestedByName ?? r.userId}{" "}
-                        — {new Date(r.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <UrgencyBadge item={r} />
-                      <StatusBadge status={r.status} />
-                      <Link href={`/review/${r.id}`}>
-                        <Button>{t("counsel.review")}</Button>
-                      </Link>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+            <div className="space-y-8">
+              <QueueSection title={t("counsel.sections.mine")} items={mine} />
+              <QueueSection
+                title={t("counsel.sections.pool")}
+                hint={t("counsel.sections.poolHint")}
+                items={pool}
+              />
             </div>
           )}
         </>
