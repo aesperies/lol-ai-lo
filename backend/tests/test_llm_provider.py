@@ -207,6 +207,9 @@ def _install_fake_anthropic(monkeypatch, capture: dict, reply: str = "claude say
     fake = types.ModuleType("anthropic")
     fake.Anthropic = _Client
     fake.APIConnectionError = type("APIConnectionError", (Exception,), {})
+    fake.BadRequestError = type("BadRequestError", (Exception,), {})
+    fake.AuthenticationError = type("AuthenticationError", (Exception,), {})
+    fake.RateLimitError = type("RateLimitError", (Exception,), {})
     monkeypatch.setitem(sys.modules, "anthropic", fake)
     return fake
 
@@ -244,6 +247,58 @@ def test_anthropic_json_mode_injects_schema_into_system(settings, monkeypatch):
     assert out == {"ok": True}
     # JSON shape is injected into the system prompt (Anthropic has no JSON mode).
     assert '"ok"' in capture["kwargs"]["system"]
+
+
+def test_anthropic_no_credit_raises_actionable_503(settings, monkeypatch):
+    """Cuenta sin crédito -> ServiceNotConfiguredError con mensaje accionable
+    (regresión: antes burbujeaba como 500 genérico)."""
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    capture: dict = {}
+    fake = _install_fake_anthropic(monkeypatch, capture)
+
+    def _boom(**kwargs):
+        raise fake.BadRequestError(
+            "Your credit balance is too low to access the Anthropic API."
+        )
+
+    fake.Anthropic(api_key="x").messages.create = _boom  # sanity del fake
+    class _Messages:
+        def create(self, **kwargs):
+            raise fake.BadRequestError(
+                "Your credit balance is too low to access the Anthropic API."
+            )
+    class _Client:
+        def __init__(self, api_key=None):
+            self.messages = _Messages()
+    fake.Anthropic = _Client
+
+    with pytest.raises(config.ServiceNotConfiguredError) as exc:
+        llm.complete("hi")
+    assert "crédito" in str(exc.value)
+
+
+def test_rank_prefers_request_language_when_degraded(settings):
+    """Ranking degradado (sin embeddings): una petición 'es' prefiere el modelo
+    español aunque el inglés sea más reciente (regresión del NDA US)."""
+    def cand(lang, activated):
+        return rag.Candidate(
+            precedent={"language": lang},
+            version={"id": lang, "activated_at": activated},
+            weight=1.0,
+            text=f"texto {lang}",
+            is_generation_base=True,
+        )
+
+    es = cand("es", "2026-01-01T00:00:00+00:00")
+    en = cand("en", "2026-06-01T00:00:00+00:00")  # más reciente
+    embed_config = llm.resolve_embedding_config()  # conftest corta la red -> degradado
+
+    ranked = rag._rank("query", [es, en], embed_config, language="es")
+    assert ranked[0].precedent["language"] == "es"
+    # Sin idioma en la petición: manda la recencia (comportamiento anterior).
+    ranked = rag._rank("query", [es, en], embed_config, language="")
+    assert ranked[0].precedent["language"] == "en"
 
 
 # ---------------------------------------------------------------------------

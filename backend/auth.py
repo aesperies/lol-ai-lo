@@ -134,8 +134,16 @@ def assert_request_access(db: dbmod.Database, user: User, request_row: dict[str,
     this helper only governs READ access.
     """
     gestora_id = gestora_of_request(db, request_row)
-    if user.role in (UserRole.counsel, UserRole.admin):
+    if user.role == UserRole.admin:
         return gestora_id or ""
+    if user.role == UserRole.counsel:
+        # Política de asignación: un abogado solo ve las gestoras que tiene
+        # asignadas, más el pool de gestoras sin ningún abogado asignado.
+        from services.counsel_routing import counsel_can_access_gestora
+
+        if counsel_can_access_gestora(db, user.id, gestora_id):
+            return gestora_id or ""
+        raise HTTPException(status_code=404, detail="Request not found")
     if gestora_id is None or user.gestora_id != gestora_id:
         # Cross-gestora (or fund-less) request: never visible to a client.
         raise HTTPException(status_code=404, detail="Request not found")
@@ -210,8 +218,15 @@ def assert_review_access(db: dbmod.Database, user: User, review: dict[str, Any])
     Owner-only actions are gated separately by assert_review_owner.
     """
     gestora_id = review.get("gestora_id")
-    if user.role in (UserRole.counsel, UserRole.admin):
+    if user.role == UserRole.admin:
         return gestora_id or ""
+    if user.role == UserRole.counsel:
+        # Misma política de asignación que en requests (coherencia).
+        from services.counsel_routing import counsel_can_access_gestora
+
+        if counsel_can_access_gestora(db, user.id, gestora_id):
+            return gestora_id or ""
+        raise HTTPException(status_code=404, detail="Tabular review not found")
     if gestora_id is None or user.gestora_id != gestora_id:
         raise HTTPException(status_code=404, detail="Tabular review not found")
     if is_review_owner(user, review):

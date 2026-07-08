@@ -36,6 +36,7 @@ from models.schema import (
 )
 from services import audit, db as dbmod
 from services import notifications as notif
+from services.counsel_routing import counsel_gestora_scope
 from services.sla import hours_pending as sla_hours_pending
 
 router = APIRouter(prefix="/api", tags=["counsel-review"])
@@ -68,6 +69,13 @@ async def counsel_queue(
     settings = get_settings()
     rows = db.unscoped_select("requests", status=RequestStatus.counsel_review.value)
 
+    # Política de asignación: un abogado ve SUS gestoras + el pool de gestoras
+    # sin abogado asignado (etiquetadas para que la UI las separe). Admin: todo.
+    if user.role.value == "counsel":
+        mine, pool = counsel_gestora_scope(db, user.id)
+    else:
+        mine, pool = None, None
+
     items: list[dict[str, Any]] = []
     for row in rows:
         fund = db.get("funds", row["fund_id"]) if row.get("fund_id") else None
@@ -82,6 +90,15 @@ async def counsel_queue(
             level = "amber"
         else:
             level = "green"
+        if mine is not None:
+            if row_gestora_id in mine:
+                assignment = "mine"
+            elif row_gestora_id in pool:
+                assignment = "pool"
+            else:
+                continue  # gestora asignada a OTRO abogado: fuera de su alcance
+        else:
+            assignment = "mine"
         items.append({
             **row,
             "fund_name": (fund or {}).get("name"),
@@ -90,6 +107,7 @@ async def counsel_queue(
             "hours_pending": pending,
             "sla_hours": settings.sla_review_hours,
             "urgency": level,
+            "assignment": assignment,
         })
 
     if gestora_id:

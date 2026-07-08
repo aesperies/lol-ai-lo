@@ -19,6 +19,7 @@ from api.admin_metrics import router as admin_metrics_router
 from api.admin_retention import router as admin_retention_router
 from api.billing import router as billing_router
 from api.counsel_assignments import router as counsel_assignments_router
+from api.dashboard import router as dashboard_router
 from api.counsel_review import router as counsel_review_router
 from api.directory import router as directory_router
 from api.doc_types import router as doc_types_router
@@ -92,6 +93,7 @@ app.include_router(precedents_router)
 app.include_router(playbooks_router)
 app.include_router(notifications_router)
 app.include_router(counsel_assignments_router)
+app.include_router(dashboard_router)
 app.include_router(doc_types_router)
 app.include_router(admin_metrics_router)
 app.include_router(admin_retention_router)

@@ -1,5 +1,5 @@
 -- ============================================================
--- 014 — Mistral BYO key + lessons reinforcement/decay (lavern P2/P4)
+-- 017 (antes 014, renumerada por colisión entre sesiones) — Mistral BYO key + lessons reinforcement/decay (lavern P2/P4)
 --
 -- * gestora_model_config.mistral_api_key_enc: encrypted BYO key for the
 --   Mistral EU cloud provider (same write-only handling as the other keys).

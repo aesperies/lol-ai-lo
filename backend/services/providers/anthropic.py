@@ -57,6 +57,25 @@ class AnthropicLLM:
             raise ServiceNotConfiguredError(
                 "anthropic", "Could not reach the Anthropic API."
             ) from exc
+        except anthropic.BadRequestError as exc:  # type: ignore[attr-defined]
+            # Cuenta sin crédito: el error de negocio más común. Debe llegar al
+            # usuario como un 503 accionable, nunca como un 500 genérico.
+            if "credit" in str(exc).lower():
+                raise ServiceNotConfiguredError(
+                    "anthropic",
+                    "La cuenta de Anthropic no tiene crédito disponible. "
+                    "Añade saldo en console.anthropic.com → Plans & Billing.",
+                ) from exc
+            raise
+        except anthropic.AuthenticationError as exc:  # type: ignore[attr-defined]
+            raise ServiceNotConfiguredError(
+                "anthropic", "La API key de Anthropic no es válida o fue revocada."
+            ) from exc
+        except anthropic.RateLimitError as exc:  # type: ignore[attr-defined]
+            raise ServiceNotConfiguredError(
+                "anthropic",
+                "Límite de peticiones de Anthropic alcanzado; espera unos segundos y reintenta.",
+            ) from exc
         return "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

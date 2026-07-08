@@ -227,14 +227,27 @@ def _semantic_scores(
 
 
 def _rank(
-    query: str, candidates: list[Candidate], config: llm.EffectiveEmbeddingConfig
+    query: str,
+    candidates: list[Candidate],
+    config: llm.EffectiveEmbeddingConfig,
+    language: str = "",
 ) -> list[Candidate]:
     similarities = _semantic_scores(query, candidates, config)
     if similarities is None:
-        # Deterministic degradation: rag_weight desc, then most recent.
+        # Deterministic degradation: language match first (a Spanish request
+        # must prefer the Spanish model over a newer English one), then
+        # rag_weight desc, then most recent.
+        def lang_match(c: Candidate) -> int:
+            precedent_lang = c.precedent.get("language")
+            return 1 if (language and precedent_lang == language) else 0
+
         return sorted(
             candidates,
-            key=lambda c: (c.weight, str(c.version.get("activated_at") or c.version.get("created_at") or "")),
+            key=lambda c: (
+                lang_match(c),
+                c.weight,
+                str(c.version.get("activated_at") or c.version.get("created_at") or ""),
+            ),
             reverse=True,
         )
     paired = sorted(zip(candidates, similarities), key=lambda p: p[1] * p[0].weight, reverse=True)
@@ -270,7 +283,7 @@ def retrieve(
     for level, candidates in levels:
         if not candidates:
             continue
-        ranked = _rank(query_text, candidates, embed_config)
+        ranked = _rank(query_text, candidates, embed_config, language)
         base = next((c for c in ranked if c.is_generation_base), None)
         if base is None:
             # PDFs only: keep as read-only reference and keep falling back.
@@ -279,7 +292,7 @@ def retrieve(
         # Precedentes contribute context even when a model provides the base.
         context = [c.text for c in ranked[:TOP_K]]
         if level == 0 and candidates is not precedente_candidates:
-            context += [c.text for c in _rank(query_text, precedente_candidates, embed_config)[:TOP_K]]
+            context += [c.text for c in _rank(query_text, precedente_candidates, embed_config, language)[:TOP_K]]
         return RetrievalResult(
             level=level,
             base_text=base.text,

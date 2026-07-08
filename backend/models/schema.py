@@ -71,6 +71,7 @@ from models.dto import (  # noqa: F401
     GenerationJobOut,
     GenerationReviewOut,
     CounselQueueItemOut,
+    DashboardStatsOut,
     NotificationOut,
     NotificationsMarkReadBody,
     FundCreate,

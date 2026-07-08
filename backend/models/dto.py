@@ -513,6 +513,17 @@ class FundCreate(BaseModel):
     gestora_id: Optional[str] = None
 
 
+class DashboardStatsOut(BaseModel):
+    """GET /api/dashboard/stats — agregados del panel de gestora (Roadmap D)."""
+
+    counts: dict[str, int]
+    upcoming_deadlines: list[dict[str, Any]]
+    avg_validation_hours: Optional[float] = None
+    sla_hours: float
+    recent_activity: list[dict[str, Any]]
+    funds_count: int
+
+
 class NotificationOut(BaseModel):
     """GET /api/notifications/inbox — una fila de la campana in-app (016)."""
 
@@ -544,6 +555,10 @@ class CounselQueueItemOut(RequestOut):
     hours_pending: Optional[float] = None
     sla_hours: float = 48.0
     urgency: str = "green"
+    # 'mine' (gestora asignada a este abogado) | 'pool' (gestora sin ningún
+    # abogado asignado — visible para todos hasta que un admin asigne).
+    # Los admin ven todo; para ellos es siempre 'mine'.
+    assignment: str = "mine"
 
 
 class FundUpdate(BaseModel):
