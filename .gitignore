@@ -27,3 +27,5 @@ storage/
 # misc
 .DS_Store
 *.log
+.vercel
+.env*
