@@ -1992,6 +1992,7 @@ function defaultStubModelConfig(gestoraId: string): ModelConfig {
     embeddingModel: null,
     ollamaBaseUrl: null,
     anthropicKeySet: false,
+    mistralKeySet: false,
     openaiKeySet: false,
     isDefault: true,
     updatedAt: null,
@@ -2011,6 +2012,7 @@ export function stubPutModelConfig(
     embeddingModel?: string;
     ollamaBaseUrl?: string;
     anthropicApiKey?: string;
+    mistralApiKey?: string;
     openaiApiKey?: string;
   },
 ): ModelConfig {
@@ -2027,6 +2029,10 @@ export function stubPutModelConfig(
       input.anthropicApiKey === undefined
         ? prev.anthropicKeySet
         : input.anthropicApiKey.length > 0,
+    mistralKeySet:
+      input.mistralApiKey === undefined
+        ? prev.mistralKeySet
+        : input.mistralApiKey.length > 0,
     openaiKeySet:
       input.openaiApiKey === undefined
         ? prev.openaiKeySet

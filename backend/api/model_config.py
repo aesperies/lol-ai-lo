@@ -70,6 +70,7 @@ def _serialize(gestora_id: str, row: Optional[dict[str, Any]]) -> ModelConfigOut
         # Booleans only — the ciphertext (and certainly the plaintext) is never
         # returned to the client.
         anthropic_key_set=bool(row.get("anthropic_api_key_enc")),
+        mistral_key_set=bool(row.get("mistral_api_key_enc")),
         openai_key_set=bool(row.get("openai_api_key_enc")),
         is_default=False,
         updated_by=row.get("updated_by"),
@@ -118,6 +119,10 @@ async def put_model_config(
         fields["anthropic_api_key_enc"] = (
             secrets.encrypt(body.anthropic_api_key) if body.anthropic_api_key else None
         )
+    if body.mistral_api_key is not None:
+        fields["mistral_api_key_enc"] = (
+            secrets.encrypt(body.mistral_api_key) if body.mistral_api_key else None
+        )
     if body.openai_api_key is not None:
         fields["openai_api_key_enc"] = (
             secrets.encrypt(body.openai_api_key) if body.openai_api_key else None
@@ -146,6 +151,7 @@ async def put_model_config(
             "embedding_model": row.get("embedding_model"),
             "ollama_base_url": row.get("ollama_base_url"),
             "anthropic_key_set": bool(row.get("anthropic_api_key_enc")),
+            "mistral_key_set": bool(row.get("mistral_api_key_enc")),
             "openai_key_set": bool(row.get("openai_api_key_enc")),
         },
         ip_address=client_ip(http_request),

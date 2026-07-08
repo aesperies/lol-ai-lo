@@ -119,6 +119,7 @@ async def health() -> dict:
         "services": {
             "supabase": settings.supabase_configured,
             "anthropic": settings.anthropic_configured,
+            "mistral": settings.mistral_configured,
             "openai": settings.openai_configured,
             "google_drive": drive.is_configured(),
             "resend": settings.resend_configured,

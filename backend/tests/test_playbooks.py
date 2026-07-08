@@ -86,7 +86,7 @@ def test_critic_injects_playbook_into_prompt(db, seed, monkeypatch):
 
     captured: dict[str, Any] = {}
 
-    def fake_complete_json(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None):
+    def fake_complete_json(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs):
         captured["prompt"] = prompt
         return {"approved": True, "issues": []}
 
@@ -109,7 +109,7 @@ def test_critic_injects_playbook_into_prompt(db, seed, monkeypatch):
 def test_critic_no_playbook_when_none(db, seed, monkeypatch):
     captured: dict[str, Any] = {}
 
-    def fake_complete_json(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None):
+    def fake_complete_json(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs):
         captured["prompt"] = prompt
         return {"approved": True, "issues": []}
 

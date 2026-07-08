@@ -119,7 +119,7 @@ def test_source_marker_wrapped_in_styled_sup_in_html():
 def _capture_complete(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     captured: dict[str, Any] = {}
 
-    def fake_complete(prompt: str, *, max_tokens: int = 8192, json_schema=None, system=None, gestora_id=None):
+    def fake_complete(prompt: str, *, max_tokens: int = 8192, json_schema=None, system=None, gestora_id=None, **kwargs):
         captured["prompt"] = prompt
         captured["system"] = system
         return "DOCUMENTO GENERADO"
@@ -156,7 +156,7 @@ def test_drafting_guidance_mentions_source_convention(db, seed, monkeypatch):
 def test_generate_document_appends_source_guidance(monkeypatch):
     captured: dict[str, Any] = {}
 
-    def fake_complete(prompt, *, max_tokens=8192, system=None, gestora_id=None):
+    def fake_complete(prompt, *, max_tokens=8192, system=None, gestora_id=None, **kwargs):
         captured["prompt"] = prompt
         return "DOC"
 

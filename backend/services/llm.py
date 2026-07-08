@@ -48,8 +48,11 @@ class EffectiveLLMConfig:
         "llm_provider",
         "claude_model",
         "anthropic_api_key",
+        "mistral_api_key",
+        "mistral_model",
         "ollama_base_url",
         "ollama_llm_model",
+        "model_pinned",
     )
 
     def __init__(
@@ -60,12 +63,20 @@ class EffectiveLLMConfig:
         anthropic_api_key: str,
         ollama_base_url: str,
         ollama_llm_model: str,
+        mistral_api_key: str = "",
+        mistral_model: str = "",
+        model_pinned: bool = False,
     ) -> None:
         self.llm_provider = llm_provider
         self.claude_model = claude_model
         self.anthropic_api_key = anthropic_api_key
+        self.mistral_api_key = mistral_api_key
+        self.mistral_model = mistral_model
         self.ollama_base_url = ollama_base_url
         self.ollama_llm_model = ollama_llm_model
+        # True when a gestora pinned an explicit llm_model in its override —
+        # the cost router (services/model_router.py) must never re-route it.
+        self.model_pinned = model_pinned
 
     @property
     def anthropic_configured(self) -> bool:
@@ -128,8 +139,10 @@ def _local_llm_config(settings: Any) -> EffectiveLLMConfig:
     )
 
 
-def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
-    """Resolve the effective LLM config for an optional gestora.
+def resolve_config(
+    gestora_id: Optional[str] = None, *, task: Optional[str] = None
+) -> EffectiveLLMConfig:
+    """Resolve the effective LLM config for an optional gestora and workload.
 
     Falls back to global settings when ``gestora_id`` is None or the gestora
     has no override row. When the override row CANNOT BE READ the resolution
@@ -138,17 +151,27 @@ def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
     violate the no-cloud-without-opt-in rule (CLAUDE.md). Encrypted BYO keys
     are decrypted here (services/secrets.py); a key that fails to decrypt is
     treated as "not set" (logged at WARNING, never the plaintext).
+
+    ``task`` feeds the cost router (services/model_router.py): AFTER the
+    provider is resolved (privacy decision), light-tier workloads may be
+    routed to the provider's cheaper model (cost decision). A gestora-pinned
+    ``llm_model`` disables routing for its calls.
     """
     settings = get_settings()
     config = EffectiveLLMConfig(
         llm_provider=settings.llm_provider,
         claude_model=settings.claude_model,
         anthropic_api_key=settings.anthropic_api_key,
+        mistral_api_key=settings.mistral_api_key,
+        mistral_model=settings.mistral_model,
         ollama_base_url=settings.ollama_base_url,
         ollama_llm_model=settings.ollama_llm_model,
     )
+    # Local import: model_router imports config only; avoids a cycle here.
+    from services import model_router
+
     if not gestora_id:
-        return config
+        return model_router.apply(config, task)
 
     from services import secrets  # local import (optional-deps-free startup)
 
@@ -160,16 +183,19 @@ def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
             "local Ollama (cloud is opt-in and the opt-in is unreadable).",
             gestora_id,
         )
-        return _local_llm_config(settings)
+        return model_router.apply(_local_llm_config(settings), task)
     if row is None:
-        return config
+        return model_router.apply(config, task)
 
     if row.get("llm_provider"):
         config.llm_provider = row["llm_provider"]
     if row.get("llm_model"):
         # Stored generically as llm_model; maps onto the provider's model field.
+        # An explicit gestora model PINS the call — the cost router skips it.
         config.claude_model = row["llm_model"]
         config.ollama_llm_model = row["llm_model"]
+        config.mistral_model = row["llm_model"]
+        config.model_pinned = True
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
     enc = row.get("anthropic_api_key_enc")
@@ -182,7 +208,35 @@ def resolve_config(gestora_id: Optional[str] = None) -> EffectiveLLMConfig:
                 "falling back to global ANTHROPIC_API_KEY.",
                 gestora_id,
             )
-    return config
+    enc = row.get("mistral_api_key_enc")
+    if enc:
+        try:
+            config.mistral_api_key = secrets.decrypt(enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "Mistral BYO key for gestora %s could not be decrypted; "
+                "falling back to global MISTRAL_API_KEY.",
+                gestora_id,
+            )
+    return model_router.apply(config, task)
+
+
+def describe_model(
+    gestora_id: Optional[str] = None, *, task: Optional[str] = None
+) -> str:
+    """``provider:model`` the given call would use — for trails/telemetry.
+
+    Never raises (falls back to "?" on resolution errors): callers use this
+    for observability (e.g. generation_reviews.model_note), never for control
+    flow.
+    """
+    from services import model_router
+
+    try:
+        config = resolve_config(gestora_id, task=task)
+        return f"{config.llm_provider}:{model_router.model_of(config)}"
+    except Exception:  # noqa: BLE001 — observability must never break a call
+        return "?"
 
 
 def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbeddingConfig:
@@ -253,6 +307,7 @@ def complete(
     json_schema: Optional[dict[str, Any]] = None,
     system: Optional[str] = None,
     gestora_id: Optional[str] = None,
+    task: Optional[str] = None,
 ) -> str:
     """Generate a text completion via the configured provider.
 
@@ -268,6 +323,9 @@ def complete(
             (account-security feature C), its provider/model/BYO-key win for this
             call; otherwise the global settings are used. Defaults to None →
             global behaviour, so existing callers are unaffected.
+        task: Workload tag for the cost router (services/model_router.py) —
+            light-tier tasks (critic, lessons, tabular, parse) may run on the
+            provider's cheaper model. None → heavy tier (full model).
 
     Returns:
         The model's text response.
@@ -276,7 +334,7 @@ def complete(
         ServiceNotConfiguredError: The selected provider is misconfigured or
             unreachable (API layers translate to HTTP 503).
     """
-    config = resolve_config(gestora_id)
+    config = resolve_config(gestora_id, task=task)
     # Registry dispatch (services/providers): unknown providers raise
     # ServiceNotConfiguredError there (→ HTTP 503).
     from services import providers  # local import (optional-deps-free startup)
@@ -317,6 +375,7 @@ def complete_json(
     max_tokens: int = 8192,
     system: Optional[str] = None,
     gestora_id: Optional[str] = None,
+    task: Optional[str] = None,
 ) -> dict[str, Any]:
     """Generate JSON output and parse it into a dict.
 
@@ -331,11 +390,11 @@ def complete_json(
         ServiceNotConfiguredError: Provider misconfigured or unreachable.
         ValueError: Output could not be parsed as JSON after the repair retry.
     """
-    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id)
+    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id, task=task)
     try:
         return _coerce_json(raw)
     except (ValueError, json.JSONDecodeError):
         logger.warning("LLM JSON output invalid; attempting one repair retry.")
     # Repair retry: re-ask, then coerce (fences/brace-slice). Propagate failure.
-    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id)
+    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id, task=task)
     return _coerce_json(raw)

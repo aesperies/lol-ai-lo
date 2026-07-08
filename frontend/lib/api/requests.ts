@@ -378,6 +378,7 @@ interface ReviewIssueWire {
   suggested_fix?: string | null;
   location?: string | null;
   citation?: { where?: string | null; quote?: string | null } | null;
+  confidence?: number | null;
 }
 
 interface GenerationReviewWire {
@@ -402,6 +403,7 @@ function mapReviewIssue(wire: ReviewIssueWire): ReviewIssue {
     suggestedFix: wire.suggested_fix ?? undefined,
     location: wire.location ?? undefined,
     citation,
+    confidence: wire.confidence ?? undefined,
   };
 }
 

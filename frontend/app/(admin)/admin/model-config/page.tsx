@@ -19,7 +19,7 @@ import {
 import { getGestoras, getModelConfig, updateModelConfig } from "@/lib/api";
 import type { Gestora, ModelConfig } from "@/lib/types";
 
-const LLM_PROVIDERS = ["", "ollama", "anthropic"];
+const LLM_PROVIDERS = ["", "ollama", "anthropic", "mistral"];
 const EMBEDDING_PROVIDERS = ["", "ollama", "openai"];
 
 export default function AdminModelConfigPage() {
@@ -38,6 +38,7 @@ export default function AdminModelConfigPage() {
   const [embeddingModel, setEmbeddingModel] = useState("");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [mistralKey, setMistralKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export default function AdminModelConfigPage() {
         setEmbeddingModel(c.embeddingModel ?? "");
         setOllamaBaseUrl(c.ollamaBaseUrl ?? "");
         setAnthropicKey("");
+        setMistralKey("");
         setOpenaiKey("");
       })
       .catch(() => setConfig(null));
@@ -79,10 +81,12 @@ export default function AdminModelConfigPage() {
         ollamaBaseUrl,
         // Only send keys when the admin typed something (write-only).
         ...(anthropicKey ? { anthropicApiKey: anthropicKey } : {}),
+        ...(mistralKey ? { mistralApiKey: mistralKey } : {}),
         ...(openaiKey ? { openaiApiKey: openaiKey } : {}),
       });
       setConfig(saved);
       setAnthropicKey("");
+      setMistralKey("");
       setOpenaiKey("");
       setNotice(t("modelconfig.saved"));
     } catch {
@@ -221,6 +225,27 @@ export default function AdminModelConfigPage() {
                     config.anthropicKeySet
                       ? t("modelconfig.keyPlaceholderSet")
                       : ""
+                  }
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="mc-mistral-key">
+                    {t("modelconfig.mistralKey")}
+                  </Label>
+                  <Badge tone={config.mistralKeySet ? "emerald" : "slate"}>
+                    {config.mistralKeySet
+                      ? t("modelconfig.keySet")
+                      : t("modelconfig.keyUnset")}
+                  </Badge>
+                </div>
+                <Input
+                  id="mc-mistral-key"
+                  type="password"
+                  value={mistralKey}
+                  onChange={(e) => setMistralKey(e.target.value)}
+                  placeholder={
+                    config.mistralKeySet ? t("modelconfig.keyPlaceholderSet") : ""
                   }
                 />
               </div>

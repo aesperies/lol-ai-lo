@@ -78,7 +78,7 @@
   <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
   <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
   Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
-  Estado a 8-jul-2026 (migración 013).</p>
+  Estado a 8-jul-2026 (migración 014).</p>
 
   <!-- ================= CAPAS ================= -->
   <h2>1 · Vista por capas</h2>
@@ -144,9 +144,10 @@
       <div class="box"><b>services/generation_pipeline</b><span>orquesta RAG → drafter → critic → docx → redline</span></div>
       <div class="box"><b>services/rag</b><span>niveles 0a→3, silo duro por gestora</span></div>
       <div class="box"><b>services/llm + providers/</b><span>resolución por gestora, fail-closed a local</span></div>
+      <div class="box"><b>services/model_router</b><span>orquestador de costes: task → tier light/heavy</span></div>
       <div class="box"><b>services/jobs</b><span>cola asyncio, 3 reintentos</span></div>
-      <div class="box"><b>services/critic</b><span>2 rondas, issues con cita {where, quote}</span></div>
-      <div class="box"><b>services/lessons</b><span>lecciones por gestora → prompts</span></div>
+      <div class="box"><b>services/critic</b><span>2 rondas · citas verificadas por string-match · confianza · gate opcional</span></div>
+      <div class="box"><b>services/lessons</b><span>lecciones con refuerzo/decay (tentative→confirmed)</span></div>
       <div class="box"><b>services/redline</b><span>autor “Lol-AI-lo AI”</span></div>
       <div class="box"><b>services/sla · retention</b><span>sweeps periódicos</span></div>
       <div class="box"><b>services/storage · drive</b><span>filesystem local / Drive opcional</span></div>
@@ -182,6 +183,7 @@
     <div class="grid-mini">
       <div class="box"><b>Ollama (local) <span class="pill ok">defecto</span></b><span>LLM qwen2.5:14b · embeddings bge-m3 — los datos no salen de la máquina</span></div>
       <div class="box"><b>Anthropic Claude <span class="pill deg">opt-in</span></b><span>fallback LLM cloud, clave global o BYO por gestora</span></div>
+      <div class="box"><b>Mistral AI (UE) <span class="pill deg">opt-in</span></b><span>fallback LLM cloud con residencia de datos en la UE (París)</span></div>
       <div class="box"><b>OpenAI <span class="pill deg">opt-in</span></b><span>fallback embeddings cloud</span></div>
       <div class="box"><b>Supabase</b><span>PostgreSQL + Auth (JWT, MFA TOTP)</span></div>
       <div class="box"><b>Resend <span class="pill deg">opcional</span></b><span>email → si falta, consola</span></div>
@@ -223,7 +225,7 @@
       <div class="box"><b>1 · RAG</b><span>recuperación por silo + doc_type</span></div>
       <div class="box"><b>2 · Campos estructurados</b><span>se fusionan en key_terms (mandan sobre el parser)</span></div>
       <div class="box"><b>3 · Drafter especializado</b><span>rama por doc_type + lecciones de la gestora</span></div>
-      <div class="box"><b>4 · Critic (≤2 rondas)</b><span>issues con cita {where, quote} + playbooks; si no aprueba → fuerza Exit B</span></div>
+      <div class="box"><b>4 · Critic (≤2 rondas)</b><span>issues con cita {where, quote} verificada contra el borrador (string-match) + confianza + playbooks; gate evaluador opcional; si no aprueba → fuerza Exit B</span></div>
       <div class="box"><b>5 · Render .docx</b><span>python-docx + disclaimer SLP</span></div>
       <div class="box"><b>6 · Redline .docx</b><span>diff palabra a palabra, autor «Lol-AI-lo AI»</span></div>
     </div>
@@ -271,6 +273,7 @@
       <tr><th>Servicio</th><th>Papel</th><th>Si falta o cae</th></tr>
       <tr><td>Ollama</td><td>LLM + embeddings local (defecto)</td><td><span class="pill deg">degrada</span> 503 claro en parse/generate; critic y lecciones se saltan; RAG rankea por peso×recencia; el job reintenta 3×</td></tr>
       <tr><td>Anthropic</td><td>LLM cloud opt-in</td><td><span class="pill deg">degrada</span> 503 solo si está seleccionado; BYO key ilegible → clave global → local</td></tr>
+      <tr><td>Mistral (UE)</td><td>LLM cloud opt-in, residencia UE</td><td><span class="pill deg">degrada</span> igual que Anthropic; BYO key cifrada por gestora</td></tr>
       <tr><td>OpenAI</td><td>Embeddings cloud opt-in</td><td><span class="pill deg">degrada</span> ranking peso×recencia, nunca amplía candidatos</td></tr>
       <tr><td>Supabase</td><td>BD + Auth</td><td><span class="pill down">503 en datos</span> /health sigue; en dev, <code>DEV_AUTH_STUB=true</code> usa store en memoria</td></tr>
       <tr><td>Resend</td><td>Email</td><td><span class="pill ok">consola</span> el flujo nunca se bloquea</td></tr>
@@ -278,8 +281,26 @@
     </table>
   </div>
 
+  <!-- ================= ORQUESTADOR ================= -->
+  <h2>6 · Orquestador de modelos (ahorro de costes)</h2>
+  <div class="card">
+    <p style="color:var(--ink-2);max-width:75ch">Cada llamada al LLM se etiqueta con su workload y
+    <code>services/model_router.py</code> decide el <b>tier</b>: los borradores y refinamientos (calidad crítica)
+    siempre van al modelo <b>heavy</b> del proveedor; las cargas cortas y de alto volumen — critic, gate, lecciones,
+    celdas tabulares, parse de intake — van al modelo <b>light</b> (p. ej. qwen 7B / Haiku / mistral-small).
+    El parse escala automáticamente a heavy si vuelve con confianza &lt; 0,7. Dos límites inviolables:
+    el router solo cambia el <b>modelo</b>, nunca el <b>proveedor</b> (la privacidad se decide antes, fail-closed a local),
+    y una gestora que fija un modelo explícito en su configuración no se re-enruta jamás.
+    Cada ronda del critic registra qué modelo la sirvió (<code>generation_reviews.model_note</code>) para auditar el ahorro.</p>
+    <div class="grid-mini" style="margin-top:.7rem">
+      <div class="box"><b>heavy</b><span>generate · refine · parse escalado</span></div>
+      <div class="box"><b>light</b><span>parse · critic · gate · lessons · tabular</span></div>
+      <div class="box"><b>Config</b><span>OLLAMA_LIGHT_MODEL · ANTHROPIC_LIGHT_MODEL · MISTRAL_LIGHT_MODEL (vacío = sin routing)</span></div>
+    </div>
+  </div>
+
   <!-- ================= TABULAR ================= -->
-  <h2>6 · Revisión tabular</h2>
+  <h2>7 · Revisión tabular</h2>
   <div class="card">
     <p style="color:var(--ink-2);max-width:75ch">Grid de extracción multi-documento por gestora: el cliente elige documentos
     (versiones de precedentes o documentos generados), define columnas (texto, fecha, importe, select…) y lanza la extracción;
@@ -288,9 +309,10 @@
   </div>
 
   <div class="foot">
-    Generado el 8-jul-2026 a partir del código (migraciones 001–013). Backend FastAPI · Frontend Next.js 14 ·
-    Supabase PostgreSQL · Ollama local-first con fallbacks cloud opt-in. Documentos de referencia: docs/SPEC.md,
-    docs/SECURITY.md, docs/GDPR.md, docs/LAVERN_IDEAS.md.
+    Actualizado el 8-jul-2026 a partir del código (migraciones 001–014). Backend FastAPI · Frontend Next.js 14 ·
+    Supabase PostgreSQL · Ollama local-first con fallbacks cloud opt-in (Anthropic / Mistral UE). Documentos de
+    referencia: docs/SPEC.md, docs/SECURITY.md, docs/GDPR.md, docs/LAVERN_IDEAS.md.
+    <b>Este documento se mantiene al día con cada cambio de arquitectura.</b>
   </div>
 </div>
 </body>

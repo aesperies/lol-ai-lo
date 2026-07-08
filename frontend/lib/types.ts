@@ -126,6 +126,7 @@ export interface ModelConfig {
   embeddingModel: string | null;
   ollamaBaseUrl: string | null;
   anthropicKeySet: boolean;
+  mistralKeySet: boolean;
   openaiKeySet: boolean;
   isDefault: boolean;
   updatedAt: string | null;
@@ -343,6 +344,8 @@ export interface ReviewIssue {
   location?: string;
   /** Verifiable citation to the exact problematic draft text. */
   citation?: ReviewIssueCitation;
+  /** Reviewer-reported confidence in [0, 1]; absent when the model omitted it. */
+  confidence?: number;
 }
 
 /** One persisted critic round (GET /api/requests/{id}/reviews). */

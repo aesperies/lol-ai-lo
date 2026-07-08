@@ -54,6 +54,9 @@ CRITIC_SCHEMA: dict[str, Any] = {
                     "problem": {"type": "string"},
                     "suggested_fix": {"type": "string"},
                     "location": {"type": "string"},
+                    # Reviewer's own confidence that the issue is real (0..1);
+                    # surfaced in the review trail so readers can calibrate.
+                    "confidence": {"type": "number"},
                     # Verifiable grounding (grounding Feature 2): the exact draft
                     # text this issue is about, so "something is wrong" is
                     # checkable. Same SHAPE as the tabular-review citation
@@ -86,7 +89,8 @@ _CRITIC_SYSTEM = (
     'that is problematic>"}. For a MISSING-clause issue, quote the surrounding '
     "draft text where the clause should appear (or the empty [MISSING] marker). "
     "If the draft is substantively sound, return approved=true with an empty "
-    "issues list. Output strictly the requested JSON."
+    'issues list. Give every issue a "confidence" between 0 and 1 (how sure '
+    "you are the defect is real). Output strictly the requested JSON."
 )
 
 _CRITIC_PROMPT = """Review this {branch} draft (document type: {doc_type}).
@@ -166,6 +170,15 @@ def _normalise_citation(raw: Any) -> Optional[dict[str, str]]:
     return {"where": where, "quote": quote}
 
 
+def _normalise_confidence(raw: Any) -> Optional[float]:
+    """Clamp the critic's confidence into [0, 1]; None when absent/invalid."""
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, value))
+
+
 @dataclass
 class Issue:
     """One substantive defect raised by the critic."""
@@ -178,6 +191,8 @@ class Issue:
     # Verifiable grounding (grounding Feature 2): {where, quote} pointing to the
     # exact problematic DRAFT text. None when the critic supplied no citation.
     citation: Optional[dict[str, str]] = None
+    # Reviewer-reported confidence in [0, 1]; None when the model omitted it.
+    confidence: Optional[float] = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "Issue":
@@ -188,6 +203,7 @@ class Issue:
             suggested_fix=str(raw.get("suggested_fix", "")),
             location=str(raw.get("location", "")),
             citation=_normalise_citation(raw.get("citation")),
+            confidence=_normalise_confidence(raw.get("confidence")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -198,7 +214,88 @@ class Issue:
             "suggested_fix": self.suggested_fix,
             "location": self.location,
             "citation": self.citation,
+            "confidence": self.confidence,
         }
+
+
+def _normalise_text(text: str) -> str:
+    """Case-folded, whitespace-collapsed text for quote substring matching."""
+    return " ".join(text.split()).casefold()
+
+
+def _ground_issues(issues: list[Issue], draft_text: str) -> list[Issue]:
+    """Grounding verifier (lavern P1): drop issues whose citation quote is NOT
+    verbatim in the draft — a fabricated quote means a hallucinated issue, and
+    acting on it wastes a full revision round. Purely mechanical (string
+    matching), no LLM cost. Issues WITHOUT a citation are kept unchanged:
+    local models often omit citations and dropping those would neuter the
+    critic; only a checkable-and-false quote is disqualifying."""
+    if not get_settings().critic_grounding_enabled:
+        return issues
+    haystack = _normalise_text(draft_text)
+    grounded: list[Issue] = []
+    for issue in issues:
+        quote = (issue.citation or {}).get("quote", "")
+        if quote and _normalise_text(quote) not in haystack:
+            logger.info(
+                "Critic issue dropped by grounding verifier (quote not in draft): %r",
+                quote[:80],
+            )
+            continue
+        grounded.append(issue)
+    return grounded
+
+
+_GATE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "keep": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["keep"],
+}
+
+_GATE_SYSTEM = (
+    "You are a strict evaluation gate for legal review findings. You receive "
+    "numbered issues raised against a draft. KEEP only issues that are "
+    "substantive, actionable and clearly supported by their quoted draft "
+    "text; DROP speculative, stylistic, duplicate or trivial ones. When in "
+    "doubt, drop. Output strictly the requested JSON: the list of issue "
+    "numbers to keep."
+)
+
+
+def _gate_issues(
+    issues: list[Issue], *, gestora_id: Optional[str] = None
+) -> list[Issue]:
+    """Evaluator gate (lavern P3, opt-in): one cheap light-tier pass that
+    filters weak issues BEFORE an expensive revision round. Any failure —
+    LLM unreachable, bad JSON, out-of-range indices — degrades to keeping
+    every issue (the gate can only ever remove work, never add risk)."""
+    if not issues or not get_settings().critic_gate_enabled:
+        return issues
+    numbered = "\n".join(
+        f"{idx}. [{i.severity}/{i.category}] {i.problem}"
+        + (f' — quote: "{i.citation["quote"]}"' if i.citation and i.citation.get("quote") else "")
+        for idx, i in enumerate(issues, start=1)
+    )
+    prompt = (
+        "Issues raised against a legal draft:\n"
+        f"{numbered}\n\n"
+        "Return the numbers of the issues to KEEP."
+    )
+    try:
+        result = llm.complete_json(
+            prompt, _GATE_SCHEMA, system=_GATE_SYSTEM,
+            gestora_id=gestora_id, task="critic_gate",
+        )
+        keep = {int(n) for n in (result.get("keep") or [])}
+    except Exception:  # noqa: BLE001 — the gate must never block the pipeline
+        logger.info("Critic gate unavailable; keeping all issues.")
+        return issues
+    kept = [issue for idx, issue in enumerate(issues, start=1) if idx in keep]
+    if len(kept) < len(issues):
+        logger.info("Critic gate dropped %d weak issue(s).", len(issues) - len(kept))
+    return kept
 
 
 @dataclass
@@ -279,7 +376,8 @@ def review(
     )
     try:
         result = llm.complete_json(
-            prompt, CRITIC_SCHEMA, system=_CRITIC_SYSTEM, gestora_id=gestora_id
+            prompt, CRITIC_SCHEMA, system=_CRITIC_SYSTEM, gestora_id=gestora_id,
+            task="critic",
         )
     except ServiceNotConfiguredError:
         logger.info("Critic skipped: LLM unreachable; draft proceeds unreviewed.")
@@ -293,7 +391,9 @@ def review(
         for item in (result.get("issues") or [])
         if isinstance(item, dict)
     ]
-    approved = bool(result.get("approved", not issues))
+    # Grounding verifier (lavern P1): fabricated quotes disqualify the issue.
+    issues = _ground_issues(issues, draft_text)
+    approved = bool(result.get("approved", not issues)) or not issues
     return Verdict(approved=approved, issues=issues)
 
 
@@ -369,6 +469,9 @@ def draft_with_review(
     min_severity = settings.critic_min_severity_to_revise
     current_text = first_draft
     rounds: list[ReviewRound] = []
+    # Which model served the critic — recorded on every trail row so the cost
+    # router's decisions stay auditable (observability only, never raises).
+    model_note = llm.describe_model(gestora_id, task="critic")
 
     # Round 0 reviews the first draft; rounds 1..max_rounds are revise→review.
     for round_idx in range(0, settings.critic_max_rounds + 1):
@@ -388,12 +491,16 @@ def draft_with_review(
             )
 
         actionable = verdict.issues_at_or_above(min_severity)
+        # Evaluator gate (lavern P3, opt-in): filter weak issues before paying
+        # for a revision round. Failure degrades to keeping every issue.
+        if actionable:
+            actionable = _gate_issues(actionable, gestora_id=gestora_id)
         rounds.append(
             ReviewRound(
                 round=round_idx,
                 approved=verdict.approved,
                 issues=[i.to_dict() for i in verdict.issues],
-                model_note=None,
+                model_note=model_note,
             )
         )
 

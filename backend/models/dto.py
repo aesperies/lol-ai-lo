@@ -421,6 +421,7 @@ class ModelConfigBody(BaseModel):
     embedding_model: Optional[str] = None
     ollama_base_url: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    mistral_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
 
 
@@ -438,6 +439,7 @@ class ModelConfigOut(BaseModel):
     embedding_model: Optional[str] = None
     ollama_base_url: Optional[str] = None
     anthropic_key_set: bool = False
+    mistral_key_set: bool = False
     openai_key_set: bool = False
     is_default: bool = False
     updated_by: Optional[str] = None

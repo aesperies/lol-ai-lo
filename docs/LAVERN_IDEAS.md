@@ -3,6 +3,12 @@
 **Fuente:** [AnttiHero/lavern](https://github.com/AnttiHero/lavern) (Apache 2.0 — reutilizable
 con atribución). Analizado el 2026-07-08.
 
+> **Estado (8-jul-2026):** P1 ✅, P2 ✅, P3 ✅ (opt-in `CRITIC_GATE_ENABLED`),
+> P4 ✅ (proveedor `mistral` + BYO key), P7 ✅. Además se implementó el
+> **orquestador de costes** (`services/model_router.py`, sección 6 de
+> docs/ARQUITECTURA.html). Pendientes: P5 (debate rojo/azul) y P6 (ingesta
+> autónoma).
+
 Lavern es un sistema de análisis legal agéntico: 67 agentes especializados (TypeScript,
 Fastify, SQLite FTS5) que revisan documentos mediante un protocolo de debate con citas
 obligatorias, tres capas de verificación y una "precedent board" con memoria entre

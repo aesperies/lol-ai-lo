@@ -196,6 +196,7 @@ def generate_document(
         max_tokens=get_settings().max_generation_tokens,
         system=system,
         gestora_id=gestora_id,
+        task="generate",
     ).strip()
     # Mandatory on every generated document (SPEC corporate structure).
     return f"{text}\n\n{SLP_DISCLAIMER}"
@@ -217,7 +218,10 @@ def refine_document(
         .replace("{instruction}", instruction)
     )
     text = llm.complete(
-        prompt, max_tokens=get_settings().max_generation_tokens, gestora_id=gestora_id
+        prompt,
+        max_tokens=get_settings().max_generation_tokens,
+        gestora_id=gestora_id,
+        task="refine",
     ).strip()
     if refinement_unclear_reason(text) is not None:
         return text

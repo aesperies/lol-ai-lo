@@ -227,7 +227,7 @@ def extract_cell(
         document_text=_cap_text(document_text),
         options=options,
     )
-    result = llm.complete_json(prompt, CELL_SCHEMA, max_tokens=512, gestora_id=gestora_id)
+    result = llm.complete_json(prompt, CELL_SCHEMA, max_tokens=512, gestora_id=gestora_id, task="tabular")
     return {
         "value": str(result.get("value", "")).strip(),
         "reasoning": str(result.get("reasoning", "")).strip(),

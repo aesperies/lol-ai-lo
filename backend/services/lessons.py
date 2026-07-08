@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from typing import Any, Optional
 
 import asyncio
@@ -133,7 +134,7 @@ def extract_lessons(
     )
     try:
         result = llm.complete_json(
-            prompt, LESSONS_SCHEMA, system=_EXTRACTION_SYSTEM
+            prompt, LESSONS_SCHEMA, system=_EXTRACTION_SYSTEM, task="lessons"
         )
     except ServiceNotConfiguredError:
         logger.info("Lessons extraction skipped: LLM unreachable (request %s)", source_request_id)
@@ -150,16 +151,13 @@ def extract_lessons(
     ][:3]
 
     for lesson in lessons:
-        store.insert(
-            "drafting_lessons",
-            {
-                "gestora_id": gestora_id,  # isolation anchor — hard filter on read
-                "branch": branch_value,
-                "doc_type": doc_type,
-                "lesson": lesson,
-                "source_request_id": source_request_id,
-                "weight": 1.0,
-            },
+        _store_or_reinforce(
+            store,
+            gestora_id=gestora_id,
+            branch_value=branch_value,
+            doc_type=doc_type,
+            lesson=lesson,
+            source_request_id=source_request_id,
         )
     logger.info(
         "Extracted %d lesson(s) for gestora %s / branch %s (request %s)",
@@ -171,8 +169,95 @@ def extract_lessons(
     return lessons
 
 
+# Two lesson texts at or above this similarity are the SAME rule being
+# re-learned — reinforce the stored one instead of piling up a duplicate.
+_REINFORCE_SIMILARITY = 0.8
+# Weight gain per reinforcement, capped so one recurring rule cannot drown out
+# everything else.
+_REINFORCE_STEP = 0.25
+_MAX_WEIGHT = 2.0
+
+
+def _similar(a: str, b: str) -> bool:
+    return SequenceMatcher(None, a.casefold().strip(), b.casefold().strip()).ratio() >= _REINFORCE_SIMILARITY
+
+
+def _store_or_reinforce(
+    store: dbmod.Database,
+    *,
+    gestora_id: str,
+    branch_value: str,
+    doc_type: Optional[str],
+    lesson: str,
+    source_request_id: Optional[str],
+) -> None:
+    """Reinforcement (lavern P2): a re-extracted near-duplicate lesson bumps
+    the stored row (occurrences/weight/last_reinforced_at, tentative →
+    confirmed at the threshold) instead of accumulating noise; a genuinely new
+    rule is inserted as ``tentative``."""
+    settings = get_settings()
+    existing = store.select(
+        "drafting_lessons", gestora_id=gestora_id, branch=branch_value
+    )
+    for row in existing:
+        if row.get("doc_type") == doc_type and _similar(str(row.get("lesson", "")), lesson):
+            occurrences = int(row.get("occurrences") or 1) + 1
+            store.update(
+                "drafting_lessons",
+                row["id"],
+                {
+                    "occurrences": occurrences,
+                    "weight": min(_MAX_WEIGHT, float(row.get("weight") or 1.0) + _REINFORCE_STEP),
+                    "last_reinforced_at": _now_iso(),
+                    "status": (
+                        "confirmed"
+                        if occurrences >= settings.lessons_confirm_threshold
+                        else str(row.get("status") or "tentative")
+                    ),
+                },
+            )
+            logger.info(
+                "Lesson reinforced (x%d) for gestora %s / branch %s",
+                occurrences, gestora_id, branch_value,
+            )
+            return
+    store.insert(
+        "drafting_lessons",
+        {
+            "gestora_id": gestora_id,  # isolation anchor — hard filter on read
+            "branch": branch_value,
+            "doc_type": doc_type,
+            "lesson": lesson,
+            "source_request_id": source_request_id,
+            "weight": 1.0,
+            "status": "tentative",
+            "occurrences": 1,
+            "last_reinforced_at": _now_iso(),
+        },
+    )
+
+
+def _effective_weight(row: dict[str, Any], *, now: Optional[datetime] = None) -> float:
+    """Read-time exponential decay (lavern P2): weight halves every
+    ``lessons_half_life_days`` since the last reinforcement, so stale rules
+    fade out without a sweep. Unparseable timestamps decay nothing."""
+    settings = get_settings()
+    weight = float(row.get("weight") or 1.0)
+    stamp = row.get("last_reinforced_at") or row.get("created_at")
+    if not stamp:
+        return weight
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return weight
+    age_days = max(0.0, ((now or datetime.now(timezone.utc)) - moment).total_seconds() / 86400.0)
+    return weight * (0.5 ** (age_days / settings.lessons_half_life_days))
+
+
 def _recency_key(row: dict[str, Any]) -> str:
-    return str(row.get("created_at") or "")
+    return str(row.get("last_reinforced_at") or row.get("created_at") or "")
 
 
 def lessons_for(
@@ -197,10 +282,15 @@ def lessons_for(
     # gestora_id + branch is the hard pre-filter (db.select equality match).
     rows = db.select("drafting_lessons", gestora_id=gestora_id, branch=branch_value)
 
+    # Decay floor (lavern P2): a rule that has not been reinforced for long
+    # enough stops being injected — the system unlearns what stopped recurring.
+    floor = get_settings().lessons_min_effective_weight
+    rows = [r for r in rows if _effective_weight(r) >= floor]
+
     def rank_key(row: dict[str, Any]) -> tuple[Any, ...]:
         doc_match = 1 if doc_type is not None and row.get("doc_type") == doc_type else 0
-        weight = float(row.get("weight", 1.0))
-        return (doc_match, weight, _recency_key(row))
+        confirmed = 1 if str(row.get("status") or "") == "confirmed" else 0
+        return (doc_match, confirmed, _effective_weight(row), _recency_key(row))
 
     rows.sort(key=rank_key, reverse=True)
     return [row["lesson"] for row in rows[:top_k]]

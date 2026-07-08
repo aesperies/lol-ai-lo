@@ -9,11 +9,15 @@ when the selected provider is misconfigured or unreachable (API -> 503).
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Optional
 
+from config import get_settings
 from models import doc_fields
 from models.schema import UNCLASSIFIABLE_MESSAGE
 from services import llm
+
+logger = logging.getLogger("lolailo.intake_parser")
 
 # JSON schema for the parser output (SPEC OUTPUT object). Passed to the LLM
 # seam so Ollama runs in JSON mode and the model knows the target shape.
@@ -133,8 +137,24 @@ def parse_intake(
         prompt = prompt.replace(_OUTPUT_MARKER, section + _OUTPUT_MARKER, 1)
         prompt = f"{prompt}\n{STRUCTURED_FIELDS_RULE}"
     # JSON mode (native on Ollama, prompt-driven on Anthropic) with one repair
-    # retry on invalid output.
-    parsed = llm.complete_json(prompt, INTAKE_SCHEMA, max_tokens=2048)
+    # retry on invalid output. Light tier first (cost router); when the light
+    # parse comes back under-confident AND a heavier model is actually
+    # configured, retry once on the heavy tier and keep the better result.
+    parsed = llm.complete_json(prompt, INTAKE_SCHEMA, max_tokens=2048, task="parse")
+    settings = get_settings()
+    confidence = float(parsed.get("confidence") or 0.0)
+    if (
+        confidence < settings.parse_escalation_confidence
+        and llm.describe_model(task="parse") != llm.describe_model(task="parse_escalated")
+    ):
+        try:
+            escalated = llm.complete_json(
+                prompt, INTAKE_SCHEMA, max_tokens=2048, task="parse_escalated"
+            )
+            if float(escalated.get("confidence") or 0.0) > confidence:
+                parsed = escalated
+        except Exception:  # noqa: BLE001 — escalation is best-effort
+            logger.info("Heavy-tier parse escalation failed; keeping light result.")
 
     confidence = float(parsed.get("confidence") or 0.0)
     if confidence < 0.7 or parsed.get("unclear_fields"):

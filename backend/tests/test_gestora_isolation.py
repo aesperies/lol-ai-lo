@@ -237,7 +237,7 @@ class TestLessonsIsolation:
 
         monkeypatch.setattr(
             llm, "complete_json",
-            lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: {
+            lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs: {
                 "lessons": ["Regla generalizable de Alfa"]
             },
         )

@@ -60,6 +60,11 @@ function IssueRow({ issue }: { issue: ReviewIssue }) {
         <Badge tone="slate">
           {t(`review.category.${issue.category}` as DictKey)}
         </Badge>
+        {typeof issue.confidence === "number" ? (
+          <Badge tone="slate">
+            {t("review.confidence")}: {Math.round(issue.confidence * 100)}%
+          </Badge>
+        ) : null}
         {issue.location ? (
           <span className="text-xs text-ink-400">{issue.location}</span>
         ) : null}

@@ -95,6 +95,7 @@ interface ModelConfigWire {
   embedding_model?: string | null;
   ollama_base_url?: string | null;
   anthropic_key_set: boolean;
+  mistral_key_set?: boolean;
   openai_key_set: boolean;
   is_default: boolean;
   updated_at?: string | null;
@@ -109,6 +110,7 @@ function mapModelConfig(wire: ModelConfigWire): ModelConfig {
     embeddingModel: wire.embedding_model ?? null,
     ollamaBaseUrl: wire.ollama_base_url ?? null,
     anthropicKeySet: wire.anthropic_key_set,
+    mistralKeySet: wire.mistral_key_set ?? false,
     openaiKeySet: wire.openai_key_set,
     isDefault: wire.is_default,
     updatedAt: wire.updated_at ?? null,
@@ -142,6 +144,7 @@ export async function updateModelConfig(
     embeddingModel?: string;
     ollamaBaseUrl?: string;
     anthropicApiKey?: string;
+    mistralApiKey?: string;
     openaiApiKey?: string;
   },
 ): Promise<ModelConfig> {
@@ -162,6 +165,8 @@ export async function updateModelConfig(
     body.ollama_base_url = input.ollamaBaseUrl;
   if (input.anthropicApiKey !== undefined)
     body.anthropic_api_key = input.anthropicApiKey;
+  if (input.mistralApiKey !== undefined)
+    body.mistral_api_key = input.mistralApiKey;
   if (input.openaiApiKey !== undefined) body.openai_api_key = input.openaiApiKey;
   return mapModelConfig(
     await apiFetch<ModelConfigWire>(apiPaths.adminModelConfig(gestoraId), {

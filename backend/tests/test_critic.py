@@ -26,7 +26,7 @@ def _verdict_sequence(monkeypatch: pytest.MonkeyPatch, verdicts: list[dict[str, 
     """Make llm.complete_json return the queued critic verdicts in order."""
     calls = {"n": 0}
 
-    def fake_complete_json(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None):
+    def fake_complete_json(prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs):
         idx = min(calls["n"], len(verdicts) - 1)
         calls["n"] += 1
         return verdicts[idx]
@@ -63,7 +63,8 @@ def test_review_issue_carries_citation(monkeypatch):
         }],
     }])
     verdict = critic.review(
-        draft_text="DOC", doc_type="Llamada de Capital (Capital Call Notice)",
+        draft_text="DOC con importe de 999.999 EUR en la cláusula segunda",
+        doc_type="Llamada de Capital (Capital Call Notice)",
         branch=Branch.OPERACIONES_DE_FONDO, parsed_params=_params(), precedent_text="P",
     )
     assert verdict.issues[0].citation == {
@@ -168,7 +169,7 @@ def test_revision_instruction_includes_issue_citation(monkeypatch):
         return "REVISED DRAFT"
 
     critic.draft_with_review(
-        first_draft="ORIGINAL DRAFT",
+        first_draft="ORIGINAL DRAFT con importe de 999.999 EUR",
         doc_type="Llamada de Capital (Capital Call Notice)",
         branch=Branch.OPERACIONES_DE_FONDO,
         parsed_params=_params(),
@@ -302,7 +303,7 @@ def test_pipeline_forces_counsel_when_critic_cannot_approve(wf, db, seed, monkey
     }
     monkeypatch.setattr(
         llm, "complete_json",
-        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: blocking,
+        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs: blocking,
     )
     # Revisions must produce a valid (non-unclear) draft each round so the loop
     # exhausts its budget; refine_document would otherwise hit the unreachable
@@ -347,12 +348,12 @@ def test_pipeline_persists_and_surfaces_issue_citation(wf, db, seed, monkeypatch
             "severity": "blocking", "category": "factual",
             "problem": "Invented amount not in parameters",
             "suggested_fix": "Remove the invented amount", "location": "clause 3",
-            "citation": {"where": "Cláusula Tercera", "quote": "importe de 999.999 EUR"},
+            "citation": {"where": "Cláusula Tercera", "quote": "importe de 500.000 euros"},
         }],
     }
     monkeypatch.setattr(
         llm, "complete_json",
-        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: blocking,
+        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs: blocking,
     )
     from services import generator
     monkeypatch.setattr(
@@ -365,13 +366,13 @@ def test_pipeline_persists_and_surfaces_issue_citation(wf, db, seed, monkeypatch
     # Persisted in generation_reviews jsonb.
     reviews = db.select("generation_reviews", request_id=request_id)
     citation = reviews[0]["issues"][0]["citation"]
-    assert citation == {"where": "Cláusula Tercera", "quote": "importe de 999.999 EUR"}
+    assert citation == {"where": "Cláusula Tercera", "quote": "importe de 500.000 euros"}
 
     # Surfaced via the reviews endpoint DTO.
     resp = client.get(f"/api/requests/{request_id}/reviews", headers=auth(seed["client_a"]))
     assert resp.status_code == 200, resp.text
     out_citation = resp.json()[0]["issues"][0]["citation"]
-    assert out_citation == {"where": "Cláusula Tercera", "quote": "importe de 999.999 EUR"}
+    assert out_citation == {"where": "Cláusula Tercera", "quote": "importe de 500.000 euros"}
 
 
 def test_pipeline_critic_approves_no_forced_counsel(wf, db, seed, monkeypatch):
@@ -380,7 +381,7 @@ def test_pipeline_critic_approves_no_forced_counsel(wf, db, seed, monkeypatch):
     seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PRECEDENTE ALFA")
     monkeypatch.setattr(
         llm, "complete_json",
-        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None: {"approved": True, "issues": []},
+        lambda prompt, schema, *, max_tokens=8192, system=None, gestora_id=None, **kwargs: {"approved": True, "issues": []},
     )
 
     request_id, _ = wf.to_review_pending()

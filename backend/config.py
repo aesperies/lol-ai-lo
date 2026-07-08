@@ -60,11 +60,33 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-20250514"
 
+    # ---------- Mistral (optional EU cloud fallback — data residency in Paris) ----------
+    # GDPR-friendlier cloud alternative to Anthropic for gestoras that accept
+    # cloud processing only within the EU. TODO: real credential required when
+    # LLM_PROVIDER=mistral (console.mistral.ai -> API Keys).
+    mistral_api_key: str = ""
+    mistral_model: str = "mistral-large-latest"
+
     # ---------- OpenAI (optional cloud RAG embeddings) ----------
     # TODO: real credential required when EMBEDDING_PROVIDER=openai
     # (platform.openai.com)
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
+
+    # ---------- Cost-aware model routing (services/model_router.py) ----------
+    # The orchestrator picks a LIGHT model for cheap, high-volume workloads
+    # (critic, evaluator gate, lessons, tabular cells, intake parse) and keeps
+    # the provider's standard model for document generation/refinement. A
+    # gestora that pins an explicit llm_model in its model-config override is
+    # NEVER re-routed. Empty light model = routing is a no-op for that provider.
+    model_routing_enabled: bool = True
+    ollama_light_model: str = ""  # e.g. "qwen2.5:7b-instruct" once pulled
+    anthropic_light_model: str = "claude-haiku-4-5-20251001"
+    mistral_light_model: str = "mistral-small-latest"
+    # Intake-parse escalation: when the light-tier parse returns confidence
+    # below this, retry ONCE on the heavy tier (skipped when both tiers
+    # resolve to the same model).
+    parse_escalation_confidence: float = 0.7
 
     # ---------- Google Drive ----------
     # TODO: real service-account JSON required for Drive storage
@@ -142,12 +164,29 @@ class Settings(BaseSettings):
     # Lowest severity that triggers a revision: revise on this and anything
     # more severe, ignore everything below it ('blocking' > 'major' > 'minor').
     critic_min_severity_to_revise: str = "major"
+    # Grounding verifier (lavern P1): an issue whose citation quote does NOT
+    # appear in the draft is a hallucination — drop it instead of triggering a
+    # useless (and expensive) revision round. Issues without a citation keep
+    # their severity (local models often omit citations; dropping them would
+    # neuter the critic).
+    critic_grounding_enabled: bool = True
+    # Evaluator gate (lavern P3, opt-in): one cheap light-tier LLM pass that
+    # filters weak/speculative issues BEFORE an expensive revision round.
+    critic_gate_enabled: bool = False
     # How many gestora-siloed lessons (services/lessons.py) the specialized
     # drafter injects into the generation context (top-K by weight*recency).
     drafting_lessons_top_k: int = 5
     # Below this draft↔final similarity there is something to learn; at or above
     # it the lesson-extraction pass short-circuits (little/nothing changed).
     lessons_similarity_skip_threshold: float = 0.985
+    # Lessons reinforcement/decay (lavern P2): a re-extracted near-duplicate
+    # lesson REINFORCES the stored one instead of piling up; at this many
+    # occurrences it is promoted tentative -> confirmed.
+    lessons_confirm_threshold: int = 2
+    # Read-time exponential decay half-life (days since last reinforcement);
+    # lessons whose effective weight falls below the floor stop being injected.
+    lessons_half_life_days: float = 180.0
+    lessons_min_effective_weight: float = 0.15
 
     # ---------- Counsel SLA (Exit B turnaround, improvement #8) ----------
     # Promised review turnaround for counsel validation (hours).
@@ -168,6 +207,10 @@ class Settings(BaseSettings):
     @property
     def anthropic_configured(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def mistral_configured(self) -> bool:
+        return bool(self.mistral_api_key)
 
     @property
     def openai_configured(self) -> bool:
