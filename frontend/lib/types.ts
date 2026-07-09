@@ -414,6 +414,26 @@ export interface ReviewIssue {
 }
 
 /** One persisted critic round (GET /api/requests/{id}/reviews). */
+export interface VerificationFinding {
+  layer: "deterministic" | "llm";
+  category: string;
+  severity: "critical" | "warning";
+  problem: string;
+  quote?: string;
+  where?: string;
+}
+
+/** Una pasada del verificador cruzado (020) por iteración de borrador. */
+export interface Verification {
+  iteration: number;
+  provider?: string;
+  model?: string;
+  findings: VerificationFinding[];
+  criticalCount: number;
+  forcedCounsel: boolean;
+  createdAt?: string;
+}
+
 export interface GenerationReview {
   round: number;
   approved: boolean;

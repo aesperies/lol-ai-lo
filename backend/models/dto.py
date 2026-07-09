@@ -254,6 +254,23 @@ class GenerationReviewOut(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class VerificationOut(BaseModel):
+    """Una pasada del verificador cruzado (020) por iteración de borrador.
+
+    ``findings`` mezcla las dos capas ({layer: deterministic|llm, category,
+    severity, problem, quote, where}); ``provider``/``model`` identifican la
+    capa LLM (NULL si no corrió). ``forced_counsel`` = hubo hallazgo crítico
+    y la solicitud quedó forzada a Exit B."""
+
+    iteration: int = 0
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    critical_count: int = 0
+    forced_counsel: bool = False
+    created_at: Optional[datetime] = None
+
+
 class DraftingLessonOut(BaseModel):
     """One accumulated, gestora-siloed drafting lesson (services/lessons.py).
     Admin-only read; never exposed cross-gestora."""

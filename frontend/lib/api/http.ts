@@ -48,6 +48,7 @@ export const apiPaths = {
   reviewBundle: (id: string) => `/api/requests/${id}/review`,
   // Critic review trail + derived drafting branch (drafting-agents UI).
   requestReviews: (id: string) => `/api/requests/${id}/reviews`,
+  requestVerifications: (id: string) => `/api/requests/${id}/verifications`,
   requestBranch: (id: string) => `/api/requests/${id}/branch`,
   counselEdit: (id: string) => `/api/requests/${id}/counsel/edit`,
   counselUpload: (id: string) => `/api/requests/${id}/counsel/upload`,

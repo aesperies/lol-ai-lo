@@ -38,6 +38,7 @@ from models.schema import (
     DocumentVersionType,
     ExitAAcknowledgeBody,
     GenerationReviewOut,
+    VerificationOut,
     RequestBranchOut,
     RequestCreate,
     RequestOut,
@@ -341,6 +342,33 @@ async def get_request_reviews(
             created_at=r.get("created_at"),
         )
         for r in rounds
+    ]
+
+
+@router.get("/{request_id}/verifications", response_model=list[VerificationOut])
+async def get_request_verifications(
+    request_id: str, user: User = Depends(get_current_user)
+) -> Any:
+    """El rastro del verificador cruzado (020), una entrada por iteración.
+
+    Solo lectura; mismas reglas de acceso 404-no-leak que el resto de
+    endpoints de la solicitud. Lista vacía si el verificador está desactivado
+    o la solicitud es anterior a la feature."""
+    db = dbmod.get_db()
+    row = get_request_or_404(db, request_id)
+    assert_request_access(db, user, row)
+    rows = db.select("verifications", request_id=request_id)
+    return [
+        VerificationOut(
+            iteration=r.get("iteration", 0),
+            provider=r.get("provider"),
+            model=r.get("model"),
+            findings=r.get("findings") or [],
+            critical_count=r.get("critical_count", 0),
+            forced_counsel=bool(r.get("forced_counsel")),
+            created_at=r.get("created_at"),
+        )
+        for r in rows
     ]
 
 

@@ -4,12 +4,17 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { Badge, Card, CardTitle, Spinner } from "@/components/ui";
 import type { BadgeTone } from "@/components/ui";
-import { getRequestBranch, getRequestReviews } from "@/lib/api";
+import {
+  getRequestBranch,
+  getRequestReviews,
+  getRequestVerifications,
+} from "@/lib/api";
 import type {
   Branch,
   GenerationReview,
   ReviewIssue,
   ReviewIssueSeverity,
+  Verification,
 } from "@/lib/types";
 import type { DictKey } from "@/lib/i18n";
 
@@ -100,6 +105,93 @@ function IssueRow({ issue }: { issue: ReviewIssue }) {
 }
 
 /**
+ * Verificador cruzado (020): badge de estado + hallazgos de la última pasada.
+ * Sección no bloqueante dentro del panel de revisión interna — si el endpoint
+ * falla o no hay pasadas, no se pinta nada.
+ */
+function VerificationSection({ requestId }: { requestId: string }) {
+  const { t } = useI18n();
+  const [rows, setRows] = useState<Verification[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRows(null);
+    getRequestVerifications(requestId)
+      .then((v) => {
+        if (!cancelled) setRows(v);
+      })
+      .catch(() => {
+        /* la verificación es informativa; nunca rompe el panel */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [requestId]);
+
+  if (!rows || rows.length === 0) return null;
+  const last = rows[rows.length - 1];
+  const warnings = last.findings.filter((f) => f.severity === "warning").length;
+
+  let tone: BadgeTone = "emerald";
+  let label = t("verification.clean");
+  if (last.criticalCount > 0) {
+    tone = "red";
+    label = t("verification.critical", { count: last.criticalCount });
+  } else if (warnings > 0) {
+    tone = "amber";
+    label = t("verification.warnings", { count: warnings });
+  }
+
+  return (
+    <div className="mt-4 border-t border-ink-200 pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-ink-700">
+          {t("verification.title")}
+        </span>
+        <Badge tone={tone}>{label}</Badge>
+        {last.provider ? (
+          <span className="text-xs text-ink-400">
+            {t("verification.provider", { provider: last.provider })}
+          </span>
+        ) : (
+          <span className="text-xs text-ink-400">
+            {t("verification.deterministic")}
+          </span>
+        )}
+      </div>
+      {last.findings.length > 0 ? (
+        <ul className="mt-2 space-y-2">
+          {last.findings.map((finding, idx) => (
+            <li
+              key={idx}
+              className="rounded-lg border border-ink-200 bg-ink-50 p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={finding.severity === "critical" ? "red" : "amber"}>
+                  {finding.category.replaceAll("_", " ")}
+                </Badge>
+                <Badge tone="slate">
+                  {t(`verification.layer.${finding.layer}` as DictKey)}
+                </Badge>
+                {finding.where ? (
+                  <span className="text-xs text-ink-400">{finding.where}</span>
+                ) : null}
+              </div>
+              <p className="mt-2 text-sm text-ink-700">{finding.problem}</p>
+              {finding.quote ? (
+                <p className="mt-1 border-l-2 border-ink-300 pl-2.5 text-sm italic text-ink-600">
+                  “{finding.quote}”
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Surfaces the automated critic outcome for a request (Feature 2), shared by
  * the client document view and the counsel review screen.
  *
@@ -157,11 +249,13 @@ export default function InternalReviewPanel({
   }
 
   // No reviews persisted = critic skipped (LLM unreachable / disabled).
+  // La verificación cruzada puede haber corrido igualmente (capa determinista).
   if (reviews.length === 0) {
     return (
       <Card>
         <CardTitle>{t("review.title")}</CardTitle>
         <p className="mt-2 text-sm text-ink-400">{t("review.none")}</p>
+        <VerificationSection requestId={requestId} />
       </Card>
     );
   }
@@ -241,6 +335,7 @@ export default function InternalReviewPanel({
           ))}
         </div>
       ) : null}
+      <VerificationSection requestId={requestId} />
     </Card>
   );
 }

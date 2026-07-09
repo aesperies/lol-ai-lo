@@ -93,7 +93,7 @@
   <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
   <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
   Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
-  Estado a 9-jul-2026 (migraciones 001–019: índice RAG pgvector · proveedor Grok).</p>
+  Estado a 9-jul-2026 (migraciones 001–020: índice RAG pgvector · Grok · verificador cruzado).</p>
 
   <!-- ================= VISTA SIMPLE (no técnicos) ================= -->
   <div class="simple">
@@ -201,6 +201,7 @@
       <div class="box"><b>services/model_router</b><span>orquestador de costes: task → tier light/heavy</span></div>
       <div class="box"><b>services/indexer</b><span>chunk+embed al subir/activar (018); sync idempotente = backfill</span></div>
       <div class="box"><b>services/jobs</b><span>cola asyncio, 3 reintentos · sweep de arranque: jobs huérfanos tras deploy/reinicio → failed + request a confirmed</span></div>
+      <div class="box"><b>services/verifier</b><span>verificador cruzado (020): determinista + LLM de otro proveedor; crítico → Exit B</span></div>
       <div class="box"><b>services/critic</b><span>2 rondas · citas verificadas por string-match · confianza · gate opcional</span></div>
       <div class="box"><b>services/lessons</b><span>lecciones con refuerzo/decay (tentative→confirmed)</span></div>
       <div class="box"><b>services/redline</b><span>autor “Lol-AI-lo AI”</span></div>
@@ -215,10 +216,10 @@
   <div class="flow-arrow">▼ <small>services/db.py — TenantScopeError si falta el filtro de gestora (la service-role key salta RLS: Python es el guardarraíl)</small></div>
 
   <div class="layer">
-    <span class="lbl">Datos · Supabase PostgreSQL (30 tablas + pgvector, RLS) o DevStore en memoria</span>
+    <span class="lbl">Datos · Supabase PostgreSQL (31 tablas + pgvector, RLS) o DevStore en memoria</span>
     <div class="grid-mini">
       <div class="box"><b>Tenencia</b><span>gestoras · funds · users</span></div>
-      <div class="box"><b>Workflow</b><span>requests · documents · refinements · generation_jobs · generation_reviews</span></div>
+      <div class="box"><b>Workflow</b><span>requests · documents · refinements · generation_jobs · generation_reviews · verifications (020)</span></div>
       <div class="box"><b>Biblioteca RAG</b><span>precedents · precedent_versions · precedent_chunks (018: chunks + embeddings pgvector)</span></div>
       <div class="box"><b>Aprendizaje</b><span>drafting_lessons · review_playbooks · gestora_model_config</span></div>
       <div class="box"><b>Counsel/SLA</b><span>counsel_assignments · sla_events · quality_metrics · counsel_comments</span></div>
@@ -282,9 +283,10 @@
       <div class="box"><b>1 · RAG</b><span>recuperación por silo + doc_type</span></div>
       <div class="box"><b>2 · Campos estructurados</b><span>se fusionan en key_terms (mandan sobre el parser)</span></div>
       <div class="box"><b>3 · Drafter especializado</b><span>rama por doc_type + lecciones de la gestora</span></div>
-      <div class="box"><b>4 · Critic (≤2 rondas)</b><span>issues con cita {where, quote} verificada contra el borrador (string-match) + confianza + playbooks; gate evaluador opcional; si no aprueba → fuerza Exit B</span></div>
-      <div class="box"><b>5 · Render .docx</b><span>python-docx + disclaimer SLP</span></div>
-      <div class="box"><b>6 · Redline .docx</b><span>diff palabra a palabra, autor «Lol-AI-lo AI»</span></div>
+      <div class="box"><b>4 · Verificador cruzado (020)</b><span>capa determinista (datos confirmados vs borrador, sin LLM) + LLM de OTRO proveedor con checklist de fallos garrafales y citas verificadas; un hallazgo crítico fuerza Exit B; nunca reescribe</span></div>
+      <div class="box"><b>5 · Critic (≤2 rondas)</b><span>issues con cita {where, quote} verificada contra el borrador (string-match) + confianza + playbooks; gate evaluador opcional; si no aprueba → fuerza Exit B</span></div>
+      <div class="box"><b>6 · Render .docx</b><span>python-docx + disclaimer SLP</span></div>
+      <div class="box"><b>7 · Redline .docx</b><span>diff palabra a palabra, autor «Lol-AI-lo AI»</span></div>
     </div>
     <h3 style="font-size:.95rem;margin:1.1rem 0 .3rem">Cadena de fallback RAG (filtro duro por gestora <em>antes</em> de rankear)</h3>
     <div class="lvl"><b>Nivel 0a</b><span><b>Modelos</b> de la gestora (plantillas maestras, <code>modelos/</code>) — base preferida, peso 1.0</span></div>

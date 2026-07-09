@@ -70,6 +70,7 @@ from models.dto import (  # noqa: F401
     ExitAAcknowledgeBody,
     GenerationJobOut,
     GenerationReviewOut,
+    VerificationOut,
     CounselQueueItemOut,
     DashboardStatsOut,
     NotificationOut,

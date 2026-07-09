@@ -385,6 +385,7 @@ def complete(
     system: Optional[str] = None,
     gestora_id: Optional[str] = None,
     task: Optional[str] = None,
+    config_override: Optional[EffectiveLLMConfig] = None,
 ) -> str:
     """Generate a text completion via the configured provider.
 
@@ -411,7 +412,11 @@ def complete(
         ServiceNotConfiguredError: The selected provider is misconfigured or
             unreachable (API layers translate to HTTP 503).
     """
-    config = resolve_config(gestora_id, task=task)
+    # config_override: pre-resolved config for callers that must pin the
+    # provider themselves (services/verifier.py cross-provider check). The
+    # override is built FROM resolve_config, so privacy fail-closed semantics
+    # are preserved upstream. Everyone else resolves per gestora as before.
+    config = config_override or resolve_config(gestora_id, task=task)
     # Registry dispatch (services/providers): unknown providers raise
     # ServiceNotConfiguredError there (→ HTTP 503).
     from services import providers  # local import (optional-deps-free startup)
@@ -453,6 +458,7 @@ def complete_json(
     system: Optional[str] = None,
     gestora_id: Optional[str] = None,
     task: Optional[str] = None,
+    config_override: Optional[EffectiveLLMConfig] = None,
 ) -> dict[str, Any]:
     """Generate JSON output and parse it into a dict.
 
@@ -467,11 +473,11 @@ def complete_json(
         ServiceNotConfiguredError: Provider misconfigured or unreachable.
         ValueError: Output could not be parsed as JSON after the repair retry.
     """
-    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id, task=task)
+    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id, task=task, config_override=config_override)
     try:
         return _coerce_json(raw)
     except (ValueError, json.JSONDecodeError):
         logger.warning("LLM JSON output invalid; attempting one repair retry.")
     # Repair retry: re-ask, then coerce (fences/brace-slice). Propagate failure.
-    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id, task=task)
+    raw = complete(prompt, max_tokens=max_tokens, json_schema=schema, system=system, gestora_id=gestora_id, task=task, config_override=config_override)
     return _coerce_json(raw)

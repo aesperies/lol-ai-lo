@@ -13,6 +13,7 @@ import type {
   GenerationJob,
   GenerationJobStatus,
   GenerationReview,
+  Verification,
   ParsedParams,
   Refinement,
   RefinementStatus,
@@ -447,4 +448,41 @@ export async function getRequestBranch(id: string): Promise<Branch> {
     apiPaths.requestBranch(id),
   );
   return res.branch;
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Verificador cruzado (020)                                           */
+/* ------------------------------------------------------------------ */
+
+interface VerificationWire {
+  iteration: number;
+  provider?: string | null;
+  model?: string | null;
+  findings: Verification["findings"];
+  critical_count: number;
+  forced_counsel: boolean;
+  created_at?: string | null;
+}
+
+/** El rastro del verificador cruzado, una entrada por iteración. Vacío si el
+ * verificador está desactivado o la solicitud es anterior a la feature. */
+export async function getRequestVerifications(
+  id: string,
+): Promise<Verification[]> {
+  if (isStubMode()) {
+    return [];
+  }
+  const rows = await apiFetch<VerificationWire[]>(
+    apiPaths.requestVerifications(id),
+  );
+  return rows.map((r) => ({
+    iteration: r.iteration,
+    provider: r.provider ?? undefined,
+    model: r.model ?? undefined,
+    findings: r.findings ?? [],
+    criticalCount: r.critical_count,
+    forcedCounsel: r.forced_counsel,
+    createdAt: r.created_at ?? undefined,
+  }));
 }

@@ -19,6 +19,9 @@ from typing import Any
 os.environ["DEV_AUTH_STUB"] = "true"
 os.environ["LOCAL_STORAGE_DIR"] = tempfile.mkdtemp(prefix="lolailo-test-storage-")
 os.environ["JOB_BACKOFF_BASE"] = "0"  # instant generation-job retries in tests
+# Verifier off by default (the conftest fake draft is not intake-faithful);
+# test_verifier.py flips it per-test — same pattern as the rate limiter.
+os.environ["VERIFY_ENABLED"] = "false"
 for _var in (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -152,6 +155,10 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         ]
         if state["missing"]:
             lines.append("Fecha de la reunión: [MISSING: fecha de la reunión]")
+        else:
+            # Fiel al intake fake (2026-07-15): el verificador cruzado (020)
+            # coteja las fechas confirmadas contra el borrador.
+            lines.append("Fecha de la reunión: 15 de julio de 2026.")
         return "\n".join(lines) + "\n\n" + SLP_DISCLAIMER
 
     monkeypatch.setattr(intake_parser, "parse_intake", fake_parse)

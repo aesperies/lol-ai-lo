@@ -33,6 +33,7 @@ from services import (
     redline as redline_service,
     storage,
     usage,
+    verifier,
 )
 from services.workflow import latest_document, now_iso, transition
 
@@ -214,6 +215,25 @@ def run_generation(
         db.update("requests", request_id, {"requires_counsel": True})
         row["requires_counsel"] = True
 
+    # Verificador cruzado (020): capa determinista + LLM de otro proveedor.
+    # Nunca bloquea la generación; un hallazgo crítico fuerza Exit B.
+    verification: Optional[dict[str, Any]] = None
+    try:
+        verification = verifier.run(
+            db,
+            request_id=request_id,
+            iteration=0,
+            gestora_id=gestora_id,
+            draft_text=review_result.text,
+            params={**params, "key_terms": key_terms},
+            language=language,
+        )
+        if verification["forced_counsel"] and not row.get("requires_counsel"):
+            db.update("requests", request_id, {"requires_counsel": True})
+            row["requires_counsel"] = True
+    except Exception:  # noqa: BLE001 — el verificador jamás rompe el flujo
+        logger.exception("Verificador cruzado falló para request %s", request_id)
+
     _save_draft_with_audit(
         db,
         request_row=row,
@@ -238,6 +258,17 @@ def run_generation(
                 "approved": review_result.approved,
                 "forced_counsel": review_result.forced_counsel,
             },
+            # Verificador cruzado (020): resumen auditable.
+            "verification": (
+                {
+                    "critical": verification["critical_count"],
+                    "findings": len(verification["findings"]),
+                    "provider": verification["provider"],
+                    "llm_ran": verification["llm_ran"],
+                }
+                if verification is not None
+                else None
+            ),
         },
     )
     usage.record_usage(
@@ -319,6 +350,25 @@ def run_refinement(
     # The precedent base id was propagated draft -> draft from iteration 0,
     # so every redline diffs against the SAME original precedent.
     base_version_id = current_draft.get("precedent_version_id")
+
+    # Verificador cruzado (020) sobre el borrador refinado. Los hallazgos
+    # deterministas bajan a 'warning' aquí: la instrucción del cliente pudo
+    # pedir legítimamente cambiar un importe/fecha respecto al intake.
+    try:
+        verification = verifier.run(
+            db,
+            request_id=request_id,
+            iteration=iteration,
+            gestora_id=gestora_id,
+            draft_text=text,
+            params=(row.get("parsed_params") or {}),
+            language=row.get("language") or (row.get("parsed_params") or {}).get("language") or "es",
+            deterministic_severity="warning",
+        )
+        if verification["forced_counsel"]:
+            db.update("requests", request_id, {"requires_counsel": True})
+    except Exception:  # noqa: BLE001
+        logger.exception("Verificador cruzado falló en refinamiento %s", refinement_id)
 
     _save_draft_with_audit(
         db,

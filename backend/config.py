@@ -87,6 +87,17 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
+    # ---------- Verificador cruzado (services/verifier.py, 020) ----------
+    # Tras el critic, un verificador independiente busca SOLO fallos
+    # garrafales. Capa determinista siempre; capa LLM preferentemente en un
+    # proveedor DISTINTO al que redactó (menos puntos ciegos compartidos).
+    # VERIFY_PROVIDER fija el proveedor de plataforma; vacío = auto (primer
+    # cloud configurado distinto del drafter). Regla de privacidad: una
+    # gestora con proveedor explícito nunca cruza de proveedor salvo que fije
+    # su propio verify_provider. Un hallazgo crítico fuerza Exit B.
+    verify_enabled: bool = True
+    verify_provider: str = ""
+
     # ---------- Cost-aware model routing (services/model_router.py) ----------
     # The orchestrator picks a LIGHT model for cheap, high-volume workloads
     # (critic, evaluator gate, lessons, tabular cells, intake parse) and keeps

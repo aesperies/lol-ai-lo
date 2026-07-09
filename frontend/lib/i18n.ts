@@ -595,6 +595,14 @@ const es = {
 
   // Internal automated review (critic) — client + counsel
   "review.title": "Revisión interna automática",
+  "verification.title": "Verificación cruzada",
+  "verification.clean": "Sin fallos garrafales detectados",
+  "verification.critical": "{count} hallazgo(s) crítico(s) — enviado a validación por abogado",
+  "verification.warnings": "{count} aviso(s) — revisa los detalles",
+  "verification.provider": "Verificado por {provider}",
+  "verification.deterministic": "Cotejo de datos confirmados",
+  "verification.layer.deterministic": "Cotejo automático",
+  "verification.layer.llm": "Revisor independiente",
   "review.loading": "Cargando revisión interna…",
   "review.none": "Sin revisión automática.",
   "review.error": "No se ha podido cargar la revisión interna.",
@@ -1295,6 +1303,14 @@ const en: Record<DictKey, string> = {
 
   // Internal automated review (critic) — client + counsel
   "review.title": "Internal automated review",
+  "verification.title": "Cross-check verification",
+  "verification.clean": "No critical issues detected",
+  "verification.critical": "{count} critical finding(s) — sent to counsel validation",
+  "verification.warnings": "{count} warning(s) — review the details",
+  "verification.provider": "Verified by {provider}",
+  "verification.deterministic": "Confirmed-data cross-check",
+  "verification.layer.deterministic": "Automatic cross-check",
+  "verification.layer.llm": "Independent reviewer",
   "review.loading": "Loading internal review…",
   "review.none": "No automated review.",
   "review.error": "Could not load the internal review.",
