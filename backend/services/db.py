@@ -40,6 +40,8 @@ class TenantScopeError(RuntimeError):
 # must declare that intent explicitly via unscoped_select().
 _TENANT_SCOPED_TABLES = {
     "audit_log",
+    "chat_conversations",
+    "chat_messages",
     "counsel_assignments",
     "data_retention_policies",
     "drafting_lessons",
@@ -108,7 +110,7 @@ class Database(Protocol):
         self,
         *,
         gestora_id: Optional[str],
-        doc_type: str,
+        doc_type: Optional[str],
         query_embedding: list[float],
         embed_model: str,
         source: Optional[str] = None,
@@ -121,10 +123,12 @@ class Database(Protocol):
         Isolation by construction: ``gestora_id`` is a REQUIRED keyword —
         None targets ONLY the global pool (gestora_id IS NULL), a value
         targets ONLY that gestora's silo; there is no cross-tenant form.
-        Rows are returned most-similar-first with a ``similarity`` field;
-        only rows whose ``embed_model`` matches are comparable (vectors from
-        different models never mix). ``language`` mirrors _global_candidates:
-        rows with NULL language always match.
+        ``doc_type`` None searches EVERY doc_type within that scope (chat
+        Q&A, 021) — the tenant filter itself never widens. Rows are returned
+        most-similar-first with a ``similarity`` field; only rows whose
+        ``embed_model`` matches are comparable (vectors from different models
+        never mix). ``language`` mirrors _global_candidates: rows with NULL
+        language always match.
         """
         ...
 
@@ -230,7 +234,7 @@ class DevStore:
         self,
         *,
         gestora_id: Optional[str],
-        doc_type: str,
+        doc_type: Optional[str],
         query_embedding: list[float],
         embed_model: str,
         source: Optional[str] = None,
@@ -238,8 +242,8 @@ class DevStore:
         language: Optional[str] = None,
         limit: int = 24,
     ) -> list[dict[str, Any]]:
-        """In-memory cosine ANN mirroring match_precedent_chunks (018) exactly
-        — the contract suite asserts both backends rank identically."""
+        """In-memory cosine ANN mirroring match_precedent_chunks (018/021)
+        exactly — the contract suite asserts both backends rank identically."""
 
         def cosine(a: list[float], b: list[float]) -> float:
             dot = sum(x * y for x, y in zip(a, b))
@@ -252,7 +256,7 @@ class DevStore:
                 continue
             if row.get("gestora_id") != gestora_id:
                 continue
-            if row.get("doc_type") != doc_type:
+            if doc_type is not None and row.get("doc_type") != doc_type:
                 continue
             if source is not None and row.get("source") != source:
                 continue
@@ -318,7 +322,7 @@ class SupabaseDB:
         self,
         *,
         gestora_id: Optional[str],
-        doc_type: str,
+        doc_type: Optional[str],
         query_embedding: list[float],
         embed_model: str,
         source: Optional[str] = None,
@@ -326,7 +330,7 @@ class SupabaseDB:
         language: Optional[str] = None,
         limit: int = 24,
     ) -> list[dict[str, Any]]:
-        """ANN via the match_precedent_chunks SQL function (018) — the
+        """ANN via the match_precedent_chunks SQL function (018/021) — the
         isolation pre-filter runs in the WHERE, before ordering by similarity."""
         res = self._client.rpc(
             "match_precedent_chunks",

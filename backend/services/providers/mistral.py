@@ -11,12 +11,12 @@ local and EU-cloud embeddings share the pgvector column.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import httpx
 
 from config import ServiceNotConfiguredError, get_settings
-from services.providers.base import json_instructions, retryable
+from services.providers.base import json_instructions, retryable, stream_openai_sse
 
 _API_URL = "https://api.mistral.ai/v1/chat/completions"
 _EMBED_URL = "https://api.mistral.ai/v1/embeddings"
@@ -87,6 +87,36 @@ class MistralLLM:
         if not choices:
             return ""
         return (choices[0].get("message") or {}).get("content", "") or ""
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        system: Optional[str],
+        config: Any,
+    ) -> Iterator[str]:
+        """Stream deltas from the OpenAI-compatible SSE endpoint."""
+        settings = get_settings()
+        if not config.mistral_api_key:
+            raise ServiceNotConfiguredError("mistral", "Set MISTRAL_API_KEY.")
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        yield from stream_openai_sse(
+            url=_API_URL,
+            payload={
+                "model": config.mistral_model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "stream": True,
+            },
+            api_key=config.mistral_api_key,
+            provider_name="mistral",
+            unreachable_hint="Could not reach the Mistral API.",
+            timeout=settings.ollama_timeout_seconds,
+        )
 
 
 class MistralEmbeddings:

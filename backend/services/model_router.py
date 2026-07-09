@@ -40,6 +40,7 @@ TASK_TIERS: dict[str, str] = {
     "lessons": LIGHT,
     "tabular": LIGHT,
     "verify": LIGHT,
+    "chat": LIGHT,
 }
 
 

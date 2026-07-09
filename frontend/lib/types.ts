@@ -800,3 +800,47 @@ export interface TabularColumnInput {
   colType: ColType;
   options?: string[] | null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Chat Q&A sobre el RAG de la gestora (021_chat.sql)                  */
+/* ------------------------------------------------------------------ */
+
+/** Procedencia de un fragmento usado para responder (cita [n]). */
+export interface ChatCitation {
+  index: number;
+  precedentId: string;
+  precedentVersionId: string;
+  docType: string;
+  source: string;
+  snippet: string;
+}
+
+/** Grounding posterior de la respuesta (verificador cruzado, 020). */
+export interface ChatVerification {
+  findings: Array<{ category: string; problem: string; quote: string }>;
+  provider: string | null;
+  model: string | null;
+}
+
+export interface ChatConversation {
+  id: string;
+  title: string | null;
+  createdAt: string | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations: ChatCitation[];
+  verification: ChatVerification | null;
+  createdAt: string | null;
+}
+
+/** Un evento del stream SSE de /api/chat/.../messages. */
+export type ChatStreamEvent =
+  | { type: "sources"; citations: ChatCitation[] }
+  | { type: "delta"; text: string }
+  | { type: "verification"; verification: ChatVerification }
+  | { type: "done"; messageId: string }
+  | { type: "error"; detail: string };

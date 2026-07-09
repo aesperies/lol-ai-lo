@@ -9,12 +9,16 @@
  * In-memory only: state resets on full page reload (good enough for dev).
  */
 
-import { ApiError } from "@/lib/api/http";
+import { ApiError, STUB_LATENCY } from "@/lib/api/http";
 import { DOC_TYPE_CATALOG, docTypeLabel } from "@/lib/catalog";
 import { translate, type DictKey } from "@/lib/i18n";
 import { readDevRoleCookie } from "@/lib/supabase/client";
 import type {
   AccountProfile,
+  ChatCitation,
+  ChatConversation,
+  ChatMessage,
+  ChatStreamEvent,
   AppNotification,
   Colleague,
   CounselQueueItem,
@@ -2482,4 +2486,92 @@ export function stubDeleteReviewShare(id: string, userId: string): void {
   _stubReviewShares[id] = (_stubReviewShares[id] ?? []).filter(
     (uid) => uid !== userId,
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat Q&A sobre el RAG de la gestora (021_chat.sql)                  */
+/* ------------------------------------------------------------------ */
+
+const _stubChatConversations: ChatConversation[] = [];
+const _stubChatMessages: Record<string, ChatMessage[]> = {};
+let _stubChatSeq = 0;
+
+export function stubChatConversations(): ChatConversation[] {
+  return [..._stubChatConversations];
+}
+
+export function stubCreateChatConversation(): ChatConversation {
+  const conversation: ChatConversation = {
+    id: `chat-${++_stubChatSeq}`,
+    title: null,
+    createdAt: new Date().toISOString(),
+  };
+  _stubChatConversations.unshift(conversation);
+  _stubChatMessages[conversation.id] = [];
+  return conversation;
+}
+
+export function stubChatMessages(conversationId: string): ChatMessage[] {
+  return [...(_stubChatMessages[conversationId] ?? [])];
+}
+
+export function stubDeleteChatConversation(conversationId: string): void {
+  const index = _stubChatConversations.findIndex((c) => c.id === conversationId);
+  if (index !== -1) _stubChatConversations.splice(index, 1);
+  delete _stubChatMessages[conversationId];
+}
+
+/** Turno de chat simulado: sources → deltas palabra a palabra → done. */
+export async function stubSendChatMessage(
+  conversationId: string,
+  content: string,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<void> {
+  const messages = (_stubChatMessages[conversationId] ??= []);
+  const conversation = _stubChatConversations.find((c) => c.id === conversationId);
+  if (conversation && !conversation.title) {
+    conversation.title = content.slice(0, 80);
+  }
+  messages.push({
+    id: `chat-msg-${++_stubChatSeq}`,
+    role: "user",
+    content,
+    citations: [],
+    verification: null,
+    createdAt: new Date().toISOString(),
+  });
+
+  const citations: ChatCitation[] = [
+    {
+      index: 1,
+      precedentId: "stub-precedent-1",
+      precedentVersionId: "stub-version-1",
+      docType: "Acta de Reunión del Consejo",
+      source: "manual_upload",
+      snippet:
+        "El consejo de administración aprueba la llamada de capital por importe de 500.000 euros…",
+    },
+  ];
+  await delay(STUB_LATENCY / 2);
+  onEvent({ type: "sources", citations });
+
+  const answer =
+    "Según la documentación de tu gestora, el consejo aprobó una llamada de " +
+    "capital de 500.000 euros [1]. (Respuesta simulada del modo desarrollo: " +
+    "conecta el backend para consultar tu RAG real.)";
+  for (const word of answer.split(" ")) {
+    await delay(24);
+    onEvent({ type: "delta", text: `${word} ` });
+  }
+
+  const message: ChatMessage = {
+    id: `chat-msg-${++_stubChatSeq}`,
+    role: "assistant",
+    content: answer,
+    citations,
+    verification: null,
+    createdAt: new Date().toISOString(),
+  };
+  messages.push(message);
+  onEvent({ type: "done", messageId: message.id });
 }

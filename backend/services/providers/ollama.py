@@ -6,7 +6,8 @@ caller degrades to weight/recency ranking, never a wider candidate pool).
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+import json
+from typing import Any, Iterator, Optional
 
 import httpx
 
@@ -71,6 +72,65 @@ class OllamaLLM:
             )
         data = response.json()
         return (data.get("message") or {}).get("content", "")
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        system: Optional[str],
+        config: Any,
+    ) -> Iterator[str]:
+        """Stream deltas from ``/api/chat`` (newline-delimited JSON frames).
+
+        Same error contract as complete(): unreachable daemon / non-200 →
+        ServiceNotConfiguredError. No mid-stream retry — a broken stream
+        propagates and the caller decides what to do with the partial text.
+        """
+        settings = get_settings()
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        payload: dict[str, Any] = {
+            "model": config.ollama_llm_model,
+            "messages": messages,
+            "stream": True,
+            "options": {"num_predict": max_tokens},
+        }
+        url = f"{config.ollama_base_url.rstrip('/')}/api/chat"
+
+        try:
+            with httpx.stream(
+                "POST", url, json=payload, timeout=settings.ollama_timeout_seconds
+            ) as response:
+                if response.status_code != 200:
+                    response.read()
+                    raise ServiceNotConfiguredError(
+                        "ollama",
+                        f"Ollama returned HTTP {response.status_code}: {response.text[:200]}. "
+                        f"Is the model '{config.ollama_llm_model}' pulled?",
+                    )
+                for line in response.iter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        frame = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if frame.get("error"):
+                        raise ServiceNotConfiguredError("ollama", str(frame["error"])[:200])
+                    delta = (frame.get("message") or {}).get("content", "")
+                    if delta:
+                        yield delta
+                    if frame.get("done"):
+                        break
+        except httpx.HTTPError as exc:
+            raise ServiceNotConfiguredError(
+                "ollama",
+                f"Could not reach Ollama at {config.ollama_base_url}. "
+                "Start it (`ollama serve`) or set LLM_PROVIDER=anthropic.",
+            ) from exc
 
 
 class OllamaEmbeddings:

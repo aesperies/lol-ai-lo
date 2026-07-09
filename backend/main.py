@@ -18,6 +18,7 @@ from api.account import router as account_router
 from api.admin_metrics import router as admin_metrics_router
 from api.admin_retention import router as admin_retention_router
 from api.billing import router as billing_router
+from api.chat import router as chat_router
 from api.counsel_assignments import router as counsel_assignments_router
 from api.dashboard import router as dashboard_router
 from api.counsel_review import router as counsel_review_router
@@ -115,6 +116,8 @@ app.include_router(admin_metrics_router)
 app.include_router(admin_retention_router)
 app.include_router(billing_router)
 app.include_router(tabular_router)
+# Chat Q&A sobre el RAG de la gestora (021_chat.sql).
+app.include_router(chat_router)
 app.include_router(account_router)
 app.include_router(model_config_router)
 # Directory + counsel review surface (013_directory_and_comments.sql).

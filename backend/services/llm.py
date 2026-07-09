@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 # Kept as a module attribute on purpose: tests (and conftest's no-network
 # guard) monkeypatch ``llm.httpx.post`` to stub every provider's HTTP layer —
@@ -424,6 +424,38 @@ def complete(
     return providers.get_llm(config.llm_provider).complete(
         prompt, max_tokens=max_tokens, json_schema=json_schema, system=system, config=config
     )
+
+
+def stream(
+    prompt: str,
+    *,
+    max_tokens: int = 2048,
+    system: Optional[str] = None,
+    gestora_id: Optional[str] = None,
+    task: Optional[str] = None,
+    config_override: Optional[EffectiveLLMConfig] = None,
+) -> Iterator[str]:
+    """Stream a plain-text completion as incremental deltas (chat Q&A).
+
+    Mirrors :func:`complete` (same config resolution, same fail-closed
+    privacy semantics, same ServiceNotConfiguredError contract) but yields
+    text fragments as the provider produces them. Graceful degradation: a
+    provider without a ``stream`` method degrades to ONE yield with the full
+    complete() output — callers never need to know the difference.
+
+    No JSON mode: structured output keeps using :func:`complete_json`.
+    """
+    config = config_override or resolve_config(gestora_id, task=task)
+    from services import providers  # local import (optional-deps-free startup)
+
+    provider = providers.get_llm(config.llm_provider)
+    stream_fn = getattr(provider, "stream", None)
+    if stream_fn is None:
+        yield provider.complete(
+            prompt, max_tokens=max_tokens, json_schema=None, system=system, config=config
+        )
+        return
+    yield from stream_fn(prompt, max_tokens=max_tokens, system=system, config=config)
 
 
 def _coerce_json(raw: str) -> dict[str, Any]:

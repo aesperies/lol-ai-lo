@@ -136,6 +136,10 @@ export const apiPaths = {
   reviewShares: (id: string) => `/api/tabular-reviews/${id}/shares`,
   reviewShare: (id: string, userId: string) =>
     `/api/tabular-reviews/${id}/shares/${userId}`,
+  // Chat Q&A sobre el RAG de la gestora (021_chat.sql).
+  chatConversations: "/api/chat/conversations",
+  chatConversation: (id: string) => `/api/chat/conversations/${id}`,
+  chatMessages: (id: string) => `/api/chat/conversations/${id}/messages`,
 } as const;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -221,6 +225,51 @@ export async function fetchMultipart(
   });
   if (!res.ok) await throwApiError(res);
   return res;
+}
+
+/**
+ * Authenticated POST to a Server-Sent-Events endpoint (chat streaming).
+ *
+ * Parses data-only SSE frames (`data: {json}\n\n`) incrementally and invokes
+ * `onEvent` per frame. Resolves when the server closes the stream; rejects
+ * with ApiError on a non-2xx response (before any frame is read).
+ */
+export async function fetchSse(
+  path: string,
+  body: unknown,
+  onEvent: (event: unknown) => void,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(await authHeaders()),
+  };
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) await throwApiError(res);
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary: number;
+    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      for (const line of frame.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        try {
+          onEvent(JSON.parse(line.slice(5).trim()));
+        } catch {
+          /* frame incompleto o keep-alive: se ignora */
+        }
+      }
+    }
+  }
 }
 
 /** Authenticated fetch for endpoints without a JSON body (e.g. DELETE). */

@@ -141,6 +141,33 @@ class CounselInlineEditBody(BaseModel):
     comment: Optional[str] = None
 
 
+class ChatConversationCreate(BaseModel):
+    """Nueva conversación de chat Q&A (021). El título es opcional: si falta,
+    se deriva de la primera pregunta."""
+
+    title: Optional[str] = None
+
+
+class ChatMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatConversationOut(BaseModel):
+    id: str
+    title: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ChatMessageOut(BaseModel):
+    id: str
+    role: str
+    content: str
+    citations: Optional[list[dict[str, Any]]] = None
+    verification: Optional[dict[str, Any]] = None
+    model_note: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
 class CounselAssignmentCreate(BaseModel):
     gestora_id: str
     counsel_user_id: str

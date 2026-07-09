@@ -18,7 +18,7 @@ import json
 import logging
 import sys
 import time
-from typing import Any, Optional, Protocol
+from typing import Any, Iterator, Optional, Protocol
 
 import httpx
 
@@ -39,6 +39,22 @@ class LLMProvider(Protocol):
         system: Optional[str],
         config: Any,
     ) -> str: ...
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        system: Optional[str],
+        config: Any,
+    ) -> Iterator[str]:
+        """Yield text deltas as the provider produces them (chat Q&A).
+
+        Plain-text only (no JSON mode — structured output keeps using
+        :meth:`complete`). llm.stream() degrades to a single-yield complete()
+        when a provider lacks this method, so implementing it is optional.
+        """
+        ...
 
     def is_configured(self, settings: Any) -> bool: ...
 
@@ -74,6 +90,59 @@ def retryable(func, attempts: int):
             time.sleep(_RETRY_BACKOFF_BASE * (2 ** (attempt - 1)))
     assert last_exc is not None
     raise last_exc
+
+
+def stream_openai_sse(
+    *,
+    url: str,
+    payload: dict[str, Any],
+    api_key: str,
+    provider_name: str,
+    unreachable_hint: str,
+    timeout: float,
+) -> Iterator[str]:
+    """Stream text deltas from an OpenAI-compatible chat-completions SSE
+    endpoint (Mistral, xAI). The payload must already carry ``stream: true``.
+
+    Connection/HTTP failures raise ServiceNotConfiguredError exactly like the
+    providers' non-streaming path (the API layer translates to HTTP 503). No
+    mid-stream retry: a broken stream propagates — the caller decides whether
+    the partial answer is usable.
+    """
+    from config import ServiceNotConfiguredError  # local import, no cycle
+
+    try:
+        with httpx.stream(
+            "POST",
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        ) as response:
+            if response.status_code != 200:
+                response.read()
+                raise ServiceNotConfiguredError(
+                    provider_name,
+                    f"{provider_name} returned HTTP {response.status_code}: "
+                    f"{response.text[:200]}.",
+                )
+            for line in response.iter_lines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:"):].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    parsed = json.loads(data)
+                except json.JSONDecodeError:
+                    continue  # keep-alive / partial frame: skip, never crash
+                choices = parsed.get("choices") or [{}]
+                delta = (choices[0].get("delta") or {}).get("content") or ""
+                if delta:
+                    yield delta
+    except httpx.HTTPError as exc:
+        raise ServiceNotConfiguredError(provider_name, unreachable_hint) from exc
 
 
 def json_instructions(schema: dict[str, Any]) -> str:

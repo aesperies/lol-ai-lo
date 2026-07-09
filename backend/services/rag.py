@@ -471,6 +471,96 @@ def retrieve(
     )
 
 
+@dataclass
+class ChatHit:
+    """Un chunk recuperado para el chat Q&A, con su procedencia (cita)."""
+
+    precedent_id: str
+    precedent_version_id: str
+    doc_type: str
+    source: str
+    text: str
+    similarity: float
+
+
+def search_silo(
+    db: dbmod.Database,
+    *,
+    gestora_id: str,
+    language: str,
+    query_text: str,
+    limit: int = CONTEXT_CHUNKS,
+) -> list[ChatHit]:
+    """Chat Q&A (021): los chunks más relevantes del silo de la gestora SIN
+    fijar doc_type — la pregunta libre no sabe de tipos de documento.
+
+    El pre-filtro duro de aislamiento por gestora_id se aplica idéntico al
+    resto del módulo; lo único que se ensancha es el doc_type DENTRO del silo.
+    Solo versiones ACTIVAS (un precedente sustituido puede contener términos
+    obsoletos y una respuesta de chat no tiene el contexto para matizarlo).
+
+    Fast path: índice persistido (precedent_chunks). Fallback (silo sin
+    backfill o embeddings caídos): lectura de ficheros + ranking determinista
+    idéntico al de retrieve() — nunca un pool de candidatos más amplio.
+    """
+    active = PrecedentVersionStatus.active.value
+    config = llm.resolve_embedding_config(gestora_id)
+
+    vector: Optional[list[float]] = None
+    vectors = _embed([query_text], config)
+    if vectors:
+        vector = vectors[0]
+        from services import indexer  # local import, no cycle
+
+        if len(vector) != indexer.EXPECTED_DIM:
+            vector = None
+
+    if vector is not None:
+        rows = db.search_chunks(
+            gestora_id=gestora_id,
+            doc_type=None,
+            query_embedding=vector,
+            embed_model=config.resolved_embed_model,
+            limit=limit * 2,  # margen para el filtro de estado de versión
+        )
+        hits = [
+            ChatHit(
+                precedent_id=row["precedent_id"],
+                precedent_version_id=row["precedent_version_id"],
+                doc_type=row.get("doc_type") or "",
+                source=row.get("source") or "",
+                text=row["text"],
+                similarity=row.get("similarity") or 0.0,
+            )
+            for row in rows
+            if row.get("version_status") == active
+        ][:limit]
+        if hits:
+            return hits
+
+    # Fallback por ficheros: mismos candidatos que los niveles 0a/0b pero a
+    # través de TODOS los doc_types del silo, versiones activas únicamente.
+    candidates: list[Candidate] = []
+    for precedent in db.select("precedents", gestora_id=gestora_id):
+        candidates.extend(_versions_for(db, precedent, {active: 1.0}))
+    if not candidates:
+        return []
+    ranked = _rank(query_text, candidates, config, language)[:TOP_K]
+    per_doc = max(1, limit // max(len(ranked), 1))
+    hits = []
+    for candidate in ranked:
+        for chunk in _chunk(candidate.text)[:per_doc]:
+            hits.append(ChatHit(
+                precedent_id=candidate.precedent["id"],
+                precedent_version_id=candidate.version["id"],
+                doc_type=candidate.precedent.get("doc_type") or "",
+                source=candidate.precedent.get("source") or "",
+                text=chunk,
+                similarity=0.0,
+            ))
+    return hits[:limit]
+
+
 def reindex_gestora(gestora_id: str, precedent_id: Optional[str] = None) -> None:
     """Sync the gestora silo's persisted index (precedent_chunks, 018).
 

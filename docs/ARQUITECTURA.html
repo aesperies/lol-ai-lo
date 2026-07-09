@@ -93,7 +93,7 @@
   <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
   <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
   Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
-  Estado a 9-jul-2026 (migraciones 001–020: índice RAG pgvector · Grok · verificador cruzado).</p>
+  Estado a 9-jul-2026 (migraciones 001–021: índice RAG pgvector · Grok · verificador cruzado · chat Q&amp;A sobre el RAG).</p>
 
   <!-- ================= VISTA SIMPLE (no técnicos) ================= -->
   <div class="simple">
@@ -142,6 +142,7 @@
         <ul class="tight">
           <li><code>/dashboard</code> · <code>/new-request</code> (fondo + vehículo/SPV opcional)</li>
           <li><code>/documents[/id]</code> descargas + HTML</li>
+          <li><code>/chat</code> preguntas al RAG de la gestora (SSE, con citas)</li>
           <li><code>/funds</code> fondos y vehículos/SPVs (CRUD)</li>
           <li><code>/tabular-reviews</code> grid de extracción</li>
           <li><code>/account</code> privacidad (RGPD) + MFA</li>
@@ -189,6 +190,7 @@
       <div class="box"><b>api/precedents</b><span>biblioteca + versiones</span></div>
       <div class="box"><b>api/playbooks</b><span>reglas del critic</span></div>
       <div class="box"><b>api/tabular</b><span>revisión tabular</span></div>
+      <div class="box"><b>api/chat</b><span>chat Q&amp;A (021): conversaciones + mensajes vía SSE, privadas por usuario</span></div>
       <div class="box"><b>api/sharing</b><span>colaboración intra-gestora</span></div>
       <div class="box"><b>api/billing · metrics</b><span>uso · calidad · SLA</span></div>
       <div class="box"><b>api/account</b><span>RGPD export/erase · MFA · retención</span></div>
@@ -197,7 +199,8 @@
     <div class="grid-mini" style="margin-top:.9rem">
       <div class="box"><b>services/generation_pipeline</b><span>orquesta RAG → drafter → critic → docx → redline</span></div>
       <div class="box"><b>services/rag</b><span>niveles 0a→3, silo duro por gestora; búsqueda ANN sobre el índice persistido con fallback a ficheros</span></div>
-      <div class="box"><b>services/llm + providers/</b><span>resolución por gestora, fail-closed a local</span></div>
+      <div class="box"><b>services/llm + providers/</b><span>resolución por gestora, fail-closed a local · complete + stream (SSE) por proveedor</span></div>
+      <div class="box"><b>services/chat</b><span>Q&amp;A grounded (021): rag.search_silo sin doc_type + streaming + grounding del verificador</span></div>
       <div class="box"><b>services/model_router</b><span>orquestador de costes: task → tier light/heavy</span></div>
       <div class="box"><b>services/indexer</b><span>chunk+embed al subir/activar (018); sync idempotente = backfill</span></div>
       <div class="box"><b>services/jobs</b><span>cola asyncio, 3 reintentos · sweep de arranque: jobs huérfanos tras deploy/reinicio → failed + request a confirmed</span></div>
@@ -216,7 +219,7 @@
   <div class="flow-arrow">▼ <small>services/db.py — TenantScopeError si falta el filtro de gestora (la service-role key salta RLS: Python es el guardarraíl)</small></div>
 
   <div class="layer">
-    <span class="lbl">Datos · Supabase PostgreSQL (31 tablas + pgvector, RLS) o DevStore en memoria</span>
+    <span class="lbl">Datos · Supabase PostgreSQL (33 tablas + pgvector, RLS) o DevStore en memoria</span>
     <div class="grid-mini">
       <div class="box"><b>Tenencia</b><span>gestoras · funds · users</span></div>
       <div class="box"><b>Workflow</b><span>requests · documents · refinements · generation_jobs · generation_reviews · verifications (020)</span></div>
@@ -226,6 +229,7 @@
       <div class="box"><b>Facturación</b><span>usage_events⁺ · usage_alerts</span></div>
       <div class="box"><b>Tabular</b><span>4 tablas tabular_review_*</span></div>
       <div class="box"><b>Colaboración</b><span>request_shares · tabular_review_shares</span></div>
+      <div class="box"><b>Chat</b><span>chat_conversations · chat_messages (021: citas + verificación jsonb)</span></div>
       <div class="box"><b>RGPD</b><span>data_retention_policies</span></div>
       <div class="box"><b>Notificaciones</b><span>notifications (016) — campana in-app por usuario</span></div>
       <div class="box"><b>Auditoría</b><span>audit_log⁺ (trigger inmutable)</span></div>
@@ -354,7 +358,7 @@
     Cada ronda del critic registra qué modelo la sirvió (<code>generation_reviews.model_note</code>) para auditar el ahorro.</p>
     <div class="grid-mini" style="margin-top:.7rem">
       <div class="box"><b>heavy</b><span>generate · refine · parse escalado</span></div>
-      <div class="box"><b>light</b><span>parse · critic · gate · lessons · tabular</span></div>
+      <div class="box"><b>light</b><span>parse · critic · gate · lessons · tabular · verify · chat</span></div>
       <div class="box"><b>Config</b><span>OLLAMA_LIGHT_MODEL · ANTHROPIC_LIGHT_MODEL · MISTRAL_LIGHT_MODEL · GROK_LIGHT_MODEL (vacío = sin routing)</span></div>
     </div>
   </div>
@@ -368,8 +372,24 @@
     export CSV, columnas/documentos editables y compartible con colegas de la misma gestora.</p>
   </div>
 
+  <!-- ================= CHAT Q&A ================= -->
+  <h2>8 · Chat Q&amp;A sobre el RAG (021)</h2>
+  <div class="card">
+    <p style="color:var(--ink-2);max-width:75ch">El cliente pregunta en lenguaje natural a la documentación indexada de su
+    gestora (<code>/chat</code>). La recuperación (<code>rag.search_silo</code>) busca en <b>todo el silo sin fijar
+    doc_type</b> — mismo pre-filtro duro por <code>gestora_id</code>, solo versiones activas — y el turno se sirve por
+    <b>SSE</b>: <code>sources → delta* → verification? → done</code>. Las citas (<code>precedent_id</code> ·
+    <code>version</code> · snippet) se emiten <b>antes</b> de generar; la respuesta se redacta SOLO con los extractos
+    recuperados y, al terminar, el verificador cruzado (020) marca afirmaciones sin soporte (cada hallazgo debe citar el
+    fragmento literal de la respuesta o se autoinvalida). Sin documentación indexada no se llama al LLM: respuesta fija
+    honesta. El streaming existe en los 4 proveedores (<code>stream()</code> en Ollama/Anthropic/Mistral/Grok); un
+    proveedor sin streaming degrada a un único delta. Conversaciones privadas por usuario (404-no-leak, sin counsel/admin),
+    persistidas en <code>chat_conversations</code>/<code>chat_messages</code> con citas y verificación, auditadas como
+    <code>chat_message_sent</code> (sin contenido) y rate-limited (12/min).</p>
+  </div>
+
   <div class="foot">
-    Actualizado el 9-jul-2026 a partir del código (migraciones 001–017). Backend FastAPI · Frontend Next.js 14 ·
+    Actualizado el 9-jul-2026 a partir del código (migraciones 001–021). Backend FastAPI · Frontend Next.js 14 ·
     Supabase PostgreSQL · Ollama local-first con fallbacks cloud opt-in (Anthropic / Mistral UE). Documentos de
     referencia: docs/SPEC.md, docs/SECURITY.md, docs/GDPR.md, docs/LAVERN_IDEAS.md y
     <b>docs/ESCALADO.md</b> (plan de escalado a 25 fondos / 100 docs·mes) y <b>docs/ORQUESTADOR.md</b> (diseño del orquestador adaptativo de modelos).

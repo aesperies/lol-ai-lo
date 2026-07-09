@@ -114,6 +114,8 @@ class AuditAction(str, Enum):
     vehicle_created = "vehicle_created"
     vehicle_updated = "vehicle_updated"
     vehicle_deleted = "vehicle_deleted"
+    # Chat Q&A sobre el RAG de la gestora (021_chat.sql).
+    chat_message_sent = "chat_message_sent"
 
 
 class AuditResourceType(str, Enum):
@@ -133,6 +135,8 @@ class AuditResourceType(str, Enum):
     # Alta de fondos/vehículos (014_fund_creation.sql, 015_vehicles.sql).
     fund = "fund"
     vehicle = "vehicle"
+    # Chat Q&A sobre el RAG de la gestora (021_chat.sql).
+    conversation = "conversation"
 
 
 class UsageEventType(str, Enum):

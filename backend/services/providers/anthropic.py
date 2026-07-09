@@ -5,7 +5,7 @@ Requires ANTHROPIC_API_KEY (global) or the gestora's encrypted BYO key. The
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from config import ServiceNotConfiguredError, get_settings
 from services.providers.base import json_instructions, retryable
@@ -79,3 +79,51 @@ class AnthropicLLM:
         return "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        system: Optional[str],
+        config: Any,
+    ) -> Iterator[str]:
+        """Stream text deltas via the SDK's messages.stream helper. Same error
+        mapping as complete(); no mid-stream retry."""
+        if not config.anthropic_api_key:
+            raise ServiceNotConfiguredError("anthropic", "Set ANTHROPIC_API_KEY.")
+        import anthropic  # type: ignore[import-not-found]  # lazy optional dep
+
+        client = anthropic.Anthropic(api_key=config.anthropic_api_key)
+        kwargs: dict[str, Any] = {
+            "model": config.claude_model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system:
+            kwargs["system"] = system
+
+        try:
+            with client.messages.stream(**kwargs) as events:
+                yield from events.text_stream
+        except anthropic.APIConnectionError as exc:  # type: ignore[attr-defined]
+            raise ServiceNotConfiguredError(
+                "anthropic", "Could not reach the Anthropic API."
+            ) from exc
+        except anthropic.BadRequestError as exc:  # type: ignore[attr-defined]
+            if "credit" in str(exc).lower():
+                raise ServiceNotConfiguredError(
+                    "anthropic",
+                    "La cuenta de Anthropic no tiene crédito disponible. "
+                    "Añade saldo en console.anthropic.com → Plans & Billing.",
+                ) from exc
+            raise
+        except anthropic.AuthenticationError as exc:  # type: ignore[attr-defined]
+            raise ServiceNotConfiguredError(
+                "anthropic", "La API key de Anthropic no es válida o fue revocada."
+            ) from exc
+        except anthropic.RateLimitError as exc:  # type: ignore[attr-defined]
+            raise ServiceNotConfiguredError(
+                "anthropic",
+                "Límite de peticiones de Anthropic alcanzado; espera unos segundos y reintenta.",
+            ) from exc

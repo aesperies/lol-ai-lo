@@ -23,6 +23,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: "/dashboard", labelKey: "nav.dashboard" },
     { href: "/new-request", labelKey: "nav.newRequest" },
     { href: "/documents", labelKey: "nav.documents" },
+    { href: "/chat", labelKey: "nav.chat" },
     { href: "/funds", labelKey: "nav.funds" },
     { href: "/tabular-reviews", labelKey: "nav.tabular" },
     { href: "/account/security", labelKey: "nav.account" },

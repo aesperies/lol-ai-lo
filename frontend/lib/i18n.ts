@@ -688,6 +688,27 @@ const es = {
   "admin.lessons.lesson": "Lección",
   "admin.lessons.empty": "Esta gestora aún no ha aprendido lecciones.",
 
+  // Chat Q&A sobre el RAG de la gestora (021_chat.sql)
+  "nav.chat": "Consultas",
+  "chat.title": "Consulta tu documentación",
+  "chat.subtitle":
+    "Pregunta en lenguaje natural a los precedentes y modelos de tu gestora. Cada respuesta cita sus fuentes.",
+  "chat.newConversation": "Nueva conversación",
+  "chat.noConversations": "Aún no tienes conversaciones.",
+  "chat.untitled": "Conversación sin título",
+  "chat.placeholder": "Pregunta a la documentación de tu gestora…",
+  "chat.send": "Enviar",
+  "chat.thinking": "Buscando en tu documentación…",
+  "chat.sources": "Fuentes",
+  "chat.emptyThread":
+    "Haz una pregunta sobre tus precedentes: comisiones, quórums, plazos, cláusulas…",
+  "chat.deleteConversation": "Eliminar conversación",
+  "chat.verificationWarning":
+    "Revisión automática: {count} afirmación(es) de esta respuesta podrían no estar respaldadas por la documentación.",
+  "chat.disclaimer":
+    "Las respuestas se generan a partir de la documentación de tu gestora y no constituyen asesoramiento legal.",
+  "chat.error": "No se ha podido completar la respuesta. Inténtalo de nuevo.",
+
   // Tabular Review (010_tabular_reviews.sql)
   "nav.tabular": "Revisión tabular",
   "tabular.title": "Revisión tabular",
@@ -1395,6 +1416,27 @@ const en: Record<DictKey, string> = {
   "admin.lessons.weight": "Weight",
   "admin.lessons.lesson": "Lesson",
   "admin.lessons.empty": "This gestora has not learned any lessons yet.",
+
+  // Chat Q&A sobre el RAG de la gestora (021_chat.sql)
+  "nav.chat": "Ask your docs",
+  "chat.title": "Ask your documentation",
+  "chat.subtitle":
+    "Ask your gestora's precedents and templates in natural language. Every answer cites its sources.",
+  "chat.newConversation": "New conversation",
+  "chat.noConversations": "No conversations yet.",
+  "chat.untitled": "Untitled conversation",
+  "chat.placeholder": "Ask your gestora's documentation…",
+  "chat.send": "Send",
+  "chat.thinking": "Searching your documentation…",
+  "chat.sources": "Sources",
+  "chat.emptyThread":
+    "Ask a question about your precedents: fees, quorums, deadlines, clauses…",
+  "chat.deleteConversation": "Delete conversation",
+  "chat.verificationWarning":
+    "Automatic review: {count} statement(s) in this answer may not be supported by the documentation.",
+  "chat.disclaimer":
+    "Answers are generated from your gestora's documentation and are not legal advice.",
+  "chat.error": "The answer could not be completed. Please try again.",
 
   // Tabular Review (010_tabular_reviews.sql)
   "nav.tabular": "Tabular review",

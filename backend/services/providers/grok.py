@@ -7,12 +7,12 @@ is generation-only; the RAG index keeps its own embedding provider.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import httpx
 
 from config import ServiceNotConfiguredError, get_settings
-from services.providers.base import json_instructions, retryable
+from services.providers.base import json_instructions, retryable, stream_openai_sse
 
 _API_URL = "https://api.x.ai/v1/chat/completions"
 
@@ -80,6 +80,36 @@ class GrokLLM:
         if not choices:
             return ""
         return (choices[0].get("message") or {}).get("content", "") or ""
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        system: Optional[str],
+        config: Any,
+    ) -> Iterator[str]:
+        """Stream deltas from the OpenAI-compatible SSE endpoint."""
+        settings = get_settings()
+        if not config.xai_api_key:
+            raise ServiceNotConfiguredError("grok", "Set XAI_API_KEY (console.x.ai).")
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        yield from stream_openai_sse(
+            url=_API_URL,
+            payload={
+                "model": config.grok_model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "stream": True,
+            },
+            api_key=config.xai_api_key,
+            provider_name="grok",
+            unreachable_hint="Could not reach the xAI API.",
+            timeout=settings.ollama_timeout_seconds,
+        )
 
 
 _EMBED_URL = "https://api.x.ai/v1/embeddings"

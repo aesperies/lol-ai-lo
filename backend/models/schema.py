@@ -57,6 +57,10 @@ from models.entities import (  # noqa: F401
 )
 from models.dto import (  # noqa: F401
     AssignedCounselOut,
+    ChatConversationCreate,
+    ChatConversationOut,
+    ChatMessageCreate,
+    ChatMessageOut,
     ColleagueOut,
     ConfirmParamsBody,
     CounselAssignmentCreate,
