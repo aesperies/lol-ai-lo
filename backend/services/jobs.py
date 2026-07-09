@@ -21,7 +21,12 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Optional
 
 from config import get_settings
-from models.schema import GenerationJobStatus
+from models.schema import (
+    AuditAction,
+    AuditResourceType,
+    GenerationJobStatus,
+    RequestStatus,
+)
 from services import db as dbmod
 
 logger = logging.getLogger("lolailo.jobs")
@@ -142,6 +147,73 @@ class JobRunner:
                     {"status": GenerationJobStatus.succeeded.value, "finished_at": _now()},
                 )
                 return
+
+
+_ORPHAN_ERROR = (
+    "El proceso se reinició durante la generación (deploy/restart) y el job "
+    "quedó huérfano; marcado como failed en el arranque."
+)
+
+
+def sweep_orphaned_jobs(db: Optional[dbmod.Database] = None) -> int:
+    """Startup sweep (docs/ESCALADO.md §3): fail every queued/running job.
+
+    Jobs are in-process asyncio tasks, so a job still 'queued'/'running' when
+    the process STARTS belongs to a previous process killed mid-generation
+    (Railway deploy/restart) — without this, its request stays 'generating'
+    forever. For each orphan, mirroring the on_final_failure path in
+    api/documents.py: mark the job failed, revert the request 'generating' ->
+    'confirmed' so the client can retry, audit the failure and notify the
+    request owner. Returns the number of jobs swept.
+
+    Single-worker by design, like the runner itself: a second worker booting
+    while another is mid-generation would sweep the live job.
+    """
+    from auth import gestora_of_request
+    from services import audit, notifications
+    from services.workflow import transition
+
+    db = db if db is not None else dbmod.get_db()
+    swept = 0
+    for status in (GenerationJobStatus.queued, GenerationJobStatus.running):
+        for job in db.unscoped_select("generation_jobs", status=status.value):
+            db.update(
+                "generation_jobs",
+                job["id"],
+                {
+                    "status": GenerationJobStatus.failed.value,
+                    "last_error": _ORPHAN_ERROR,
+                    "finished_at": _now(),
+                },
+            )
+            swept += 1
+            row = db.get("requests", job["request_id"])
+            if row is None or row["status"] != RequestStatus.generating.value:
+                continue  # nothing stuck to recover (e.g. refinement flows)
+            gestora_id = gestora_of_request(db, row)
+            transition(db, row, RequestStatus.confirmed)
+            audit.log_action(
+                db,
+                user=None,  # system action (the sweep has no acting user)
+                action=AuditAction.document_generated,
+                resource_type=AuditResourceType.request,
+                resource_id=row["id"],
+                gestora_id=gestora_id,
+                metadata={"failed": True, "orphaned": True, "job_id": job["id"], "error": _ORPHAN_ERROR},
+            )
+            if row.get("user_id"):
+                notifications.notify(
+                    db,
+                    user_id=row["user_id"],
+                    kind=notifications.KIND_GENERATION_FAILED,
+                    title="La generación se interrumpió por un reinicio del servidor",
+                    body="Puedes reintentarla desde la solicitud; el estado ha vuelto a 'confirmado'.",
+                    request_id=row["id"],
+                    gestora_id=gestora_id,
+                )
+    if swept:
+        logger.warning("Startup sweep: %s orphaned generation job(s) marked failed.", swept)
+    return swept
 
 
 def latest_job(db: dbmod.Database, request_id: str) -> Optional[dict[str, Any]]:

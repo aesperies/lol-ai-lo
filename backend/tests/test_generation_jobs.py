@@ -1,10 +1,11 @@
 """Async generation job tests: 202 + poll-until-done flow, retry with
-backoff, final-failure revert, gestora isolation, synchronous guardrails."""
+backoff, final-failure revert, gestora isolation, synchronous guardrails,
+startup sweep for jobs orphaned by a deploy/restart."""
 from __future__ import annotations
 
 import pytest
 
-from services import generator
+from services import generator, jobs
 from tests.conftest import auth, seed_precedent
 
 
@@ -104,6 +105,93 @@ class TestRetries:
         assert wf.generate(request_id).status_code == 202
         assert wf.wait_for_job(request_id)["status"] == "succeeded"
         assert request_status(db, request_id) == "review_pending"
+
+
+class TestStartupSweep:
+    """Orphaned-job recovery (docs/ESCALADO.md §3): a Railway deploy/restart
+    mid-generation must not leave the request stuck in 'generating'."""
+
+    def _strand(self, wf, db, user=None, fund=None, job_status: str = "running") -> str:
+        """Simulate a process killed mid-generation: request in 'generating'
+        with a queued/running job row and no live asyncio task."""
+        request_id = wf.create(user, fund)
+        wf.parse(request_id, user)
+        wf.confirm(request_id, user)
+        db.update("requests", request_id, {"status": "generating"})
+        db.insert(
+            "generation_jobs",
+            {
+                "request_id": request_id,
+                "status": job_status,
+                "attempts": 1,
+                "max_attempts": 3,
+                "last_error": None,
+                "started_at": "2026-07-09T00:00:00+00:00",
+                "finished_at": None,
+            },
+        )
+        return request_id
+
+    def test_sweep_recovers_stuck_request(self, wf, client, db, seed):
+        request_id = self._strand(wf, db)
+
+        assert jobs.sweep_orphaned_jobs(db) == 1
+
+        job = jobs_for(db, request_id)[-1]
+        assert job["status"] == "failed"
+        assert "reinició" in job["last_error"]
+        assert job["finished_at"] is not None
+        assert request_status(db, request_id) == "confirmed"
+
+        # Owner notified in-app (kind generation_failed), gestora-scoped.
+        notes = db.select("notifications", user_id=seed["client_a"]["id"])
+        assert [n["kind"] for n in notes] == ["generation_failed"]
+        assert notes[0]["request_id"] == request_id
+        assert notes[0]["gestora_id"] == seed["gestora_a"]["id"]
+
+        # Audited as a failed generation by the system (no acting user).
+        orphaned = [
+            row
+            for row in db.unscoped_select("audit_log", action="document_generated")
+            if (row.get("metadata") or {}).get("orphaned")
+        ]
+        assert len(orphaned) == 1
+        assert orphaned[0]["resource_id"] == request_id
+        assert orphaned[0]["user_id"] is None
+        assert orphaned[0]["gestora_id"] == seed["gestora_a"]["id"]
+
+        # And the request is re-runnable end to end.
+        assert wf.generate(request_id).status_code == 202
+        assert wf.wait_for_job(request_id)["status"] == "succeeded"
+        assert request_status(db, request_id) == "review_pending"
+
+    def test_sweep_runs_on_app_startup(self, wf, client, db, seed):
+        from fastapi.testclient import TestClient
+
+        from main import app
+
+        request_id = self._strand(wf, db)
+        with TestClient(app):  # lifespan startup runs the sweep
+            pass
+        assert jobs_for(db, request_id)[-1]["status"] == "failed"
+        assert request_status(db, request_id) == "confirmed"
+
+    def test_sweep_skips_finished_jobs_and_isolates_notifications(self, wf, client, db, seed):
+        seed_precedent(db, gestora_id=seed["gestora_a"]["id"], text="PRECEDENTE ALFA")
+        done_id, _ = wf.to_review_pending()
+        stuck_b = self._strand(wf, db, seed["client_b"], seed["fund_b"], job_status="queued")
+
+        assert jobs.sweep_orphaned_jobs(db) == 1
+
+        # The finished job/request are untouched.
+        assert jobs_for(db, done_id)[-1]["status"] == "succeeded"
+        assert request_status(db, done_id) == "review_pending"
+        assert request_status(db, stuck_b) == "confirmed"
+        # Only gestora B's owner is notified, under gestora B's id.
+        assert db.select("notifications", user_id=seed["client_a"]["id"]) == []
+        notes_b = db.select("notifications", user_id=seed["client_b"]["id"])
+        assert [n["kind"] for n in notes_b] == ["generation_failed"]
+        assert notes_b[0]["gestora_id"] == seed["gestora_b"]["id"]
 
 
 class TestIsolationAndGuardrails:

@@ -40,11 +40,27 @@ from config import ServiceNotConfiguredError, get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Periodic counsel-SLA sweep (services/sla.py): reminders + escalations
-    for reviews stuck past their thresholds. No-op under pytest or when
-    SLA_SWEEP_ENABLED=false. TODO: move to an external scheduler (cron /
-    Celery beat) in production multi-worker setups."""
-    from services import sla  # local import keeps startup dependency-free
+    """Startup recovery + periodic sweeps.
+
+    1. Orphaned-job sweep (services/jobs.py, docs/ESCALADO.md §3): jobs run
+       in-process, so a deploy/restart mid-generation leaves the job row
+       'running' and the request stuck in 'generating' forever. One pass at
+       startup fails those jobs and reverts their requests to 'confirmed'.
+       Best-effort: it must never block startup (e.g. DB unconfigured).
+    2. Counsel-SLA sweep (services/sla.py): reminders + escalations for
+       reviews stuck past their thresholds. No-op under pytest or when
+       SLA_SWEEP_ENABLED=false. TODO: move to an external scheduler (cron /
+       Celery beat) in production multi-worker setups."""
+    import logging
+
+    from services import jobs, sla  # local import keeps startup dependency-free
+
+    try:
+        jobs.sweep_orphaned_jobs()
+    except Exception:  # noqa: BLE001 — graceful degradation: never block startup
+        logging.getLogger("lolailo.jobs").exception(
+            "Orphaned-job startup sweep failed; app starts anyway"
+        )
 
     sla.start_sweep_loop()
     try:

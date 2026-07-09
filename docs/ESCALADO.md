@@ -106,9 +106,12 @@ curado por gestora + pre-filtro por tipo de documento, ANN sobre pgvector sobra.
 - **Problema:** los jobs corren *dentro* del proceso uvicorn (asyncio + `to_thread`). Un
   deploy o reinicio de Railway a mitad de generación mata el job y la solicitud queda
   **atascada en `generating` para siempre** (no hay recuperación al arrancar — verificado).
-- **Fix corto (1 h):** *sweep* de arranque — al iniciar la app, todo `generation_job` en
-  `running` se marca `failed`, la request vuelve a `confirmed` y se notifica al usuario
-  ("reintenta la generación"). Elimina el atasco permanente.
+- **Fix corto — ✅ implementado (9-jul-2026):** *sweep* de arranque
+  (`services/jobs.sweep_orphaned_jobs`, invocado desde el lifespan de `main.py`) — al
+  iniciar la app, todo `generation_job` en `queued`/`running` se marca `failed`, la
+  request vuelve de `generating` a `confirmed`, se audita (`document_generated` con
+  `orphaned=true`) y se notifica al usuario ("reintenta la generación"). Elimina el
+  atasco permanente.
 - **Fix medio (cuando duela):** segundo servicio en Railway ("worker") que consuma
   `generation_jobs` de Postgres con `FOR UPDATE SKIP LOCKED`. Sin Redis, sin Celery — la
   tabla ya existe y Postgres es la cola. Esto además permite deploys del backend sin

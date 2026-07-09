@@ -199,7 +199,7 @@
       <div class="box"><b>services/rag</b><span>niveles 0a→3, silo duro por gestora</span></div>
       <div class="box"><b>services/llm + providers/</b><span>resolución por gestora, fail-closed a local</span></div>
       <div class="box"><b>services/model_router</b><span>orquestador de costes: task → tier light/heavy</span></div>
-      <div class="box"><b>services/jobs</b><span>cola asyncio, 3 reintentos</span></div>
+      <div class="box"><b>services/jobs</b><span>cola asyncio, 3 reintentos · sweep de arranque: jobs huérfanos tras deploy/reinicio → failed + request a confirmed</span></div>
       <div class="box"><b>services/critic</b><span>2 rondas · citas verificadas por string-match · confianza · gate opcional</span></div>
       <div class="box"><b>services/lessons</b><span>lecciones con refuerzo/decay (tentative→confirmed)</span></div>
       <div class="box"><b>services/redline</b><span>autor “Lol-AI-lo AI”</span></div>
@@ -264,7 +264,7 @@
     </div>
     <ul class="tight">
       <li><b>Intake:</b> el cliente describe el documento en lenguaje natural (+ campos estructurados por tipo). El parser LLM devuelve partes, fechas, términos y <code>confidence</code>; el cliente <b>confirma o edita</b> (auditado como <code>params_edited</code>).</li>
-      <li><b>Generación:</b> encolada como job (202) con 3 reintentos; si falla definitivamente vuelve a <code>confirmed</code> para reintentar.</li>
+      <li><b>Generación:</b> encolada como job (202) con 3 reintentos; si falla definitivamente vuelve a <code>confirmed</code> para reintentar. Si un deploy/reinicio mata el proceso a mitad de generación, el <b>sweep de arranque</b> (lifespan de main.py) marca el job huérfano como <code>failed</code>, devuelve la request a <code>confirmed</code>, lo audita y notifica al usuario.</li>
       <li><b>Refinamientos:</b> desde <code>review_pending</code> se puede volver a <code>generating</code> hasta <b>3 veces</b>; el redline siempre compara contra la base original.</li>
       <li><b>Exit A «Me vale»:</b> checkbox explícito + descarga → <code>delivered</code>. Bloqueado si <code>requires_counsel</code> (Nivel 3) o si el borrador contiene <code>[MISSING: …]</code>. El documento entra en la biblioteca como precedente <b>candidato</b> (draft, peso 0.0) pendiente de activación por admin.</li>
       <li><b>Exit B «Validación por abogado»:</b> arranca el reloj SLA (recordatorio 24 h, escalado 56 h), notifica al counsel asignado; este edita inline o sube .docx, comenta y <b>valida</b> → email al cliente con URL firmada → descarga final → <code>delivered</code>. El documento validado se incorpora <b>automáticamente como precedente activo</b> (peso 1.0) y se reindexa el silo.</li>
