@@ -50,6 +50,8 @@ class EffectiveLLMConfig:
         "anthropic_api_key",
         "mistral_api_key",
         "mistral_model",
+        "xai_api_key",
+        "grok_model",
         "ollama_base_url",
         "ollama_llm_model",
         "model_pinned",
@@ -65,6 +67,8 @@ class EffectiveLLMConfig:
         ollama_llm_model: str,
         mistral_api_key: str = "",
         mistral_model: str = "",
+        xai_api_key: str = "",
+        grok_model: str = "",
         model_pinned: bool = False,
     ) -> None:
         self.llm_provider = llm_provider
@@ -72,6 +76,8 @@ class EffectiveLLMConfig:
         self.anthropic_api_key = anthropic_api_key
         self.mistral_api_key = mistral_api_key
         self.mistral_model = mistral_model
+        self.xai_api_key = xai_api_key
+        self.grok_model = grok_model
         self.ollama_base_url = ollama_base_url
         self.ollama_llm_model = ollama_llm_model
         # True when a gestora pinned an explicit llm_model in its override —
@@ -183,6 +189,8 @@ def resolve_config(
         anthropic_api_key=settings.anthropic_api_key,
         mistral_api_key=settings.mistral_api_key,
         mistral_model=settings.mistral_model,
+        xai_api_key=settings.xai_api_key,
+        grok_model=settings.grok_model,
         ollama_base_url=settings.ollama_base_url,
         ollama_llm_model=settings.ollama_llm_model,
     )
@@ -214,6 +222,7 @@ def resolve_config(
         config.claude_model = row["llm_model"]
         config.ollama_llm_model = row["llm_model"]
         config.mistral_model = row["llm_model"]
+        config.grok_model = row["llm_model"]
         config.model_pinned = True
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
@@ -235,6 +244,16 @@ def resolve_config(
             logger.warning(
                 "Mistral BYO key for gestora %s could not be decrypted; "
                 "falling back to global MISTRAL_API_KEY.",
+                gestora_id,
+            )
+    enc = row.get("xai_api_key_enc")
+    if enc:
+        try:
+            config.xai_api_key = secrets.decrypt(enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "xAI BYO key for gestora %s could not be decrypted; "
+                "falling back to global XAI_API_KEY.",
                 gestora_id,
             )
     return model_router.apply(config, task)

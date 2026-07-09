@@ -56,6 +56,7 @@ def light_model_for(provider: str) -> str:
         "ollama": settings.ollama_light_model,
         "anthropic": settings.anthropic_light_model,
         "mistral": settings.mistral_light_model,
+        "grok": settings.grok_light_model,
     }.get(provider, "")
 
 
@@ -79,6 +80,8 @@ def apply(config: Any, task: Optional[str]) -> Any:
         config.claude_model = light
     elif config.llm_provider == "mistral":
         config.mistral_model = light
+    elif config.llm_provider == "grok":
+        config.grok_model = light
     logger.debug("Routed task %s to %s:%s (light tier)", task, config.llm_provider, light)
     return config
 
@@ -89,4 +92,5 @@ def model_of(config: Any) -> str:
         "ollama": config.ollama_llm_model,
         "anthropic": config.claude_model,
         "mistral": config.mistral_model,
+        "grok": config.grok_model,
     }.get(config.llm_provider, "?")

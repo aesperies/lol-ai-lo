@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     # así el índice pgvector (migración 018, vector(1024)) sirve para ambos.
     mistral_embed_model: str = "mistral-embed"
 
+    # ---------- Grok / xAI (optional US cloud fallback) ----------
+    # Generation-only: xAI publishes no embedding models (jul-2026), so the
+    # RAG index keeps its own EMBEDDING_PROVIDER. TODO: real credential
+    # required when LLM_PROVIDER=grok (console.x.ai -> API Keys).
+    xai_api_key: str = ""
+    grok_model: str = "grok-4.5"
+
     # ---------- OpenAI (optional cloud RAG embeddings) ----------
     # TODO: real credential required when EMBEDDING_PROVIDER=openai
     # (platform.openai.com)
@@ -86,6 +93,7 @@ class Settings(BaseSettings):
     ollama_light_model: str = ""  # e.g. "qwen2.5:7b-instruct" once pulled
     anthropic_light_model: str = "claude-haiku-4-5-20251001"
     mistral_light_model: str = "mistral-small-latest"
+    grok_light_model: str = "grok-4.3"
     # Intake-parse escalation: when the light-tier parse returns confidence
     # below this, retry ONCE on the heavy tier (skipped when both tiers
     # resolve to the same model).
@@ -214,6 +222,10 @@ class Settings(BaseSettings):
     @property
     def mistral_configured(self) -> bool:
         return bool(self.mistral_api_key)
+
+    @property
+    def grok_configured(self) -> bool:
+        return bool(self.xai_api_key)
 
     @property
     def openai_configured(self) -> bool:

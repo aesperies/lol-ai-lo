@@ -11,12 +11,14 @@ from typing import Any, Optional
 from config import ServiceNotConfiguredError
 from services.providers.anthropic import AnthropicLLM
 from services.providers.base import EmbeddingProvider, LLMProvider
+from services.providers.grok import GrokLLM
 from services.providers.mistral import MistralEmbeddings, MistralLLM
 from services.providers.ollama import OllamaEmbeddings, OllamaLLM
 from services.providers.openai import OpenAIEmbeddings
 
 _LLM_PROVIDERS: dict[str, LLMProvider] = {
-    provider.name: provider for provider in (OllamaLLM(), AnthropicLLM(), MistralLLM())
+    provider.name: provider
+    for provider in (OllamaLLM(), AnthropicLLM(), MistralLLM(), GrokLLM())
 }
 
 _EMBEDDING_PROVIDERS: dict[str, EmbeddingProvider] = {

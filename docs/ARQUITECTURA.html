@@ -93,7 +93,7 @@
   <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
   <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
   Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
-  Estado a 9-jul-2026 (migraciones 001–018: índice RAG pgvector).</p>
+  Estado a 9-jul-2026 (migraciones 001–019: índice RAG pgvector · proveedor Grok).</p>
 
   <!-- ================= VISTA SIMPLE (no técnicos) ================= -->
   <div class="simple">
@@ -240,6 +240,7 @@
       <div class="box"><b>Ollama (local) <span class="pill ok">defecto</span></b><span>LLM qwen2.5:14b · embeddings bge-m3 — los datos no salen de la máquina</span></div>
       <div class="box"><b>Anthropic Claude <span class="pill deg">opt-in</span></b><span>fallback LLM cloud, clave global o BYO por gestora</span></div>
       <div class="box"><b>Mistral AI (UE) <span class="pill deg">opt-in</span></b><span>LLM + embeddings cloud con residencia de datos en la UE (París) — mistral-embed alimenta el índice RAG</span></div>
+      <div class="box"><b>Grok / xAI <span class="pill deg">opt-in</span></b><span>fallback LLM cloud (grok-4.5 · light grok-4.3); solo generación — xAI no publica embeddings</span></div>
       <div class="box"><b>OpenAI <span class="pill deg">opt-in</span></b><span>fallback embeddings cloud</span></div>
       <div class="box"><b>Supabase</b><span>PostgreSQL + Auth (JWT, MFA TOTP)</span></div>
       <div class="box"><b>Resend <span class="pill deg">opcional</span></b><span>email → si falta, consola</span></div>
@@ -330,6 +331,7 @@
       <tr><td>Ollama</td><td>LLM + embeddings local (defecto)</td><td><span class="pill deg">degrada</span> 503 claro en parse/generate; critic y lecciones se saltan; RAG rankea por peso×recencia; el job reintenta 3×</td></tr>
       <tr><td>Anthropic</td><td>LLM cloud opt-in</td><td><span class="pill deg">degrada</span> 503 solo si está seleccionado; BYO key ilegible → clave global → local</td></tr>
       <tr><td>Mistral (UE)</td><td>LLM + embeddings cloud opt-in, residencia UE</td><td><span class="pill deg">degrada</span> igual que Anthropic; BYO key cifrada por gestora</td></tr>
+      <tr><td>Grok (xAI)</td><td>LLM cloud opt-in (solo generación)</td><td><span class="pill deg">degrada</span> igual que Anthropic/Mistral; BYO key cifrada por gestora</td></tr>
       <tr><td>OpenAI</td><td>Embeddings cloud opt-in</td><td><span class="pill deg">degrada</span> ranking peso×recencia, nunca amplía candidatos</td></tr>
       <tr><td>Supabase</td><td>BD + Auth</td><td><span class="pill down">503 en datos</span> /health sigue; en dev, <code>DEV_AUTH_STUB=true</code> usa store en memoria</td></tr>
       <tr><td>Resend</td><td>Email</td><td><span class="pill ok">consola</span> el flujo nunca se bloquea</td></tr>
@@ -343,7 +345,7 @@
     <p style="color:var(--ink-2);max-width:75ch">Cada llamada al LLM se etiqueta con su workload y
     <code>services/model_router.py</code> decide el <b>tier</b>: los borradores y refinamientos (calidad crítica)
     siempre van al modelo <b>heavy</b> del proveedor; las cargas cortas y de alto volumen — critic, gate, lecciones,
-    celdas tabulares, parse de intake — van al modelo <b>light</b> (p. ej. qwen 7B / Haiku / mistral-small).
+    celdas tabulares, parse de intake — van al modelo <b>light</b> (p. ej. qwen 7B / Haiku / mistral-small / grok-4.3).
     El parse escala automáticamente a heavy si vuelve con confianza &lt; 0,7. Dos límites inviolables:
     el router solo cambia el <b>modelo</b>, nunca el <b>proveedor</b> (la privacidad se decide antes, fail-closed a local),
     y una gestora que fija un modelo explícito en su configuración no se re-enruta jamás.
@@ -351,7 +353,7 @@
     <div class="grid-mini" style="margin-top:.7rem">
       <div class="box"><b>heavy</b><span>generate · refine · parse escalado</span></div>
       <div class="box"><b>light</b><span>parse · critic · gate · lessons · tabular</span></div>
-      <div class="box"><b>Config</b><span>OLLAMA_LIGHT_MODEL · ANTHROPIC_LIGHT_MODEL · MISTRAL_LIGHT_MODEL (vacío = sin routing)</span></div>
+      <div class="box"><b>Config</b><span>OLLAMA_LIGHT_MODEL · ANTHROPIC_LIGHT_MODEL · MISTRAL_LIGHT_MODEL · GROK_LIGHT_MODEL (vacío = sin routing)</span></div>
     </div>
   </div>
 

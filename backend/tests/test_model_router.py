@@ -165,3 +165,94 @@ class TestMistral:
         row = db.select("gestora_model_config", gestora_id=gestora_id)[-1]
         assert row["mistral_api_key_enc"] != "sk-live-secreta"
         assert secrets.decrypt(row["mistral_api_key_enc"]) == "sk-live-secreta"
+
+
+class TestGrok:
+    def test_provider_registered(self):
+        assert providers.get_llm("grok").name == "grok"
+
+    def test_unconfigured_readiness(self):
+        assert providers.llm_configured("grok", config.get_settings()) is False
+
+    def test_byo_key_resolution(self, db, seed):
+        db.insert(
+            "gestora_model_config",
+            {
+                "gestora_id": seed["gestora_a"]["id"],
+                "llm_provider": "grok",
+                "xai_api_key_enc": secrets.encrypt("xai-byo-key"),
+            },
+        )
+        cfg = llm.resolve_config(seed["gestora_a"]["id"], task="generate")
+        assert cfg.llm_provider == "grok"
+        assert cfg.xai_api_key == "xai-byo-key"
+        assert cfg.grok_model == config.get_settings().grok_model
+
+    def test_light_routing_on_grok(self, db, seed):
+        db.insert(
+            "gestora_model_config",
+            {"gestora_id": seed["gestora_a"]["id"], "llm_provider": "grok"},
+        )
+        cfg = llm.resolve_config(seed["gestora_a"]["id"], task="critic")
+        assert cfg.grok_model == config.get_settings().grok_light_model
+
+    def test_pinned_model_disables_routing(self, db, seed):
+        db.insert(
+            "gestora_model_config",
+            {"gestora_id": seed["gestora_a"]["id"], "llm_provider": "grok", "llm_model": "grok-4.5"},
+        )
+        cfg = llm.resolve_config(seed["gestora_a"]["id"], task="critic")
+        assert cfg.grok_model == "grok-4.5"  # pinned: the cost router must not touch it
+
+    def test_model_config_api_roundtrips_xai_key(self, client, seed, db):
+        gestora_id = seed["gestora_a"]["id"]
+        res = client.put(
+            f"/api/admin/gestoras/{gestora_id}/model-config",
+            headers=auth(seed["admin"]),
+            json={"llm_provider": "grok", "xai_api_key": "xai-live-secreta"},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["xai_key_set"] is True
+        assert "xai-live-secreta" not in res.text
+        row = db.select("gestora_model_config", gestora_id=gestora_id)[-1]
+        assert row["xai_api_key_enc"] != "xai-live-secreta"
+        assert secrets.decrypt(row["xai_api_key_enc"]) == "xai-live-secreta"
+
+    def test_complete_json_mode_and_error_mapping(self, monkeypatch):
+        """GrokLLM: JSON nativo (response_format) y errores → 503 accionable."""
+        from config import ServiceNotConfiguredError
+        from services.providers.grok import GrokLLM
+
+        captured: dict[str, Any] = {}
+
+        class _Resp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": '{"ok": true}'}}]}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured["url"] = url
+            captured["payload"] = json
+            return _Resp()
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        cfg = llm.EffectiveLLMConfig(
+            llm_provider="grok", claude_model="", anthropic_api_key="",
+            ollama_base_url="", ollama_llm_model="",
+            xai_api_key="xai-test", grok_model="grok-4.5",
+        )
+        out = GrokLLM().complete(
+            "hola", max_tokens=64, json_schema={"type": "object"}, system=None, config=cfg
+        )
+        assert out == '{"ok": true}'
+        assert captured["url"].startswith("https://api.x.ai/")
+        assert captured["payload"]["response_format"] == {"type": "json_object"}
+        assert captured["payload"]["model"] == "grok-4.5"
+
+        # Sin key -> 503 accionable, nunca una llamada de red.
+        cfg.xai_api_key = ""
+        with pytest.raises(ServiceNotConfiguredError):
+            GrokLLM().complete("hola", max_tokens=64, json_schema=None, system=None, config=cfg)
