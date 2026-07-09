@@ -165,3 +165,187 @@ class TestMistral:
         row = db.select("gestora_model_config", gestora_id=gestora_id)[-1]
         assert row["mistral_api_key_enc"] != "sk-live-secreta"
         assert secrets.decrypt(row["mistral_api_key_enc"]) == "sk-live-secreta"
+
+
+class TestGrok:
+    def test_provider_registered(self):
+        assert providers.get_llm("grok").name == "grok"
+
+    def test_unconfigured_readiness(self):
+        assert providers.llm_configured("grok", config.get_settings()) is False
+
+    def test_byo_key_resolution(self, db, seed):
+        db.insert(
+            "gestora_model_config",
+            {
+                "gestora_id": seed["gestora_a"]["id"],
+                "llm_provider": "grok",
+                "xai_api_key_enc": secrets.encrypt("xai-byo-key"),
+            },
+        )
+        cfg = llm.resolve_config(seed["gestora_a"]["id"], task="generate")
+        assert cfg.llm_provider == "grok"
+        assert cfg.xai_api_key == "xai-byo-key"
+        assert cfg.grok_model == config.get_settings().grok_model
+
+    def test_light_routing_on_grok(self, db, seed):
+        db.insert(
+            "gestora_model_config",
+            {"gestora_id": seed["gestora_a"]["id"], "llm_provider": "grok"},
+        )
+        cfg = llm.resolve_config(seed["gestora_a"]["id"], task="critic")
+        assert cfg.grok_model == config.get_settings().grok_light_model
+
+    def test_pinned_model_disables_routing(self, db, seed):
+        db.insert(
+            "gestora_model_config",
+            {"gestora_id": seed["gestora_a"]["id"], "llm_provider": "grok", "llm_model": "grok-4.5"},
+        )
+        cfg = llm.resolve_config(seed["gestora_a"]["id"], task="critic")
+        assert cfg.grok_model == "grok-4.5"  # pinned: the cost router must not touch it
+
+    def test_model_config_api_roundtrips_xai_key(self, client, seed, db):
+        gestora_id = seed["gestora_a"]["id"]
+        res = client.put(
+            f"/api/admin/gestoras/{gestora_id}/model-config",
+            headers=auth(seed["admin"]),
+            json={"llm_provider": "grok", "xai_api_key": "xai-live-secreta"},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["xai_key_set"] is True
+        assert "xai-live-secreta" not in res.text
+        row = db.select("gestora_model_config", gestora_id=gestora_id)[-1]
+        assert row["xai_api_key_enc"] != "xai-live-secreta"
+        assert secrets.decrypt(row["xai_api_key_enc"]) == "xai-live-secreta"
+
+    def test_complete_json_mode_and_error_mapping(self, monkeypatch):
+        """GrokLLM: JSON nativo (response_format) y errores → 503 accionable."""
+        from config import ServiceNotConfiguredError
+        from services.providers.grok import GrokLLM
+
+        captured: dict[str, Any] = {}
+
+        class _Resp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": '{"ok": true}'}}]}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured["url"] = url
+            captured["payload"] = json
+            return _Resp()
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        cfg = llm.EffectiveLLMConfig(
+            llm_provider="grok", claude_model="", anthropic_api_key="",
+            ollama_base_url="", ollama_llm_model="",
+            xai_api_key="xai-test", grok_model="grok-4.5",
+        )
+        out = GrokLLM().complete(
+            "hola", max_tokens=64, json_schema={"type": "object"}, system=None, config=cfg
+        )
+        assert out == '{"ok": true}'
+        assert captured["url"].startswith("https://api.x.ai/")
+        assert captured["payload"]["response_format"] == {"type": "json_object"}
+        assert captured["payload"]["model"] == "grok-4.5"
+
+        # Sin key -> 503 accionable, nunca una llamada de red.
+        cfg.xai_api_key = ""
+        with pytest.raises(ServiceNotConfiguredError):
+            GrokLLM().complete("hola", max_tokens=64, json_schema=None, system=None, config=cfg)
+
+
+class TestGrokEmbeddings:
+    @pytest.fixture(autouse=True)
+    def _reset_discovery(self, monkeypatch):
+        from services.providers import grok
+        monkeypatch.setattr(grok, "_discovered_embed_model", None)
+
+    def _config(self, **overrides):
+        defaults = dict(
+            embedding_provider="grok", embedding_model="", openai_api_key="",
+            ollama_base_url="", ollama_embed_model="",
+            xai_api_key="xai-test", grok_embed_model="grok-embed-x",
+        )
+        defaults.update(overrides)
+        return llm.EffectiveEmbeddingConfig(**defaults)
+
+    def test_registered(self):
+        assert providers.get_embedding("grok").name == "grok"
+
+    def test_embed_requests_1024_dims(self, monkeypatch):
+        from services.providers.grok import GrokEmbeddings
+
+        captured: dict[str, Any] = {}
+
+        class _Resp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"data": [
+                    {"index": 1, "embedding": [0.2] * 1024},
+                    {"index": 0, "embedding": [0.1] * 1024},
+                ]}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured["url"] = url
+            captured["payload"] = json
+            return _Resp()
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        vectors = GrokEmbeddings().embed(["uno", "dos"], self._config())
+        assert captured["url"] == "https://api.x.ai/v1/embeddings"
+        assert captured["payload"]["model"] == "grok-embed-x"
+        assert captured["payload"]["dimensions"] == 1024
+        # data llega desordenado; se reordena por index
+        assert vectors[0][0] == 0.1 and vectors[1][0] == 0.2
+
+    def test_autodiscovers_model_when_unset(self, monkeypatch):
+        from services.providers import grok
+
+        class _ModelsResp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"models": [{"id": "grok-embed-auto", "aliases": []}]}
+
+        class _EmbedResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"data": [{"index": 0, "embedding": [0.5] * 1024}]}
+
+        monkeypatch.setattr(llm.httpx, "get", lambda url, headers=None, timeout=None: _ModelsResp())
+        captured: dict[str, Any] = {}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured["payload"] = json
+            return _EmbedResp()
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        cfg = self._config(grok_embed_model="")
+        vectors = grok.GrokEmbeddings().embed(["hola"], cfg)
+        assert vectors is not None
+        assert captured["payload"]["model"] == "grok-embed-auto"
+        # resolved_embed_model refleja el modelo descubierto (clave para que
+        # el índice y la query usen el mismo embed_model)
+        assert cfg.resolved_embed_model == "grok-embed-auto"
+
+    def test_degrades_to_none_on_failure(self, monkeypatch):
+        from services.providers.grok import GrokEmbeddings
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            raise llm.httpx.ConnectError("down")
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        assert GrokEmbeddings().embed(["hola"], self._config()) is None
+        # Sin key: tampoco llama a la red.
+        assert GrokEmbeddings().embed(["hola"], self._config(xai_api_key="")) is None

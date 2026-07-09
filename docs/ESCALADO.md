@@ -192,7 +192,7 @@ Añadir cualquiera de estas piezas ahora sería coste y superficie de fallo sin 
 
 | Sprint | Contenido | Resultado visible |
 |---|---|---|
-| **1 — RAG real** | Elegir proveedor de embeddings → migración 018 (pgvector) → indexer on-write → backfill Temis + silos → retrieve por SQL | Búsqueda semántica funcionando en producción; generaciones basadas en el precedente *más parecido*, no el más reciente |
+| **1 — RAG real** ✅ *(código desplegado el 9-jul; falta MISTRAL_API_KEY + backfill)* | Grok/xAI elegido como proveedor (decisión de Antonio; embeddings vía /v1/embeddings con dimensions=1024) → migración 018 (pgvector, aplicada en prod) → indexer on-write → retrieve por ANN con fallback → script de backfill (`backend/scripts/backfill_rag_index.py`) | Búsqueda semántica funcionando en producción; generaciones basadas en el precedente *más parecido*, no el más reciente |
 | **2 — Fiabilidad y operación** | Sweep de jobs huérfanos · Supabase Storage · rotación de secretos · Resend + digest | Ningún documento se queda atascado; archivos con backup; emails reales |
 | **3 — UX P1** | Progreso por etapas · duplicar solicitud · búsqueda en documents · biblioteca visible | Operación diaria fluida para las gestoras |
 | Continuo | Mantener `docs/ARQUITECTURA.html` al día (mandato de CLAUDE.md) | — |

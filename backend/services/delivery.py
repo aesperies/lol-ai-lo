@@ -171,5 +171,5 @@ def register_precedent(
             ip_address=ip_address,
         )
     if activate:
-        rag.reindex_gestora(gestora_id)
+        rag.reindex_gestora(gestora_id, precedent["id"])
     return version

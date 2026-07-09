@@ -254,6 +254,92 @@ def _rank(
     return [c for c, _ in paired]
 
 
+# Max chunk texts contributed as context by the indexed path (chunks are ~512
+# tokens; TOP_K on the file path returns whole documents, so more-but-smaller
+# pieces keep prompt sizes comparable).
+CONTEXT_CHUNKS = 8
+
+# Weights for the global pools (active versions only), keyed by source.
+_GLOBAL_WEIGHTS = {"slp_curated": 0.7, "platform_base": 0.4}
+
+
+@dataclass
+class _VersionHit:
+    """One precedent version ranked from the persisted index."""
+
+    version_id: str
+    score: float  # max chunk similarity × level weight (same formula as _rank)
+    is_docx: bool
+    chunk_texts: list[str]  # most-similar-first
+
+
+def _indexed_hits(
+    db: dbmod.Database,
+    *,
+    config: llm.EffectiveEmbeddingConfig,
+    query_vector: list[float],
+    weights: dict[str, float],
+    gestora_id: Optional[str],
+    doc_type: str,
+    source: Optional[str] = None,
+    exclude_source: Optional[str] = None,
+    language: Optional[str] = None,
+) -> list[_VersionHit]:
+    """Rank versions for ONE level from precedent_chunks (018), or [] when the
+    level has no indexed vectors — the caller then falls back to the
+    file-based path, so unindexed content is never silently dropped."""
+    rows = db.search_chunks(
+        gestora_id=gestora_id,
+        doc_type=doc_type,
+        query_embedding=query_vector,
+        embed_model=config.resolved_embed_model,
+        source=source,
+        exclude_source=exclude_source,
+        language=language,
+    )
+    by_version: dict[str, _VersionHit] = {}
+    for row in rows:  # most-similar-first
+        weight = weights.get(row.get("version_status", ""))
+        if weight is None:
+            continue
+        hit = by_version.get(row["precedent_version_id"])
+        if hit is None:
+            by_version[row["precedent_version_id"]] = _VersionHit(
+                version_id=row["precedent_version_id"],
+                score=row["similarity"] * weight,
+                is_docx=bool(row.get("is_docx")),
+                chunk_texts=[row["text"]],
+            )
+        else:
+            hit.chunk_texts.append(row["text"])
+            hit.score = max(hit.score, row["similarity"] * weight)
+    return sorted(by_version.values(), key=lambda h: h.score, reverse=True)
+
+
+def _context_from_hits(hits: list[_VersionHit], limit: int = CONTEXT_CHUNKS) -> list[str]:
+    texts: list[str] = []
+    for hit in hits:
+        for text in hit.chunk_texts:
+            if len(texts) >= limit:
+                return texts
+            texts.append(text)
+    return texts
+
+
+def _base_text_for(db: dbmod.Database, hits: list[_VersionHit]) -> Optional[tuple[str, str]]:
+    """(base_text, version_id) for the best .docx hit whose file still reads."""
+    for hit in hits:
+        if not hit.is_docx:
+            continue
+        version = db.get("precedent_versions", hit.version_id)
+        if version is None:
+            continue
+        text = _load_text(version["file_path"])
+        if text is not None:
+            return text, hit.version_id
+    return None
+
+
 def retrieve(
     db: dbmod.Database,
     *,
@@ -262,41 +348,116 @@ def retrieve(
     language: str,
     query_text: str,
 ) -> RetrievalResult:
-    """Walk the fallback chain and return the generation base + context."""
+    """Walk the fallback chain and return the generation base + context.
+
+    Fast path: the persisted index (precedent_chunks, 018) — ONE query
+    embedding + one ANN search per level, no file re-reads except the chosen
+    base. Levels without indexed vectors (silo not yet backfilled, embeddings
+    unavailable) fall back per-level to the original file-based path, which in
+    turn degrades to weight/recency ranking. The gestora_id + doc_type hard
+    pre-filter applies identically on every path.
+    """
     reference_context: list[str] = []  # PDF-only levels contribute context, never a base
 
-    # Embedding provider resolved ONCE per retrieval, honoring the gestora's
-    # model-config override (fail-closed to local Ollama on error) — this
-    # gestora's precedent text never goes to a cloud embedder without opt-in.
-    embed_config = llm.resolve_embedding_config(gestora_id)
+    # Embedding config resolved ONCE per scope, honoring the gestora's
+    # model-config override (fail-closed to local Ollama on error). Global
+    # pools are indexed with the PLATFORM config — a gestora override changes
+    # how her silo is embedded, never how the shared pool is queried.
+    silo_config = llm.resolve_embedding_config(gestora_id)
+    global_config = llm.resolve_embedding_config(None)
 
-    # Within the gestora silo, modelos (0a) are tried as the generation base
-    # BEFORE precedentes (0b); precedentes always contribute as context. Both
-    # report level=0 (the silo level). Levels 1-2 are the global template pools.
-    precedente_candidates = _silo_candidates(db, gestora_id, doc_type)
-    levels: list[tuple[int, list[Candidate]]] = [
-        (0, _model_candidates(db, gestora_id, doc_type)),
-        (0, precedente_candidates),
-        (1, _global_candidates(db, "slp_curated", doc_type, language, 0.7)),
-        (2, _global_candidates(db, "platform_base", doc_type, language, 0.4)),
+    _query_vectors: dict[tuple[str, str], Optional[list[float]]] = {}
+
+    def query_vector(config: llm.EffectiveEmbeddingConfig) -> Optional[list[float]]:
+        key = (config.embedding_provider, config.resolved_embed_model)
+        if key not in _query_vectors:
+            vectors = _embed([query_text], config)
+            vector = vectors[0] if vectors else None
+            if vector is not None:
+                # The index column is vector(1024); a provider returning
+                # another dimension cannot be compared (pgvector errors) —
+                # degrade instead. Mirrors the indexer's dimension check.
+                from services import indexer  # local import, no cycle
+
+                if len(vector) != indexer.EXPECTED_DIM:
+                    vector = None
+            _query_vectors[key] = vector
+        return _query_vectors[key]
+
+    def silo_context_texts() -> list[str]:
+        """Precedente (0b) context when a modelo provides the base."""
+        vector = query_vector(silo_config)
+        if vector is not None:
+            hits = _indexed_hits(
+                db, config=silo_config, query_vector=vector, weights=_SILO_WEIGHTS,
+                gestora_id=gestora_id, doc_type=doc_type, exclude_source=_MODEL_SOURCE,
+            )
+            if hits:
+                return _context_from_hits(hits)
+        candidates = _silo_candidates(db, gestora_id, doc_type)
+        return [c.text for c in _rank(query_text, candidates, silo_config, language)[:TOP_K]]
+
+    # (level, chunk-search kwargs, file-candidates factory, per-status weights)
+    level_specs: list[tuple[int, dict[str, Any], Any, dict[str, float], llm.EffectiveEmbeddingConfig]] = [
+        (0, {"gestora_id": gestora_id, "source": _MODEL_SOURCE},
+         lambda: _model_candidates(db, gestora_id, doc_type), _SILO_WEIGHTS, silo_config),
+        (0, {"gestora_id": gestora_id, "exclude_source": _MODEL_SOURCE},
+         lambda: _silo_candidates(db, gestora_id, doc_type), _SILO_WEIGHTS, silo_config),
+        (1, {"gestora_id": None, "source": "slp_curated", "language": language or None},
+         lambda: _global_candidates(db, "slp_curated", doc_type, language, 0.7),
+         {PrecedentVersionStatus.active.value: _GLOBAL_WEIGHTS["slp_curated"]}, global_config),
+        (2, {"gestora_id": None, "source": "platform_base", "language": language or None},
+         lambda: _global_candidates(db, "platform_base", doc_type, language, 0.4),
+         {PrecedentVersionStatus.active.value: _GLOBAL_WEIGHTS["platform_base"]}, global_config),
     ]
-    for level, candidates in levels:
+
+    for index, (level, chunk_filters, candidates_factory, weights, config) in enumerate(level_specs):
+        is_model_level = index == 0
+
+        # -- fast path: persisted index ------------------------------------
+        vector = query_vector(config)
+        hits = (
+            _indexed_hits(
+                db, config=config, query_vector=vector, weights=weights,
+                doc_type=doc_type, **chunk_filters,
+            )
+            if vector is not None
+            else []
+        )
+        if hits:
+            base = _base_text_for(db, hits)
+            if base is None:
+                # PDFs only: keep as read-only reference and keep falling back.
+                reference_context.extend(_context_from_hits(hits, TOP_K))
+                continue
+            base_text, base_version_id = base
+            context = _context_from_hits(hits)
+            if is_model_level:
+                # Precedentes contribute context even when a model is the base.
+                context += silo_context_texts()
+            return RetrievalResult(
+                level=level,
+                base_text=base_text,
+                base_version_id=base_version_id,
+                context_texts=reference_context + context,
+            )
+
+        # -- fallback: file-based candidates (original path) ----------------
+        candidates = candidates_factory()
         if not candidates:
             continue
-        ranked = _rank(query_text, candidates, embed_config, language)
-        base = next((c for c in ranked if c.is_generation_base), None)
-        if base is None:
-            # PDFs only: keep as read-only reference and keep falling back.
+        ranked = _rank(query_text, candidates, config, language)
+        base_candidate = next((c for c in ranked if c.is_generation_base), None)
+        if base_candidate is None:
             reference_context.extend(c.text for c in ranked[:TOP_K])
             continue
-        # Precedentes contribute context even when a model provides the base.
         context = [c.text for c in ranked[:TOP_K]]
-        if level == 0 and candidates is not precedente_candidates:
-            context += [c.text for c in _rank(query_text, precedente_candidates, embed_config, language)[:TOP_K]]
+        if is_model_level:
+            context += silo_context_texts()
         return RetrievalResult(
             level=level,
-            base_text=base.text,
-            base_version_id=base.version["id"],
+            base_text=base_candidate.text,
+            base_version_id=base_candidate.version["id"],
             context_texts=reference_context + context,
         )
 
@@ -310,14 +471,55 @@ def retrieve(
     )
 
 
-def reindex_gestora(gestora_id: str) -> None:
-    """Re-index hook (precedent activated/superseded within a gestora silo).
+def reindex_gestora(gestora_id: str, precedent_id: Optional[str] = None) -> None:
+    """Sync the gestora silo's persisted index (precedent_chunks, 018).
 
-    The current implementation queries + ranks per request, so the 'index' is
-    always fresh; this hook exists for a future persisted vector index.
-    TODO: persist a per-gestora LlamaIndex VectorStoreIndex and rebuild here.
+    ``precedent_id`` scopes the sync to one precedent (the hot path from
+    activate/supersede/delivery); without it the WHOLE silo is reconciled
+    (backfill / repair). Index failures never break the calling flow —
+    retrieval falls back to the file-based path for unindexed content.
     """
+    from services import indexer  # local import: indexer imports rag helpers
+
+    db = dbmod.get_db()
+    try:
+        if precedent_id:
+            precedent = db.get("precedents", precedent_id)
+            if precedent is None:
+                return
+            config = llm.resolve_embedding_config(gestora_id)
+            for version in db.select("precedent_versions", precedent_id=precedent_id):
+                indexer._sync_version(db, precedent, version, config)
+        else:
+            indexer.sync_gestora(db, gestora_id)
+    except Exception:  # noqa: BLE001 — indexing must never break the caller
+        _logger().exception(
+            "RAG index sync failed for gestora %s (retrieval will fall back)", gestora_id
+        )
 
 
-def reindex_global() -> None:
-    """Re-index hook for the global SLP/platform template pool. See above."""
+def reindex_global(precedent_id: Optional[str] = None) -> None:
+    """Sync the global SLP/platform pool's persisted index. See above."""
+    from services import indexer
+
+    db = dbmod.get_db()
+    try:
+        if precedent_id:
+            precedent = db.get("precedents", precedent_id)
+            if precedent is None:
+                return
+            config = llm.resolve_embedding_config(None)
+            for version in db.select("precedent_versions", precedent_id=precedent_id):
+                indexer._sync_version(db, precedent, version, config)
+        else:
+            indexer.sync_global(db)
+    except Exception:  # noqa: BLE001
+        _logger().exception(
+            "RAG index sync failed for the global pool (retrieval will fall back)"
+        )
+
+
+def _logger():  # tiny indirection keeps module import light
+    import logging
+
+    return logging.getLogger("lolailo.rag")

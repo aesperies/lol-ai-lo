@@ -285,9 +285,9 @@ async def activate_version(
 
     # Re-index the affected silo (or the global pool for SLP/base templates).
     if precedent.get("gestora_id"):
-        rag.reindex_gestora(precedent["gestora_id"])
+        rag.reindex_gestora(precedent["gestora_id"], precedent["id"])
     else:
-        rag.reindex_global()
+        rag.reindex_global(precedent["id"])
     return version
 
 
@@ -330,7 +330,7 @@ async def supersede_version(
     )
 
     if precedent.get("gestora_id"):
-        rag.reindex_gestora(precedent["gestora_id"])
+        rag.reindex_gestora(precedent["gestora_id"], precedent["id"])
     else:
-        rag.reindex_global()
+        rag.reindex_global(precedent["id"])
     return version

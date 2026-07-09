@@ -46,6 +46,7 @@ _TENANT_SCOPED_TABLES = {
     "funds",
     "gestora_model_config",
     "notifications",
+    "precedent_chunks",
     "precedents",
     "quality_metrics",
     "request_shares",
@@ -102,6 +103,30 @@ class Database(Protocol):
     def update(self, table: str, row_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
 
     def delete(self, table: str, row_id: str) -> None: ...
+
+    def search_chunks(
+        self,
+        *,
+        gestora_id: Optional[str],
+        doc_type: str,
+        query_embedding: list[float],
+        embed_model: str,
+        source: Optional[str] = None,
+        exclude_source: Optional[str] = None,
+        language: Optional[str] = None,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """ANN search over the persisted RAG index (precedent_chunks, 018).
+
+        Isolation by construction: ``gestora_id`` is a REQUIRED keyword —
+        None targets ONLY the global pool (gestora_id IS NULL), a value
+        targets ONLY that gestora's silo; there is no cross-tenant form.
+        Rows are returned most-similar-first with a ``similarity`` field;
+        only rows whose ``embed_model`` matches are comparable (vectors from
+        different models never mix). ``language`` mirrors _global_candidates:
+        rows with NULL language always match.
+        """
+        ...
 
 
 def _now() -> str:
@@ -201,6 +226,46 @@ class DevStore:
         with self._lock:
             self._table(table).pop(row_id, None)
 
+    def search_chunks(
+        self,
+        *,
+        gestora_id: Optional[str],
+        doc_type: str,
+        query_embedding: list[float],
+        embed_model: str,
+        source: Optional[str] = None,
+        exclude_source: Optional[str] = None,
+        language: Optional[str] = None,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """In-memory cosine ANN mirroring match_precedent_chunks (018) exactly
+        — the contract suite asserts both backends rank identically."""
+
+        def cosine(a: list[float], b: list[float]) -> float:
+            dot = sum(x * y for x, y in zip(a, b))
+            norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
+            return dot / norm if norm else 0.0
+
+        matches: list[dict[str, Any]] = []
+        for row in self._table("precedent_chunks").values():
+            if row.get("embedding") is None or row.get("embed_model") != embed_model:
+                continue
+            if row.get("gestora_id") != gestora_id:
+                continue
+            if row.get("doc_type") != doc_type:
+                continue
+            if source is not None and row.get("source") != source:
+                continue
+            if exclude_source is not None and row.get("source") == exclude_source:
+                continue
+            if language is not None and row.get("language") not in (None, language):
+                continue
+            out = {k: v for k, v in row.items() if k not in ("embedding", "embed_model", "created_at")}
+            out["similarity"] = cosine(row["embedding"], query_embedding)
+            matches.append(out)
+        matches.sort(key=lambda r: r["similarity"], reverse=True)
+        return matches[:limit]
+
 
 class SupabaseDB:
     """Thin wrapper over supabase-py exposing the DevStore interface."""
@@ -248,6 +313,35 @@ class SupabaseDB:
         if table in _APPEND_ONLY_TABLES:
             raise PermissionError(f"{table} is append-only: DELETE not permitted")
         self._client.table(table).delete().eq("id", row_id).execute()
+
+    def search_chunks(
+        self,
+        *,
+        gestora_id: Optional[str],
+        doc_type: str,
+        query_embedding: list[float],
+        embed_model: str,
+        source: Optional[str] = None,
+        exclude_source: Optional[str] = None,
+        language: Optional[str] = None,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """ANN via the match_precedent_chunks SQL function (018) — the
+        isolation pre-filter runs in the WHERE, before ordering by similarity."""
+        res = self._client.rpc(
+            "match_precedent_chunks",
+            {
+                "query_embedding": query_embedding,
+                "p_embed_model": embed_model,
+                "p_gestora_id": gestora_id,
+                "p_doc_type": doc_type,
+                "p_source": source,
+                "p_exclude_source": exclude_source,
+                "p_language": language,
+                "p_limit": limit,
+            },
+        ).execute()
+        return res.data or []
 
 
 _dev_store: Optional[DevStore] = None

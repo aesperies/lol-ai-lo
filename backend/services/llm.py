@@ -50,6 +50,8 @@ class EffectiveLLMConfig:
         "anthropic_api_key",
         "mistral_api_key",
         "mistral_model",
+        "xai_api_key",
+        "grok_model",
         "ollama_base_url",
         "ollama_llm_model",
         "model_pinned",
@@ -65,6 +67,8 @@ class EffectiveLLMConfig:
         ollama_llm_model: str,
         mistral_api_key: str = "",
         mistral_model: str = "",
+        xai_api_key: str = "",
+        grok_model: str = "",
         model_pinned: bool = False,
     ) -> None:
         self.llm_provider = llm_provider
@@ -72,6 +76,8 @@ class EffectiveLLMConfig:
         self.anthropic_api_key = anthropic_api_key
         self.mistral_api_key = mistral_api_key
         self.mistral_model = mistral_model
+        self.xai_api_key = xai_api_key
+        self.grok_model = grok_model
         self.ollama_base_url = ollama_base_url
         self.ollama_llm_model = ollama_llm_model
         # True when a gestora pinned an explicit llm_model in its override —
@@ -97,6 +103,10 @@ class EffectiveEmbeddingConfig:
         "openai_api_key",
         "ollama_base_url",
         "ollama_embed_model",
+        "mistral_api_key",
+        "mistral_embed_model",
+        "xai_api_key",
+        "grok_embed_model",
     )
 
     def __init__(
@@ -107,12 +117,40 @@ class EffectiveEmbeddingConfig:
         openai_api_key: str,
         ollama_base_url: str,
         ollama_embed_model: str,
+        mistral_api_key: str = "",
+        mistral_embed_model: str = "mistral-embed",
+        xai_api_key: str = "",
+        grok_embed_model: str = "",
     ) -> None:
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
         self.openai_api_key = openai_api_key
         self.ollama_base_url = ollama_base_url
         self.ollama_embed_model = ollama_embed_model
+        self.mistral_api_key = mistral_api_key
+        self.mistral_embed_model = mistral_embed_model
+        self.xai_api_key = xai_api_key
+        self.grok_embed_model = grok_embed_model
+
+    @property
+    def resolved_embed_model(self) -> str:
+        """Model name that produces (and must match) the stored vectors.
+
+        ``precedent_chunks.embed_model`` (018) records this per row: vectors
+        from different models are not comparable, so search filters on it.
+        """
+        if self.embedding_provider == "ollama":
+            return self.ollama_embed_model
+        if self.embedding_provider == "mistral":
+            return self.mistral_embed_model
+        if self.embedding_provider == "grok":
+            if self.grok_embed_model:
+                return self.grok_embed_model
+            # Auto-discovery: the model id the provider resolved at runtime
+            # (empty until the first successful call — nothing indexed yet).
+            from services.providers import grok  # local import, no cycle
+            return grok.discovered_embed_model() or ""
+        return self.embedding_model
 
 
 def _load_override_row(gestora_id: str) -> Optional[dict[str, Any]]:
@@ -164,6 +202,8 @@ def resolve_config(
         anthropic_api_key=settings.anthropic_api_key,
         mistral_api_key=settings.mistral_api_key,
         mistral_model=settings.mistral_model,
+        xai_api_key=settings.xai_api_key,
+        grok_model=settings.grok_model,
         ollama_base_url=settings.ollama_base_url,
         ollama_llm_model=settings.ollama_llm_model,
     )
@@ -195,6 +235,7 @@ def resolve_config(
         config.claude_model = row["llm_model"]
         config.ollama_llm_model = row["llm_model"]
         config.mistral_model = row["llm_model"]
+        config.grok_model = row["llm_model"]
         config.model_pinned = True
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
@@ -216,6 +257,16 @@ def resolve_config(
             logger.warning(
                 "Mistral BYO key for gestora %s could not be decrypted; "
                 "falling back to global MISTRAL_API_KEY.",
+                gestora_id,
+            )
+    enc = row.get("xai_api_key_enc")
+    if enc:
+        try:
+            config.xai_api_key = secrets.decrypt(enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "xAI BYO key for gestora %s could not be decrypted; "
+                "falling back to global XAI_API_KEY.",
                 gestora_id,
             )
     return model_router.apply(config, task)
@@ -255,6 +306,10 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         openai_api_key=settings.openai_api_key,
         ollama_base_url=settings.ollama_base_url,
         ollama_embed_model=settings.ollama_embed_model,
+        mistral_api_key=settings.mistral_api_key,
+        mistral_embed_model=settings.mistral_embed_model,
+        xai_api_key=settings.xai_api_key,
+        grok_embed_model=settings.grok_embed_model,
     )
     if not gestora_id:
         return config
@@ -285,6 +340,8 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         # Stored generically; maps onto the selected provider's model field.
         config.embedding_model = row["embedding_model"]
         config.ollama_embed_model = row["embedding_model"]
+        config.mistral_embed_model = row["embedding_model"]
+        config.grok_embed_model = row["embedding_model"]
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
     enc = row.get("openai_api_key_enc")
@@ -295,6 +352,26 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
             logger.warning(
                 "OpenAI BYO key for gestora %s could not be decrypted; "
                 "falling back to global OPENAI_API_KEY.",
+                gestora_id,
+            )
+    mistral_enc = row.get("mistral_api_key_enc")
+    if mistral_enc:
+        try:
+            config.mistral_api_key = secrets.decrypt(mistral_enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "Mistral BYO key for gestora %s could not be decrypted; "
+                "falling back to global MISTRAL_API_KEY.",
+                gestora_id,
+            )
+    xai_enc = row.get("xai_api_key_enc")
+    if xai_enc:
+        try:
+            config.xai_api_key = secrets.decrypt(xai_enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "xAI BYO key for gestora %s could not be decrypted; "
+                "falling back to global XAI_API_KEY.",
                 gestora_id,
             )
     return config
