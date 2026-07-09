@@ -144,12 +144,67 @@ class _FakeTable:
         return _FakeQuery(self._name, self._rows, "delete")
 
 
+class _FakeRpc:
+    def __init__(self, data: list[dict[str, Any]]) -> None:
+        self._data = data
+
+    def execute(self) -> _FakeResult:
+        return _FakeResult(data=self._data)
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
+    return dot / norm if norm else 0.0
+
+
 class _FakeSupabaseClient:
     def __init__(self) -> None:
         self._tables: dict[str, list[dict[str, Any]]] = {}
 
     def table(self, name: str) -> _FakeTable:
         return _FakeTable(name, self._tables.setdefault(name, []))
+
+    def rpc(self, fn: str, params: dict[str, Any]) -> _FakeRpc:
+        # Mirrors supabase/migrations/018_rag_index.sql::match_precedent_chunks
+        # EXACTLY (WHERE clauses + cosine ordering + returned columns) so the
+        # contract suite can assert both backends rank identically.
+        if fn != "match_precedent_chunks":
+            raise ValueError(f"PostgREST: unknown function {fn}")
+        query = params["query_embedding"]
+        matched = []
+        for row in self._tables.setdefault("precedent_chunks", []):
+            if row.get("embedding") is None:
+                continue
+            if row.get("embed_model") != params["p_embed_model"]:
+                continue
+            p_gestora = params["p_gestora_id"]
+            if p_gestora is None:
+                if row.get("gestora_id") is not None:
+                    continue
+            elif row.get("gestora_id") != p_gestora:
+                continue
+            if row.get("doc_type") != params["p_doc_type"]:
+                continue
+            if params.get("p_source") is not None and row.get("source") != params["p_source"]:
+                continue
+            if params.get("p_exclude_source") is not None and row.get("source") == params["p_exclude_source"]:
+                continue
+            p_lang = params.get("p_language")
+            if p_lang is not None and row.get("language") not in (None, p_lang):
+                continue
+            out = {
+                k: row.get(k)
+                for k in (
+                    "id", "precedent_version_id", "precedent_id", "gestora_id",
+                    "doc_type", "language", "source", "version_status",
+                    "is_docx", "chunk_index", "text",
+                )
+            }
+            out["similarity"] = _cosine(row["embedding"], query)
+            matched.append(out)
+        matched.sort(key=lambda r: r["similarity"], reverse=True)
+        return _FakeRpc(matched[: params.get("p_limit") or 24])
 
 
 # ---------------------------------------------------------------------------
@@ -288,3 +343,87 @@ def test_delete_removes_row(backend: dbmod.Database) -> None:
     row = backend.insert("requests", {"status": "draft", "created_at": _ts(0)})
     backend.delete("requests", row["id"])
     assert backend.get("requests", row["id"]) is None
+
+
+# ---------------------------------------------------------------------------
+# search_chunks (persisted RAG index, 018) — same ranking on both backends
+# ---------------------------------------------------------------------------
+
+def _chunk_row(
+    *,
+    gestora_id: str | None,
+    text: str,
+    embedding: list[float] | None,
+    doc_type: str = "NDA",
+    source: str = "manual_upload",
+    language: str | None = "es",
+    embed_model: str | None = "bge-m3",
+    version_status: str = "active",
+) -> dict[str, Any]:
+    return {
+        "precedent_version_id": str(uuid.uuid4()),
+        "precedent_id": str(uuid.uuid4()),
+        "gestora_id": gestora_id,
+        "doc_type": doc_type,
+        "language": language,
+        "source": source,
+        "version_status": version_status,
+        "is_docx": True,
+        "chunk_index": 0,
+        "text": text,
+        "embed_model": embed_model,
+        "embedding": embedding,
+    }
+
+
+def test_search_chunks_ranks_by_cosine_similarity(backend: dbmod.Database) -> None:
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="lejos", embedding=[0.0, 1.0, 0.0]))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="exacto", embedding=[1.0, 0.0, 0.0]))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="cerca", embedding=[0.9, 0.1, 0.0]))
+    rows = backend.search_chunks(
+        gestora_id="g1", doc_type="NDA", query_embedding=[1.0, 0.0, 0.0], embed_model="bge-m3"
+    )
+    assert [r["text"] for r in rows] == ["exacto", "cerca", "lejos"]
+    assert rows[0]["similarity"] > rows[1]["similarity"] > rows[2]["similarity"]
+
+
+def test_search_chunks_isolation_gestora_vs_global(backend: dbmod.Database) -> None:
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="silo-g1", embedding=[1.0, 0.0]))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g2", text="silo-g2", embedding=[1.0, 0.0]))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id=None, text="global", embedding=[1.0, 0.0]))
+    silo = backend.search_chunks(gestora_id="g1", doc_type="NDA", query_embedding=[1.0, 0.0], embed_model="bge-m3")
+    assert [r["text"] for r in silo] == ["silo-g1"]
+    # gestora_id=None targets ONLY the global pool — never "all gestoras".
+    pool = backend.search_chunks(gestora_id=None, doc_type="NDA", query_embedding=[1.0, 0.0], embed_model="bge-m3")
+    assert [r["text"] for r in pool] == ["global"]
+
+
+def test_search_chunks_filters(backend: dbmod.Database) -> None:
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="modelo", embedding=[1.0], source="gestora_model"))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="precedente", embedding=[1.0]))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="sin-vector", embedding=None))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="otro-modelo-emb", embedding=[1.0], embed_model="mistral-embed"))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="ingles", embedding=[1.0], language="en"))
+    backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text="sin-idioma", embedding=[1.0], language=None))
+
+    only_model = backend.search_chunks(
+        gestora_id="g1", doc_type="NDA", query_embedding=[1.0], embed_model="bge-m3", source="gestora_model"
+    )
+    assert [r["text"] for r in only_model] == ["modelo"]
+
+    exclude_model = backend.search_chunks(
+        gestora_id="g1", doc_type="NDA", query_embedding=[1.0], embed_model="bge-m3",
+        exclude_source="gestora_model", language="es",
+    )
+    # language filter: 'es' rows and NULL-language rows match; 'en' is out.
+    # Rows without vectors or with another embed_model never appear.
+    assert sorted(r["text"] for r in exclude_model) == ["precedente", "sin-idioma"]
+
+
+def test_search_chunks_respects_limit(backend: dbmod.Database) -> None:
+    for i in range(5):
+        backend.insert("precedent_chunks", _chunk_row(gestora_id="g1", text=f"c{i}", embedding=[1.0, float(i)]))
+    rows = backend.search_chunks(
+        gestora_id="g1", doc_type="NDA", query_embedding=[1.0, 0.0], embed_model="bge-m3", limit=2
+    )
+    assert len(rows) == 2

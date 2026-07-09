@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # LLM_PROVIDER=mistral (console.mistral.ai -> API Keys).
     mistral_api_key: str = ""
     mistral_model: str = "mistral-large-latest"
+    # Embeddings UE (EMBEDDING_PROVIDER=mistral): 1024 dims — igual que bge-m3,
+    # así el índice pgvector (migración 018, vector(1024)) sirve para ambos.
+    mistral_embed_model: str = "mistral-embed"
 
     # ---------- OpenAI (optional cloud RAG embeddings) ----------
     # TODO: real credential required when EMBEDDING_PROVIDER=openai

@@ -97,6 +97,8 @@ class EffectiveEmbeddingConfig:
         "openai_api_key",
         "ollama_base_url",
         "ollama_embed_model",
+        "mistral_api_key",
+        "mistral_embed_model",
     )
 
     def __init__(
@@ -107,12 +109,29 @@ class EffectiveEmbeddingConfig:
         openai_api_key: str,
         ollama_base_url: str,
         ollama_embed_model: str,
+        mistral_api_key: str = "",
+        mistral_embed_model: str = "mistral-embed",
     ) -> None:
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
         self.openai_api_key = openai_api_key
         self.ollama_base_url = ollama_base_url
         self.ollama_embed_model = ollama_embed_model
+        self.mistral_api_key = mistral_api_key
+        self.mistral_embed_model = mistral_embed_model
+
+    @property
+    def resolved_embed_model(self) -> str:
+        """Model name that produces (and must match) the stored vectors.
+
+        ``precedent_chunks.embed_model`` (018) records this per row: vectors
+        from different models are not comparable, so search filters on it.
+        """
+        if self.embedding_provider == "ollama":
+            return self.ollama_embed_model
+        if self.embedding_provider == "mistral":
+            return self.mistral_embed_model
+        return self.embedding_model
 
 
 def _load_override_row(gestora_id: str) -> Optional[dict[str, Any]]:
@@ -255,6 +274,8 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         openai_api_key=settings.openai_api_key,
         ollama_base_url=settings.ollama_base_url,
         ollama_embed_model=settings.ollama_embed_model,
+        mistral_api_key=settings.mistral_api_key,
+        mistral_embed_model=settings.mistral_embed_model,
     )
     if not gestora_id:
         return config
@@ -285,6 +306,7 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         # Stored generically; maps onto the selected provider's model field.
         config.embedding_model = row["embedding_model"]
         config.ollama_embed_model = row["embedding_model"]
+        config.mistral_embed_model = row["embedding_model"]
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
     enc = row.get("openai_api_key_enc")
@@ -295,6 +317,16 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
             logger.warning(
                 "OpenAI BYO key for gestora %s could not be decrypted; "
                 "falling back to global OPENAI_API_KEY.",
+                gestora_id,
+            )
+    mistral_enc = row.get("mistral_api_key_enc")
+    if mistral_enc:
+        try:
+            config.mistral_api_key = secrets.decrypt(mistral_enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "Mistral BYO key for gestora %s could not be decrypted; "
+                "falling back to global MISTRAL_API_KEY.",
                 gestora_id,
             )
     return config
