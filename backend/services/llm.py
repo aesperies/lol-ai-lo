@@ -105,6 +105,8 @@ class EffectiveEmbeddingConfig:
         "ollama_embed_model",
         "mistral_api_key",
         "mistral_embed_model",
+        "xai_api_key",
+        "grok_embed_model",
     )
 
     def __init__(
@@ -117,6 +119,8 @@ class EffectiveEmbeddingConfig:
         ollama_embed_model: str,
         mistral_api_key: str = "",
         mistral_embed_model: str = "mistral-embed",
+        xai_api_key: str = "",
+        grok_embed_model: str = "",
     ) -> None:
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
@@ -125,6 +129,8 @@ class EffectiveEmbeddingConfig:
         self.ollama_embed_model = ollama_embed_model
         self.mistral_api_key = mistral_api_key
         self.mistral_embed_model = mistral_embed_model
+        self.xai_api_key = xai_api_key
+        self.grok_embed_model = grok_embed_model
 
     @property
     def resolved_embed_model(self) -> str:
@@ -137,6 +143,13 @@ class EffectiveEmbeddingConfig:
             return self.ollama_embed_model
         if self.embedding_provider == "mistral":
             return self.mistral_embed_model
+        if self.embedding_provider == "grok":
+            if self.grok_embed_model:
+                return self.grok_embed_model
+            # Auto-discovery: the model id the provider resolved at runtime
+            # (empty until the first successful call — nothing indexed yet).
+            from services.providers import grok  # local import, no cycle
+            return grok.discovered_embed_model() or ""
         return self.embedding_model
 
 
@@ -295,6 +308,8 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         ollama_embed_model=settings.ollama_embed_model,
         mistral_api_key=settings.mistral_api_key,
         mistral_embed_model=settings.mistral_embed_model,
+        xai_api_key=settings.xai_api_key,
+        grok_embed_model=settings.grok_embed_model,
     )
     if not gestora_id:
         return config
@@ -326,6 +341,7 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         config.embedding_model = row["embedding_model"]
         config.ollama_embed_model = row["embedding_model"]
         config.mistral_embed_model = row["embedding_model"]
+        config.grok_embed_model = row["embedding_model"]
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
     enc = row.get("openai_api_key_enc")
@@ -346,6 +362,16 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
             logger.warning(
                 "Mistral BYO key for gestora %s could not be decrypted; "
                 "falling back to global MISTRAL_API_KEY.",
+                gestora_id,
+            )
+    xai_enc = row.get("xai_api_key_enc")
+    if xai_enc:
+        try:
+            config.xai_api_key = secrets.decrypt(xai_enc)
+        except secrets.DecryptionError:
+            logger.warning(
+                "xAI BYO key for gestora %s could not be decrypted; "
+                "falling back to global XAI_API_KEY.",
                 gestora_id,
             )
     return config

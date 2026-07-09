@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # required when LLM_PROVIDER=grok (console.x.ai -> API Keys).
     xai_api_key: str = ""
     grok_model: str = "grok-4.5"
+    # Embeddings de xAI (EMBEDDING_PROVIDER=grok): vacío = auto-descubrir el
+    # modelo de la cuenta vía GET /v1/embedding-models. Se piden 1024 dims
+    # (parámetro `dimensions`) para encajar en el índice pgvector (018).
+    grok_embed_model: str = ""
 
     # ---------- OpenAI (optional cloud RAG embeddings) ----------
     # TODO: real credential required when EMBEDDING_PROVIDER=openai

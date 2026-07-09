@@ -372,7 +372,16 @@ def retrieve(
         key = (config.embedding_provider, config.resolved_embed_model)
         if key not in _query_vectors:
             vectors = _embed([query_text], config)
-            _query_vectors[key] = vectors[0] if vectors else None
+            vector = vectors[0] if vectors else None
+            if vector is not None:
+                # The index column is vector(1024); a provider returning
+                # another dimension cannot be compared (pgvector errors) —
+                # degrade instead. Mirrors the indexer's dimension check.
+                from services import indexer  # local import, no cycle
+
+                if len(vector) != indexer.EXPECTED_DIM:
+                    vector = None
+            _query_vectors[key] = vector
         return _query_vectors[key]
 
     def silo_context_texts() -> list[str]:

@@ -11,7 +11,7 @@ from typing import Any, Optional
 from config import ServiceNotConfiguredError
 from services.providers.anthropic import AnthropicLLM
 from services.providers.base import EmbeddingProvider, LLMProvider
-from services.providers.grok import GrokLLM
+from services.providers.grok import GrokEmbeddings, GrokLLM
 from services.providers.mistral import MistralEmbeddings, MistralLLM
 from services.providers.ollama import OllamaEmbeddings, OllamaLLM
 from services.providers.openai import OpenAIEmbeddings
@@ -23,7 +23,7 @@ _LLM_PROVIDERS: dict[str, LLMProvider] = {
 
 _EMBEDDING_PROVIDERS: dict[str, EmbeddingProvider] = {
     provider.name: provider
-    for provider in (OllamaEmbeddings(), OpenAIEmbeddings(), MistralEmbeddings())
+    for provider in (OllamaEmbeddings(), OpenAIEmbeddings(), MistralEmbeddings(), GrokEmbeddings())
 }
 
 

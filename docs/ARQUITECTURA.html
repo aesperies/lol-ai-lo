@@ -240,7 +240,7 @@
       <div class="box"><b>Ollama (local) <span class="pill ok">defecto</span></b><span>LLM qwen2.5:14b · embeddings bge-m3 — los datos no salen de la máquina</span></div>
       <div class="box"><b>Anthropic Claude <span class="pill deg">opt-in</span></b><span>fallback LLM cloud, clave global o BYO por gestora</span></div>
       <div class="box"><b>Mistral AI (UE) <span class="pill deg">opt-in</span></b><span>LLM + embeddings cloud con residencia de datos en la UE (París) — mistral-embed alimenta el índice RAG</span></div>
-      <div class="box"><b>Grok / xAI <span class="pill deg">opt-in</span></b><span>fallback LLM cloud (grok-4.5 · light grok-4.3); solo generación — xAI no publica embeddings</span></div>
+      <div class="box"><b>Grok / xAI <span class="pill deg">opt-in</span></b><span>LLM (grok-4.5 · light grok-4.3) + embeddings (/v1/embeddings, 1024 dims vía dimensions, modelo auto-descubierto) para el índice RAG</span></div>
       <div class="box"><b>OpenAI <span class="pill deg">opt-in</span></b><span>fallback embeddings cloud</span></div>
       <div class="box"><b>Supabase</b><span>PostgreSQL + Auth (JWT, MFA TOTP)</span></div>
       <div class="box"><b>Resend <span class="pill deg">opcional</span></b><span>email → si falta, consola</span></div>
@@ -331,7 +331,7 @@
       <tr><td>Ollama</td><td>LLM + embeddings local (defecto)</td><td><span class="pill deg">degrada</span> 503 claro en parse/generate; critic y lecciones se saltan; RAG rankea por peso×recencia; el job reintenta 3×</td></tr>
       <tr><td>Anthropic</td><td>LLM cloud opt-in</td><td><span class="pill deg">degrada</span> 503 solo si está seleccionado; BYO key ilegible → clave global → local</td></tr>
       <tr><td>Mistral (UE)</td><td>LLM + embeddings cloud opt-in, residencia UE</td><td><span class="pill deg">degrada</span> igual que Anthropic; BYO key cifrada por gestora</td></tr>
-      <tr><td>Grok (xAI)</td><td>LLM cloud opt-in (solo generación)</td><td><span class="pill deg">degrada</span> igual que Anthropic/Mistral; BYO key cifrada por gestora</td></tr>
+      <tr><td>Grok (xAI)</td><td>LLM + embeddings cloud opt-in</td><td><span class="pill deg">degrada</span> igual que Anthropic/Mistral; BYO key cifrada por gestora</td></tr>
       <tr><td>OpenAI</td><td>Embeddings cloud opt-in</td><td><span class="pill deg">degrada</span> ranking peso×recencia, nunca amplía candidatos</td></tr>
       <tr><td>Supabase</td><td>BD + Auth</td><td><span class="pill down">503 en datos</span> /health sigue; en dev, <code>DEV_AUTH_STUB=true</code> usa store en memoria</td></tr>
       <tr><td>Resend</td><td>Email</td><td><span class="pill ok">consola</span> el flujo nunca se bloquea</td></tr>

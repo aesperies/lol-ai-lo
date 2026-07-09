@@ -256,3 +256,96 @@ class TestGrok:
         cfg.xai_api_key = ""
         with pytest.raises(ServiceNotConfiguredError):
             GrokLLM().complete("hola", max_tokens=64, json_schema=None, system=None, config=cfg)
+
+
+class TestGrokEmbeddings:
+    @pytest.fixture(autouse=True)
+    def _reset_discovery(self, monkeypatch):
+        from services.providers import grok
+        monkeypatch.setattr(grok, "_discovered_embed_model", None)
+
+    def _config(self, **overrides):
+        defaults = dict(
+            embedding_provider="grok", embedding_model="", openai_api_key="",
+            ollama_base_url="", ollama_embed_model="",
+            xai_api_key="xai-test", grok_embed_model="grok-embed-x",
+        )
+        defaults.update(overrides)
+        return llm.EffectiveEmbeddingConfig(**defaults)
+
+    def test_registered(self):
+        assert providers.get_embedding("grok").name == "grok"
+
+    def test_embed_requests_1024_dims(self, monkeypatch):
+        from services.providers.grok import GrokEmbeddings
+
+        captured: dict[str, Any] = {}
+
+        class _Resp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"data": [
+                    {"index": 1, "embedding": [0.2] * 1024},
+                    {"index": 0, "embedding": [0.1] * 1024},
+                ]}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured["url"] = url
+            captured["payload"] = json
+            return _Resp()
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        vectors = GrokEmbeddings().embed(["uno", "dos"], self._config())
+        assert captured["url"] == "https://api.x.ai/v1/embeddings"
+        assert captured["payload"]["model"] == "grok-embed-x"
+        assert captured["payload"]["dimensions"] == 1024
+        # data llega desordenado; se reordena por index
+        assert vectors[0][0] == 0.1 and vectors[1][0] == 0.2
+
+    def test_autodiscovers_model_when_unset(self, monkeypatch):
+        from services.providers import grok
+
+        class _ModelsResp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"models": [{"id": "grok-embed-auto", "aliases": []}]}
+
+        class _EmbedResp:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"data": [{"index": 0, "embedding": [0.5] * 1024}]}
+
+        monkeypatch.setattr(llm.httpx, "get", lambda url, headers=None, timeout=None: _ModelsResp())
+        captured: dict[str, Any] = {}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured["payload"] = json
+            return _EmbedResp()
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        cfg = self._config(grok_embed_model="")
+        vectors = grok.GrokEmbeddings().embed(["hola"], cfg)
+        assert vectors is not None
+        assert captured["payload"]["model"] == "grok-embed-auto"
+        # resolved_embed_model refleja el modelo descubierto (clave para que
+        # el índice y la query usen el mismo embed_model)
+        assert cfg.resolved_embed_model == "grok-embed-auto"
+
+    def test_degrades_to_none_on_failure(self, monkeypatch):
+        from services.providers.grok import GrokEmbeddings
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            raise llm.httpx.ConnectError("down")
+
+        monkeypatch.setattr(llm.httpx, "post", fake_post)
+        assert GrokEmbeddings().embed(["hola"], self._config()) is None
+        # Sin key: tampoco llama a la red.
+        assert GrokEmbeddings().embed(["hola"], self._config(xai_api_key="")) is None
