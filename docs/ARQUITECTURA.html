@@ -70,6 +70,21 @@
   .foot { margin-top: 3.5rem; color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 1rem; }
   .privacy { border-left: 3px solid var(--gold); padding: .7rem .9rem; background: var(--gold-soft); border-radius: 0 10px 10px 0; font-size: .88rem; color: var(--ink-2); margin-top: .9rem; }
   .privacy b { color: var(--ink); }
+  /* ---- vista simple (audiencia no técnica) ---- */
+  .simple { border: 1.5px solid var(--brand); border-radius: 18px; padding: 1.5rem 1.5rem 1.6rem; background: var(--surface); margin-bottom: 1rem; }
+  .simple h2 { margin: 0 0 .3rem; }
+  .steps { display: grid; gap: .8rem; margin-top: 1.1rem; }
+  @media (min-width: 800px) { .steps { grid-template-columns: repeat(4, 1fr); } }
+  .step { border: 1px solid var(--line); border-radius: 12px; padding: .9rem .95rem; background: var(--bg); position: relative; }
+  .step .n { display: inline-flex; align-items: center; justify-content: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--brand); color: #fff; font-weight: 700; font-size: .85rem; margin-bottom: .5rem; }
+  .step b { display: block; font-size: .95rem; margin-bottom: .25rem; }
+  .step span { font-size: .84rem; color: var(--ink-2); }
+  .trust { display: grid; gap: .7rem; margin-top: 1.1rem; }
+  @media (min-width: 800px) { .trust { grid-template-columns: repeat(3, 1fr); } }
+  .trust .card b { display: block; margin-bottom: .2rem; font-size: .92rem; }
+  .trust .card span { font-size: .84rem; color: var(--ink-2); }
+  .divider-tech { display: flex; align-items: center; gap: .8rem; margin: 3.2rem 0 .5rem; color: var(--ink-3); font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .divider-tech::before, .divider-tech::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
 </style>
 </head>
 <body>
@@ -78,7 +93,42 @@
   <h1>Lol<span class="ai">·AI·</span>lo — Arquitectura de la plataforma</h1>
   <p class="sub">Generación y revisión de documentos para gestoras de VC (fund servicers) en Europa.
   Local-first por defecto, aislamiento estricto por gestora, degradación elegante y auditoría append-only.
-  Estado a 8-jul-2026 (migración 015: vehículos/SPVs).</p>
+  Estado a 9-jul-2026 (migraciones 001–017).</p>
+
+  <!-- ================= VISTA SIMPLE (no técnicos) ================= -->
+  <div class="simple">
+    <h2>La plataforma en 2 minutos <span style="font-size:.8rem;font-weight:400;color:var(--ink-3)">(para no técnicos)</span></h2>
+    <p class="lead" style="margin-bottom:0">Lolailo redacta los documentos legales recurrentes de un fondo de venture capital
+    (NDAs, mandatos, actas, contratos de suscripción…) <b>a partir de los propios modelos y documentos anteriores de cada
+    gestora</b>, y los pasa por un abogado cuando hace falta. La gestora pide el documento escribiéndolo en lenguaje normal,
+    como se lo pediría a un asociado.</p>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><b>La gestora lo pide</b><span>«Necesito un NDA entre el Fondo I y Acme GmbH,
+      2 años, derecho español». La plataforma entiende la petición, extrae partes, fechas y términos, y se los enseña para
+      confirmar antes de hacer nada.</span></div>
+      <div class="step"><span class="n">2</span><b>La IA redacta sobre SU base</b><span>Busca primero en los modelos y
+      documentos anteriores de esa gestora (nunca en los de otra) y redacta el borrador sobre el más parecido. Si no hay nada,
+      usa plantillas curadas — y entonces el abogado es obligatorio.</span></div>
+      <div class="step"><span class="n">3</span><b>Se revisa</b><span>Un revisor automático comprueba el borrador y marca dudas.
+      La gestora recibe el documento con un «control de cambios» que muestra exactamente qué se cambió respecto a su modelo.</span></div>
+      <div class="step"><span class="n">4</span><b>Se entrega — con o sin abogado</b><span>Si es rutinario, la gestora lo
+      descarga y firma su conformidad. Si no, va a un abogado (con reloj de plazos de 72 h) que corrige y valida. Cada documento
+      validado enriquece la biblioteca de la gestora: el sistema mejora con el uso.</span></div>
+    </div>
+
+    <div class="trust">
+      <div class="card"><b>🔒 Cada gestora, su caja fuerte</b><span>Los documentos de una gestora jamás se usan para otra:
+      la separación se impone en la base de datos y en el código, no es una promesa. Cumplimiento RGPD (exportar y borrar
+      datos incluidos).</span></div>
+      <div class="card"><b>⚖️ El abogado sigue en el circuito</b><span>Los documentos delicados o sin precedente pasan
+      obligatoriamente por counsel humano, con plazos y recordatorios. La IA nunca «entrega» sola algo dudoso.</span></div>
+      <div class="card"><b>📜 Todo queda registrado</b><span>Quién pidió qué, qué se generó, quién lo editó y quién lo validó:
+      un registro de auditoría que no se puede alterar ni borrar.</span></div>
+    </div>
+  </div>
+
+  <div class="divider-tech">A partir de aquí · vista técnica</div>
 
   <!-- ================= CAPAS ================= -->
   <h2>1 · Vista por capas</h2>
@@ -314,9 +364,10 @@
   </div>
 
   <div class="foot">
-    Actualizado el 8-jul-2026 a partir del código (migraciones 001–014). Backend FastAPI · Frontend Next.js 14 ·
+    Actualizado el 9-jul-2026 a partir del código (migraciones 001–017). Backend FastAPI · Frontend Next.js 14 ·
     Supabase PostgreSQL · Ollama local-first con fallbacks cloud opt-in (Anthropic / Mistral UE). Documentos de
-    referencia: docs/SPEC.md, docs/SECURITY.md, docs/GDPR.md, docs/LAVERN_IDEAS.md.
+    referencia: docs/SPEC.md, docs/SECURITY.md, docs/GDPR.md, docs/LAVERN_IDEAS.md y
+    <b>docs/ESCALADO.md</b> (plan de escalado a 25 fondos / 100 docs·mes).
     <b>Este documento se mantiene al día con cada cambio de arquitectura.</b>
   </div>
 </div>
