@@ -25,6 +25,7 @@ from api.counsel_review import router as counsel_review_router
 from api.directory import router as directory_router
 from api.doc_types import router as doc_types_router
 from api.documents import router as documents_router
+from api.library import router as library_router
 from api.model_config import router as model_config_router
 from api.notifications import router as notifications_router
 from api.playbooks import router as playbooks_router
@@ -118,6 +119,8 @@ app.include_router(billing_router)
 app.include_router(tabular_router)
 # Chat Q&A sobre el RAG de la gestora (021_chat.sql).
 app.include_router(chat_router)
+# Biblioteca del cliente (022): listado + subida al propio silo.
+app.include_router(library_router)
 app.include_router(account_router)
 app.include_router(model_config_router)
 # Directory + counsel review surface (013_directory_and_comments.sql).

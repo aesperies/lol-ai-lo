@@ -335,3 +335,218 @@ class TestChatVerification:
             precedent_id="p1", precedent_version_id="v1", doc_type="LPA",
             source="manual_upload", text="x", similarity=0.9)]
         assert chat_service._verify_grounding("respuesta", hits, "g-a") is None
+
+
+# ---------------------------------------------------------------------------
+# Búsqueda híbrida (022): semántica + léxica con RRF
+# ---------------------------------------------------------------------------
+
+class TestHybridSearch:
+    def test_lexical_half_works_without_embeddings(self, db: dbmod.DevStore):
+        """Chunks sin vectores (proveedor caído al indexar) y embeddings de la
+        query caídos (conftest): la mitad léxica los encuentra igualmente."""
+        row = _chunk_row(gestora_id="g-a", doc_type="LPA",
+                         text="El hurdle rate del fondo es del 8 por ciento.",
+                         embed_model="")
+        row["embedding"] = None
+        row["embed_model"] = None
+        db.insert("precedent_chunks", row)
+
+        hits = rag.search_silo(db, gestora_id="g-a", language="es",
+                               query_text="hurdle rate fondo")
+        assert len(hits) == 1
+        assert "hurdle rate" in hits[0].text
+
+    def test_rrf_prefers_chunks_found_by_both_halves(
+        self, db: dbmod.DevStore, monkeypatch: pytest.MonkeyPatch
+    ):
+        config = llm.resolve_embedding_config(None)
+        model = config.resolved_embed_model
+        # "ambos": similar al vector de la query Y contiene sus términos.
+        db.insert("precedent_chunks", _chunk_row(
+            gestora_id="g-a", doc_type="LPA",
+            text="comision de gestion del dos por ciento",
+            embed_model=model, lead=0.9))
+        # "solo semántico": vector muy similar, texto sin los términos.
+        db.insert("precedent_chunks", _chunk_row(
+            gestora_id="g-a", doc_type="LPA",
+            text="honorarios anuales aplicables", embed_model=model, lead=1.0))
+
+        monkeypatch.setattr(rag, "_embed", lambda texts, config: [_vector(1.0)])
+        hits = rag.search_silo(db, gestora_id="g-a", language="es",
+                               query_text="comision de gestion")
+        assert hits[0].text.startswith("comision de gestion")
+
+    def test_lexical_half_respects_gestora_isolation(self, db: dbmod.DevStore):
+        for gestora in ("g-a", "g-b"):
+            row = _chunk_row(gestora_id=gestora, doc_type="LPA",
+                             text=f"clausula de exclusividad de {gestora}",
+                             embed_model="")
+            row["embedding"] = None
+            db.insert("precedent_chunks", row)
+        hits = rag.search_silo(db, gestora_id="g-a", language="es",
+                               query_text="clausula exclusividad")
+        assert {hit.text for hit in hits} == {"clausula de exclusividad de g-a"}
+
+
+# ---------------------------------------------------------------------------
+# Chunking estructural (022): secciones/cláusulas
+# ---------------------------------------------------------------------------
+
+class TestStructuralChunking:
+    def test_split_sections_by_clause_headers(self):
+        from services import docx_renderer
+
+        text = (
+            "CONTRATO DE SUSCRIPCIÓN\n"
+            "Entre las partes abajo firmantes.\n"
+            "CLÁUSULA 1 — OBJETO\n"
+            "El objeto del presente contrato.\n"
+            "CLÁUSULA 2 — COMISIONES\n"
+            "La comisión de gestión será del 2%.\n"
+        )
+        sections = docx_renderer.split_sections(text)
+        titles = [title for title, _ in sections]
+        assert titles == ["CONTRATO DE SUSCRIPCIÓN", "CLÁUSULA 1 — OBJETO",
+                          "CLÁUSULA 2 — COMISIONES"]
+        assert "comisión de gestión" in sections[2][1]
+
+    def test_indexer_persists_section_per_chunk(
+        self, db: dbmod.DevStore, monkeypatch: pytest.MonkeyPatch
+    ):
+        from services import indexer
+
+        precedent, version = seed_precedent(
+            db, gestora_id="g-a", doc_type="LPA",
+            text="CLÁUSULA 1 — OBJETO\nEl objeto.\nCLÁUSULA 2 — COMISIONES\nLa comisión.")
+        monkeypatch.setattr(indexer, "_embed_batch", lambda texts, config: None)
+        config = llm.resolve_embedding_config(None)
+        indexer._index_version(db, precedent, version, config)
+
+        rows = db.select("precedent_chunks", precedent_version_id=version["id"])
+        assert {row["section"] for row in rows} == {
+            "CLÁUSULA 1 — OBJETO", "CLÁUSULA 2 — COMISIONES"}
+
+
+# ---------------------------------------------------------------------------
+# Reformulación de seguimiento + citas usadas + feedback (022)
+# ---------------------------------------------------------------------------
+
+class TestFollowUpRewrite:
+    def test_follow_up_is_rewritten_for_retrieval_only(
+        self, client, seed, db: dbmod.DevStore, monkeypatch: pytest.MonkeyPatch
+    ):
+        seed_precedent(db, gestora_id=seed["gestora_a"]["id"], doc_type="LPA",
+                       text="El hurdle rate es del 8%.")
+        monkeypatch.setattr(
+            llm, "complete",
+            lambda *args, **kwargs: "¿Cuál es el hurdle rate del fondo?")
+        searched: dict[str, str] = {}
+        original_search = rag.search_silo
+
+        def spy_search(db_, **kwargs):
+            searched["query"] = kwargs["query_text"]
+            return original_search(db_, **kwargs)
+
+        monkeypatch.setattr(rag, "search_silo", spy_search)
+
+        prompts: dict[str, str] = {}
+
+        def fake_stream(prompt, **kwargs):
+            prompts["prompt"] = prompt
+            yield "El hurdle es del 8% [1]."
+
+        monkeypatch.setattr(llm, "stream", fake_stream)
+
+        conversation_id = _conversation(client, seed)
+        # Primer turno crea historial.
+        db.insert("chat_messages", {"conversation_id": conversation_id,
+                                    "gestora_id": seed["gestora_a"]["id"],
+                                    "role": "user", "content": "¿Comisión de gestión?"})
+        db.insert("chat_messages", {"conversation_id": conversation_id,
+                                    "gestora_id": seed["gestora_a"]["id"],
+                                    "role": "assistant", "content": "El 2% [1]."})
+        response = client.post(
+            f"/api/chat/conversations/{conversation_id}/messages",
+            json={"content": "¿y el hurdle?"},
+            headers=auth(seed["client_a"]),
+        )
+        assert response.status_code == 200
+        # El retrieval usa la pregunta reescrita; el prompt, la original.
+        assert searched["query"] == "¿Cuál es el hurdle rate del fondo?"
+        assert "¿y el hurdle?" in prompts["prompt"]
+
+    def test_rewrite_failure_falls_back_to_original(
+        self, db: dbmod.DevStore, monkeypatch: pytest.MonkeyPatch
+    ):
+        from config import ServiceNotConfiguredError
+
+        def broken(*args, **kwargs):
+            raise ServiceNotConfiguredError("ollama", "caído")
+
+        monkeypatch.setattr(llm, "complete", broken)
+        history = [{"role": "user", "content": "hola"}]
+        assert chat_service._standalone_question(history, "¿y el hurdle?", "g-a") == "¿y el hurdle?"
+
+    def test_no_history_skips_the_llm(self, monkeypatch: pytest.MonkeyPatch):
+        def must_not_run(*args, **kwargs):
+            raise AssertionError("sin historial no se reformula")
+
+        monkeypatch.setattr(llm, "complete", must_not_run)
+        assert chat_service._standalone_question([], "pregunta", "g-a") == "pregunta"
+
+
+class TestUsedCitationsAndFeedback:
+    def test_done_event_marks_used_citations(
+        self, client, seed, db: dbmod.DevStore, monkeypatch: pytest.MonkeyPatch
+    ):
+        seed_precedent(db, gestora_id=seed["gestora_a"]["id"], doc_type="LPA",
+                       text="La comisión es del 2%. El hurdle es del 8%.")
+        monkeypatch.setattr(llm, "stream",
+                            lambda prompt, **kwargs: iter(["La comisión es del 2% [1]."]))
+
+        conversation_id = _conversation(client, seed)
+        response = client.post(
+            f"/api/chat/conversations/{conversation_id}/messages",
+            json={"content": "¿Comisión?"},
+            headers=auth(seed["client_a"]),
+        )
+        events = _sse_events(response.text)
+        done = events[-1]
+        assert done["type"] == "done"
+        assert done["used_indexes"] == [1]
+        messages = db.select("chat_messages", conversation_id=conversation_id)
+        assert messages[-1]["citations"][0]["used"] is True
+
+    def test_feedback_up_down_with_no_leak(
+        self, client, seed, db: dbmod.DevStore, monkeypatch: pytest.MonkeyPatch
+    ):
+        seed_precedent(db, gestora_id=seed["gestora_a"]["id"], doc_type="LPA",
+                       text="Texto alfa.")
+        monkeypatch.setattr(llm, "stream", lambda prompt, **kwargs: iter(["ok [1]."]))
+        conversation_id = _conversation(client, seed)
+        client.post(
+            f"/api/chat/conversations/{conversation_id}/messages",
+            json={"content": "hola"}, headers=auth(seed["client_a"]),
+        )
+        message_id = db.select("chat_messages", conversation_id=conversation_id)[-1]["id"]
+
+        response = client.post(
+            f"/api/chat/messages/{message_id}/feedback",
+            json={"feedback": "down"}, headers=auth(seed["client_a"]),
+        )
+        assert response.status_code == 200
+        assert db.get("chat_messages", message_id)["feedback"] == "down"
+
+        # Otro cliente: 404 no-leak. Mensaje de usuario: 404 también.
+        response = client.post(
+            f"/api/chat/messages/{message_id}/feedback",
+            json={"feedback": "up"}, headers=auth(seed["client_b"]),
+        )
+        assert response.status_code == 404
+        user_message_id = db.select("chat_messages", conversation_id=conversation_id)[0]["id"]
+        response = client.post(
+            f"/api/chat/messages/{user_message_id}/feedback",
+            json={"feedback": "up"}, headers=auth(seed["client_a"]),
+        )
+        assert response.status_code == 404

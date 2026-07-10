@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Iterator, Optional
 
 from config import ServiceNotConfiguredError
@@ -94,10 +95,52 @@ _VERIFY_SYSTEM = (
 )
 
 
+_REWRITE_SYSTEM = (
+    "Reescribe la última pregunta del usuario como una pregunta AUTÓNOMA y "
+    "completa en su mismo idioma, incorporando de la conversación el contexto "
+    "necesario (a qué documento, fondo, cláusula o término se refiere). "
+    "Devuelve SOLO la pregunta reescrita, sin comillas ni explicaciones. "
+    "Si la pregunta ya es autónoma, devuélvela tal cual."
+)
+
+# Referencias [n] en la respuesta — para marcar qué citas se usaron de verdad.
+_CITE_MARK_RE = re.compile(r"\[(\d{1,2})\]")
+
+
 def title_from(question: str) -> str:
     """Título de conversación derivado de la primera pregunta."""
     collapsed = " ".join(question.split())
     return collapsed[:80] + ("…" if len(collapsed) > 80 else "")
+
+
+def _standalone_question(
+    history: list[dict[str, Any]], question: str, gestora_id: str
+) -> str:
+    """Pregunta de seguimiento → pregunta autónoma para el retrieval.
+
+    «¿y el hurdle?» no encuentra nada en el índice; reescrita con el contexto
+    de la conversación («¿cuál es el hurdle rate del fondo X?») sí. Una llamada
+    al tier light; cualquier fallo o salida sospechosa cae a la pregunta
+    original — la reformulación nunca puede romper un turno.
+    """
+    if not history:
+        return question
+    lines = "\n".join(
+        f"{'Usuario' if m['role'] == 'user' else 'Asistente'}: {m['content'][:400]}"
+        for m in history[-6:]
+    )
+    prompt = f"CONVERSACIÓN:\n{lines}\n\nÚLTIMA PREGUNTA:\n{question}"
+    try:
+        rewritten = llm.complete(
+            prompt, max_tokens=200, system=_REWRITE_SYSTEM,
+            gestora_id=gestora_id, task="chat",
+        ).strip()
+    except ServiceNotConfiguredError as exc:
+        logger.warning("Reformulación de la pregunta saltada (%s).", exc)
+        return question
+    if not rewritten or "\n" in rewritten or len(rewritten) > 500:
+        return question
+    return rewritten
 
 
 def _citations(hits: list[rag.ChatHit]) -> list[dict[str, Any]]:
@@ -108,17 +151,32 @@ def _citations(hits: list[rag.ChatHit]) -> list[dict[str, Any]]:
             "precedent_version_id": hit.precedent_version_id,
             "doc_type": hit.doc_type,
             "source": hit.source,
+            "section": hit.section,
             "snippet": hit.text[:_SNIPPET_CHARS],
         }
         for i, hit in enumerate(hits)
     ]
 
 
+def _mark_used(citations: list[dict[str, Any]], answer: str) -> list[int]:
+    """Marca in-place qué citas referencia la respuesta ([n]) y devuelve los
+    índices usados. Telemetría de precisión del retrieval: recuperado vs
+    realmente usado."""
+    used = {int(number) for number in _CITE_MARK_RE.findall(answer)}
+    for citation in citations:
+        citation["used"] = citation["index"] in used
+    return sorted(used)
+
+
 def _build_prompt(
     hits: list[rag.ChatHit], history: list[dict[str, Any]], question: str
 ) -> str:
+    def header(hit: rag.ChatHit) -> str:
+        label = hit.doc_type or "desconocido"
+        return f"{label} · {hit.section}" if hit.section else label
+
     excerpts = "\n\n".join(
-        f"[{i + 1}] (tipo: {hit.doc_type or 'desconocido'})\n{hit.text}"
+        f"[{i + 1}] (tipo: {header(hit)})\n{hit.text}"
         for i, hit in enumerate(hits)
     )
     parts = [f"EXTRACTOS DE LA DOCUMENTACIÓN DE TU GESTORA:\n{excerpts}"]
@@ -207,8 +265,11 @@ def ask(
         },
     )
 
+    # Retrieval con la pregunta reescrita como autónoma (seguimientos); el
+    # prompt de generación conserva la pregunta ORIGINAL del usuario.
+    search_query = _standalone_question(history, question, gestora_id)
     hits = rag.search_silo(
-        db, gestora_id=gestora_id, language="", query_text=question, limit=SOURCE_CHUNKS
+        db, gestora_id=gestora_id, language="", query_text=search_query, limit=SOURCE_CHUNKS
     )
     citations = _citations(hits)
     yield {"type": "sources", "citations": citations}
@@ -248,6 +309,7 @@ def ask(
         return
 
     answer = "".join(parts)
+    used_indexes = _mark_used(citations, answer)
     verification = _verify_grounding(answer, hits, gestora_id)
     if verification is not None and verification["findings"]:
         yield {"type": "verification", **verification}
@@ -264,7 +326,7 @@ def ask(
             "model_note": llm.describe_model(gestora_id, task="chat"),
         },
     )
-    yield {"type": "done", "message_id": message["id"]}
+    yield {"type": "done", "message_id": message["id"], "used_indexes": used_indexes}
 
 
 def encode_sse(event: dict[str, Any]) -> str:

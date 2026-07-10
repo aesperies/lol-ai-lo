@@ -165,7 +165,33 @@ class ChatMessageOut(BaseModel):
     citations: Optional[list[dict[str, Any]]] = None
     verification: Optional[dict[str, Any]] = None
     model_note: Optional[str] = None
+    feedback: Optional[str] = None
     created_at: Optional[datetime] = None
+
+
+class ChatFeedbackBody(BaseModel):
+    """Pulgar arriba/abajo del cliente sobre una respuesta (022)."""
+
+    feedback: Literal["up", "down"]
+
+
+class LibraryItemOut(BaseModel):
+    """Un documento de la biblioteca del cliente (022): el precedente con su
+    última versión y los ejes de organización (fondo / fecha / tipo)."""
+
+    id: str
+    doc_type: str
+    language: str
+    source: str
+    fund_id: Optional[str] = None
+    fund_name: Optional[str] = None
+    # Fecha del documento (editable al subir); NULL = se usa created_at.
+    document_date: Optional[str] = None
+    created_at: Optional[datetime] = None
+    version_id: Optional[str] = None
+    version_status: Optional[str] = None
+    version_number: Optional[int] = None
+    is_docx: bool = False
 
 
 class CounselAssignmentCreate(BaseModel):

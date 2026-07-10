@@ -140,6 +140,12 @@ export const apiPaths = {
   chatConversations: "/api/chat/conversations",
   chatConversation: (id: string) => `/api/chat/conversations/${id}`,
   chatMessages: (id: string) => `/api/chat/conversations/${id}/messages`,
+  chatFeedback: (messageId: string) => `/api/chat/messages/${messageId}/feedback`,
+  // Biblioteca del cliente (022).
+  myLibrary: "/api/my/library",
+  myLibraryUpload: "/api/my/library/upload",
+  precedentVersionHtml: (versionId: string) =>
+    `/api/precedents/versions/${versionId}/html`,
 } as const;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

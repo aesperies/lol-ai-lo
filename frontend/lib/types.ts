@@ -812,7 +812,11 @@ export interface ChatCitation {
   precedentVersionId: string;
   docType: string;
   source: string;
+  /** Sección/cláusula de la que procede el fragmento (022), si se conoce. */
+  section: string | null;
   snippet: string;
+  /** true si la respuesta referencia esta cita con [n] (022). */
+  used?: boolean;
 }
 
 /** Grounding posterior de la respuesta (verificador cruzado, 020). */
@@ -834,6 +838,7 @@ export interface ChatMessage {
   content: string;
   citations: ChatCitation[];
   verification: ChatVerification | null;
+  feedback: "up" | "down" | null;
   createdAt: string | null;
 }
 
@@ -842,5 +847,34 @@ export type ChatStreamEvent =
   | { type: "sources"; citations: ChatCitation[] }
   | { type: "delta"; text: string }
   | { type: "verification"; verification: ChatVerification }
-  | { type: "done"; messageId: string }
+  | { type: "done"; messageId: string; usedIndexes: number[] }
   | { type: "error"; detail: string };
+
+/* ------------------------------------------------------------------ */
+/* Biblioteca del cliente (022)                                        */
+/* ------------------------------------------------------------------ */
+
+/** Un documento de la biblioteca de la gestora, con sus ejes de
+ * organización (fondo / fecha / tipo) y su última versión. */
+export interface LibraryItem {
+  id: string;
+  docType: string;
+  language: string;
+  source: string;
+  fundId: string | null;
+  fundName: string | null;
+  /** Fecha del documento (editable al subir); null = usar createdAt. */
+  documentDate: string | null;
+  createdAt: string | null;
+  versionId: string | null;
+  versionStatus: "draft" | "active" | "superseded" | null;
+  versionNumber: number | null;
+  isDocx: boolean;
+}
+
+/** HTML seguro de una versión de precedente (citas clicables, 022). */
+export interface PrecedentVersionHtml {
+  html: string;
+  docType: string;
+  versionId: string;
+}

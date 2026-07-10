@@ -22,6 +22,7 @@ export * from "./tabular";
 export * from "./account";
 export * from "./sharing";
 export * from "./chat";
+export * from "./library";
 
 // DOM download utility now lives in lib/download.ts; re-exported here for
 // backwards compatibility with existing `@/lib/api` importers.

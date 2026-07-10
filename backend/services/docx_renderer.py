@@ -229,6 +229,58 @@ def render_docx(text: str, title: str | None = None) -> bytes:
     return buffer.getvalue()
 
 
+_SECTION_TITLE_MAX = 120
+
+
+def _is_section_title(line: str) -> bool:
+    """Whether a stripped line opens a new section/clause (022 structural
+    chunking). Reuses the exact heading heuristics render_docx/docx_html key
+    off: ALL-CAPS titles, ARTÍCULO/CLÁUSULA/SECTION headers, Spanish ordinal
+    headers and numbered clauses up to depth 2 ("1." / "1.1"). List items are
+    never titles."""
+    if not line or len(line) > _SECTION_TITLE_MAX:
+        return False
+    if _BULLET_RE.match(line) or _LETTER_LIST_RE.match(line):
+        return False
+    if _is_all_caps_title(line):
+        return True
+    if _ARTICLE_HEADER_RE.match(line) or _ORDINAL_HEADER_RE.match(line):
+        return True
+    level = _numbered_level(line)
+    return level is not None and level <= 2
+
+
+def split_sections(text: str) -> list[tuple[str | None, str]]:
+    """Split plain document text into ``(section_title, section_text)`` blocks.
+
+    Used by the indexer (022) so every RAG chunk records the clause it came
+    from — citations become "[1] LPA · CLÁUSULA 8" instead of "[1] LPA".
+    The title line is KEPT at the start of its section body (it carries
+    meaning: "CLÁUSULA 8 — COMISIONES"). Text before the first title becomes
+    an untitled section; a text with no recognizable titles returns one
+    untitled section with everything.
+    """
+    sections: list[tuple[str | None, str]] = []
+    title: str | None = None
+    buffer: list[str] = []
+
+    def flush(current_title: str | None, lines: list[str]) -> None:
+        body = "\n".join(lines).strip()
+        if body:
+            sections.append((current_title, body))
+
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if _is_section_title(line):
+            flush(title, buffer)
+            title = line
+            buffer = [raw]
+        else:
+            buffer.append(raw)
+    flush(title, buffer)
+    return sections
+
+
 def extract_text(docx_bytes: bytes) -> str:
     """Extract paragraph text from .docx bytes (used for [MISSING] checks,
     redline bases and RAG context).

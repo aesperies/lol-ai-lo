@@ -481,6 +481,30 @@ class ChatHit:
     source: str
     text: str
     similarity: float
+    section: Optional[str] = None
+
+
+# Constante estándar de Reciprocal Rank Fusion: amortigua la diferencia entre
+# posiciones altas sin que la cabeza de una lista domine a la otra.
+_RRF_K = 60
+
+
+def _rrf_merge(*ranked_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fusión RRF de listas ya ordenadas (mejor primero) de filas de chunks.
+
+    score(chunk) = Σ 1/(K + posición) sobre las listas donde aparece — un
+    chunk que la búsqueda semántica Y la léxica encuentran sube; uno que solo
+    aparece en una queda por detrás. Empates rotos por id (determinista).
+    """
+    scores: dict[str, float] = {}
+    rows_by_id: dict[str, dict[str, Any]] = {}
+    for rows in ranked_lists:
+        for position, row in enumerate(rows):
+            key = row["id"]
+            rows_by_id[key] = row
+            scores[key] = scores.get(key, 0.0) + 1.0 / (_RRF_K + position + 1)
+    ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    return [dict(rows_by_id[key], rrf_score=score) for key, score in ordered]
 
 
 def search_silo(
@@ -491,16 +515,19 @@ def search_silo(
     query_text: str,
     limit: int = CONTEXT_CHUNKS,
 ) -> list[ChatHit]:
-    """Chat Q&A (021): los chunks más relevantes del silo de la gestora SIN
-    fijar doc_type — la pregunta libre no sabe de tipos de documento.
+    """Chat Q&A (021/022): los chunks más relevantes del silo de la gestora
+    SIN fijar doc_type — la pregunta libre no sabe de tipos de documento.
 
-    El pre-filtro duro de aislamiento por gestora_id se aplica idéntico al
-    resto del módulo; lo único que se ensancha es el doc_type DENTRO del silo.
-    Solo versiones ACTIVAS (un precedente sustituido puede contener términos
-    obsoletos y una respuesta de chat no tiene el contexto para matizarlo).
+    Búsqueda HÍBRIDA: semántica (pgvector) + texto completo (022), fusionadas
+    con RRF. La mitad léxica cubre lo que los embeddings fallan (términos
+    exactos: "cláusula 8.2", "hurdle rate") y sigue funcionando con el
+    proveedor de embeddings caído. El pre-filtro duro de aislamiento por
+    gestora_id se aplica idéntico en ambas mitades; lo único que se ensancha
+    es el doc_type DENTRO del silo. Solo versiones ACTIVAS (un precedente
+    sustituido puede contener términos obsoletos y una respuesta de chat no
+    tiene el contexto para matizarlo).
 
-    Fast path: índice persistido (precedent_chunks). Fallback (silo sin
-    backfill o embeddings caídos): lectura de ficheros + ranking determinista
+    Fallback (silo sin indexar): lectura de ficheros + ranking determinista
     idéntico al de retrieve() — nunca un pool de candidatos más amplio.
     """
     active = PrecedentVersionStatus.active.value
@@ -515,28 +542,37 @@ def search_silo(
         if len(vector) != indexer.EXPECTED_DIM:
             vector = None
 
-    if vector is not None:
-        rows = db.search_chunks(
+    semantic_rows = (
+        db.search_chunks(
             gestora_id=gestora_id,
             doc_type=None,
             query_embedding=vector,
             embed_model=config.resolved_embed_model,
             limit=limit * 2,  # margen para el filtro de estado de versión
         )
-        hits = [
+        if vector is not None
+        else []
+    )
+    lexical_rows = db.search_chunks_text(
+        gestora_id=gestora_id, query_text=query_text, limit=limit * 2
+    )
+    semantic_rows = [r for r in semantic_rows if r.get("version_status") == active]
+    lexical_rows = [r for r in lexical_rows if r.get("version_status") == active]
+
+    if semantic_rows or lexical_rows:
+        merged = _rrf_merge(semantic_rows, lexical_rows)[:limit]
+        return [
             ChatHit(
                 precedent_id=row["precedent_id"],
                 precedent_version_id=row["precedent_version_id"],
                 doc_type=row.get("doc_type") or "",
                 source=row.get("source") or "",
                 text=row["text"],
-                similarity=row.get("similarity") or 0.0,
+                similarity=row.get("rrf_score") or 0.0,
+                section=row.get("section"),
             )
-            for row in rows
-            if row.get("version_status") == active
-        ][:limit]
-        if hits:
-            return hits
+            for row in merged
+        ]
 
     # Fallback por ficheros: mismos candidatos que los niveles 0a/0b pero a
     # través de TODOS los doc_types del silo, versiones activas únicamente.

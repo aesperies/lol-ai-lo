@@ -709,6 +709,42 @@ const es = {
     "Las respuestas se generan a partir de la documentación de tu gestora y no constituyen asesoramiento legal.",
   "chat.error": "No se ha podido completar la respuesta. Inténtalo de nuevo.",
 
+  "chat.viewSource": "Ver documento",
+  "chat.sourceUsed": "Usada en la respuesta",
+  "chat.feedbackUp": "Respuesta útil",
+  "chat.feedbackDown": "Respuesta incorrecta o poco útil",
+
+  // Biblioteca del cliente (022)
+  "nav.library": "Biblioteca",
+  "library.title": "Mi biblioteca",
+  "library.subtitle":
+    "Los documentos de tu gestora que alimentan las respuestas y la generación, organizados por fondo, año, trimestre y tipo.",
+  "library.upload": "Subir documento",
+  "library.empty":
+    "Tu biblioteca está vacía. Sube tus primeros documentos para que el chat y la generación puedan usarlos.",
+  "library.groupBy": "Agrupar por",
+  "library.groupFund": "Fondo",
+  "library.groupType": "Tipo de documento",
+  "library.noFund": "Sin fondo asignado",
+  "library.quarter": "T{q}",
+  "library.filterAllFunds": "Todos los fondos",
+  "library.filterAllYears": "Todos los años",
+  "library.filterAllQuarters": "Todos los trimestres",
+  "library.filterAllTypes": "Todos los tipos",
+  "library.status.draft": "Pendiente de activación",
+  "library.status.active": "Activo",
+  "library.status.superseded": "Sustituido",
+  "library.uploadTitle": "Subir documento a la biblioteca",
+  "library.uploadFile": "Archivo (.docx o .pdf)",
+  "library.uploadFund": "Fondo (opcional)",
+  "library.uploadDate": "Fecha del documento (opcional)",
+  "library.uploadNote":
+    "El documento entra como borrador: tu administrador lo activará para que empiece a alimentar las respuestas.",
+  "library.uploadSuccess":
+    "Documento subido. Quedará activo cuando tu administrador lo apruebe.",
+  "library.view": "Ver",
+  "library.count": "{count} doc.",
+
   // Tabular Review (010_tabular_reviews.sql)
   "nav.tabular": "Revisión tabular",
   "tabular.title": "Revisión tabular",
@@ -1437,6 +1473,42 @@ const en: Record<DictKey, string> = {
   "chat.disclaimer":
     "Answers are generated from your gestora's documentation and are not legal advice.",
   "chat.error": "The answer could not be completed. Please try again.",
+
+  "chat.viewSource": "View document",
+  "chat.sourceUsed": "Used in the answer",
+  "chat.feedbackUp": "Helpful answer",
+  "chat.feedbackDown": "Incorrect or unhelpful answer",
+
+  // Biblioteca del cliente (022)
+  "nav.library": "Library",
+  "library.title": "My library",
+  "library.subtitle":
+    "Your gestora's documents feeding answers and generation, organized by fund, year, quarter and type.",
+  "library.upload": "Upload document",
+  "library.empty":
+    "Your library is empty. Upload your first documents so chat and generation can use them.",
+  "library.groupBy": "Group by",
+  "library.groupFund": "Fund",
+  "library.groupType": "Document type",
+  "library.noFund": "No fund assigned",
+  "library.quarter": "Q{q}",
+  "library.filterAllFunds": "All funds",
+  "library.filterAllYears": "All years",
+  "library.filterAllQuarters": "All quarters",
+  "library.filterAllTypes": "All types",
+  "library.status.draft": "Pending activation",
+  "library.status.active": "Active",
+  "library.status.superseded": "Superseded",
+  "library.uploadTitle": "Upload a document to the library",
+  "library.uploadFile": "File (.docx or .pdf)",
+  "library.uploadFund": "Fund (optional)",
+  "library.uploadDate": "Document date (optional)",
+  "library.uploadNote":
+    "The document enters as a draft: your administrator will activate it so it starts feeding answers.",
+  "library.uploadSuccess":
+    "Document uploaded. It will become active once your administrator approves it.",
+  "library.view": "View",
+  "library.count": "{count} doc.",
 
   // Tabular Review (010_tabular_reviews.sql)
   "nav.tabular": "Tabular review",

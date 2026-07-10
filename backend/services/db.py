@@ -132,6 +132,25 @@ class Database(Protocol):
         """
         ...
 
+    def search_chunks_text(
+        self,
+        *,
+        gestora_id: Optional[str],
+        query_text: str,
+        doc_type: Optional[str] = None,
+        source: Optional[str] = None,
+        exclude_source: Optional[str] = None,
+        language: Optional[str] = None,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """Full-text search over the persisted RAG index (022) — the lexical
+        half of hybrid retrieval. Same isolation-by-construction contract as
+        :meth:`search_chunks`; unlike it, this needs NO embeddings, so it
+        keeps working when the embedding provider is down. Rows return
+        best-match-first with a ``rank`` field.
+        """
+        ...
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -270,6 +289,45 @@ class DevStore:
         matches.sort(key=lambda r: r["similarity"], reverse=True)
         return matches[:limit]
 
+    def search_chunks_text(
+        self,
+        *,
+        gestora_id: Optional[str],
+        query_text: str,
+        doc_type: Optional[str] = None,
+        source: Optional[str] = None,
+        exclude_source: Optional[str] = None,
+        language: Optional[str] = None,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """In-memory keyword search mirroring match_precedent_chunks_text
+        (022): token-overlap ranking approximates ts_rank well enough for the
+        contract tests (exact filters are what matter for isolation)."""
+        query_tokens = {t for t in query_text.casefold().split() if len(t) > 1}
+        if not query_tokens:
+            return []
+        matches: list[dict[str, Any]] = []
+        for row in self._table("precedent_chunks").values():
+            if row.get("gestora_id") != gestora_id:
+                continue
+            if doc_type is not None and row.get("doc_type") != doc_type:
+                continue
+            if source is not None and row.get("source") != source:
+                continue
+            if exclude_source is not None and row.get("source") == exclude_source:
+                continue
+            if language is not None and row.get("language") not in (None, language):
+                continue
+            text_tokens = set(str(row.get("text") or "").casefold().split())
+            overlap = sum(1 for t in query_tokens if t in text_tokens)
+            if overlap == 0:
+                continue
+            out = {k: v for k, v in row.items() if k not in ("embedding", "embed_model", "created_at")}
+            out["rank"] = overlap / len(query_tokens)
+            matches.append(out)
+        matches.sort(key=lambda r: r["rank"], reverse=True)
+        return matches[:limit]
+
 
 class SupabaseDB:
     """Thin wrapper over supabase-py exposing the DevStore interface."""
@@ -337,6 +395,33 @@ class SupabaseDB:
             {
                 "query_embedding": query_embedding,
                 "p_embed_model": embed_model,
+                "p_gestora_id": gestora_id,
+                "p_doc_type": doc_type,
+                "p_source": source,
+                "p_exclude_source": exclude_source,
+                "p_language": language,
+                "p_limit": limit,
+            },
+        ).execute()
+        return res.data or []
+
+    def search_chunks_text(
+        self,
+        *,
+        gestora_id: Optional[str],
+        query_text: str,
+        doc_type: Optional[str] = None,
+        source: Optional[str] = None,
+        exclude_source: Optional[str] = None,
+        language: Optional[str] = None,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """FTS via the match_precedent_chunks_text SQL function (022) — the
+        isolation pre-filter runs in the WHERE, before ranking."""
+        res = self._client.rpc(
+            "match_precedent_chunks_text",
+            {
+                "p_query": query_text,
                 "p_gestora_id": gestora_id,
                 "p_doc_type": doc_type,
                 "p_source": source,

@@ -35,7 +35,9 @@ interface ChatCitationWire {
   precedent_version_id?: string;
   doc_type?: string;
   source?: string;
+  section?: string | null;
   snippet?: string;
+  used?: boolean;
 }
 
 interface ChatMessageWire {
@@ -44,6 +46,7 @@ interface ChatMessageWire {
   content: string;
   citations?: ChatCitationWire[] | null;
   verification?: ChatVerification | null;
+  feedback?: "up" | "down" | null;
   created_at?: string | null;
 }
 
@@ -62,7 +65,9 @@ function mapCitation(wire: ChatCitationWire): ChatCitation {
     precedentVersionId: wire.precedent_version_id ?? "",
     docType: wire.doc_type ?? "",
     source: wire.source ?? "",
+    section: wire.section ?? null,
     snippet: wire.snippet ?? "",
+    used: wire.used,
   };
 }
 
@@ -73,6 +78,7 @@ function mapMessage(wire: ChatMessageWire): ChatMessage {
     content: wire.content,
     citations: (wire.citations ?? []).map(mapCitation),
     verification: wire.verification ?? null,
+    feedback: wire.feedback ?? null,
     createdAt: wire.created_at ?? null,
   };
 }
@@ -98,7 +104,11 @@ function mapEvent(raw: Record<string, unknown>): ChatStreamEvent | null {
         },
       };
     case "done":
-      return { type: "done", messageId: String(raw.message_id ?? "") };
+      return {
+        type: "done",
+        messageId: String(raw.message_id ?? ""),
+        usedIndexes: (raw.used_indexes as number[]) ?? [],
+      };
     case "error":
       return { type: "error", detail: String(raw.detail ?? "") };
     default:
@@ -174,5 +184,22 @@ export async function sendChatMessage(
   await fetchSse(apiPaths.chatMessages(conversationId), { content }, (raw) => {
     const event = mapEvent(raw as Record<string, unknown>);
     if (event) onEvent(event);
+  });
+}
+
+/** Pulgar arriba/abajo sobre una respuesta del asistente (022). */
+export async function sendChatFeedback(
+  messageId: string,
+  feedback: "up" | "down",
+): Promise<void> {
+  if (isStubMode()) {
+    return stubCall(async (stub) => {
+      await stub.delay(STUB_LATENCY / 4);
+      stub.stubChatFeedback(messageId, feedback);
+    });
+  }
+  await apiFetch(apiPaths.chatFeedback(messageId), {
+    method: "POST",
+    body: { feedback },
   });
 }

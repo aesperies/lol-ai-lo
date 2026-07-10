@@ -25,6 +25,7 @@ from models.schema import (
     AuditResourceType,
     ChatConversationCreate,
     ChatConversationOut,
+    ChatFeedbackBody,
     ChatMessageCreate,
     ChatMessageOut,
     User,
@@ -100,6 +101,23 @@ async def delete_conversation(
     for message in db.select("chat_messages", conversation_id=conversation_id):
         db.delete("chat_messages", message["id"])
     db.delete("chat_conversations", conversation_id)
+
+
+@router.post("/messages/{message_id}/feedback")
+async def message_feedback(
+    message_id: str,
+    body: ChatFeedbackBody,
+    user: User = Depends(require_client),
+) -> Any:
+    """Pulgar arriba/abajo sobre una respuesta del asistente (telemetría de
+    calidad del RAG). Mismo modelo no-leak que el resto del chat."""
+    db = dbmod.get_db()
+    message = db.get("chat_messages", message_id)
+    if message is None or message.get("role") != "assistant":
+        raise HTTPException(status_code=404, detail="Message not found")
+    _own_conversation_or_404(db, message["conversation_id"], user)
+    db.update("chat_messages", message_id, {"feedback": body.feedback})
+    return {"id": message_id, "feedback": body.feedback}
 
 
 @router.post(

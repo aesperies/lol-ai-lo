@@ -68,17 +68,26 @@ def _index_version(
     version: dict[str, Any],
     config: llm.EffectiveEmbeddingConfig,
 ) -> None:
-    """Insert chunk rows for one version (assumes none exist yet)."""
-    from services import rag  # local import: rag imports indexer lazily too
+    """Insert chunk rows for one version (assumes none exist yet).
+
+    Structural chunking (022): the text is first split into sections/clauses
+    (docx_renderer.split_sections) and chunked WITHIN each section, so no
+    chunk straddles a clause boundary and every row records the clause it
+    came from (``section``) — chat citations show "[1] LPA · CLÁUSULA 8".
+    """
+    from services import docx_renderer, rag  # local import: rag imports indexer lazily too
 
     text = rag._load_text(version["file_path"])
     if text is None:
         return  # unreadable/optional-dep formats simply stay unindexed
-    chunks = rag._chunk(text)
-    if not chunks:
+    entries: list[tuple[Optional[str], str]] = []  # (section_title, chunk_text)
+    for section_title, section_text in docx_renderer.split_sections(text):
+        for chunk_text in rag._chunk(section_text):
+            entries.append((section_title, chunk_text))
+    if not entries:
         return
-    vectors = _embed_batch(chunks, config)
-    for i, chunk_text in enumerate(chunks):
+    vectors = _embed_batch([chunk for _, chunk in entries], config)
+    for i, (section_title, chunk_text) in enumerate(entries):
         db.insert(
             "precedent_chunks",
             {
@@ -92,6 +101,7 @@ def _index_version(
                 "is_docx": version["file_path"].lower().endswith(".docx"),
                 "chunk_index": i,
                 "text": chunk_text,
+                "section": section_title,
                 "embed_model": config.resolved_embed_model if vectors else None,
                 "embedding": vectors[i] if vectors else None,
             },

@@ -17,7 +17,7 @@ from models.schema import (
     User,
     UserRole,
 )
-from services import audit, db as dbmod, rag, storage
+from services import audit, db as dbmod, docx_html, rag, storage
 
 router = APIRouter(prefix="/api/precedents", tags=["precedents"])
 
@@ -68,6 +68,7 @@ async def upload_precedent(
     source: PrecedentSource = Form(PrecedentSource.manual_upload),
     gestora_id: Optional[str] = Form(None),
     fund_id: Optional[str] = Form(None),
+    document_date: Optional[str] = Form(None),
     user: User = Depends(require_admin),
 ) -> Any:
     """Admin uploads a precedent (creates the precedent + version 1, status draft).
@@ -93,6 +94,8 @@ async def upload_precedent(
             "doc_type": doc_type,
             "language": language,
             "source": source.value,
+            # Fecha del documento (022): eje año/trimestre de la biblioteca.
+            "document_date": document_date or None,
         },
     )
     key = storage.save(_version_path(precedent, 1, file.filename or "precedent.docx"), data)
@@ -161,6 +164,30 @@ async def list_precedents(
         p for p in db.select("precedents", gestora_id=None) if p["source"] in _GLOBAL_SOURCES
     ]
     return _with_versions(db, own + global_templates)
+
+
+@router.get("/versions/{version_id}/html")
+async def view_version_html(
+    version_id: str,
+    user: User = Depends(get_current_user),
+) -> Any:
+    """Render a precedent version as safe HTML (citas clicables del chat y
+    biblioteca del cliente, 022). Mismo control de acceso que el resto de la
+    biblioteca (assert_precedent_access: silo propio o plantillas globales;
+    404-no-leak). Solo .docx — un PDF devuelve 409 y el frontend enseña el
+    snippet de la cita en su lugar."""
+    db = dbmod.get_db()
+    version = db.get("precedent_versions", version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    precedent = db.get("precedents", version["precedent_id"])
+    if precedent is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    assert_precedent_access(db, user, precedent)
+    if not str(version.get("file_path", "")).lower().endswith(".docx"):
+        raise HTTPException(status_code=409, detail="Only .docx versions render as HTML")
+    rendered = docx_html.docx_to_html(storage.read(version["file_path"]))
+    return {**rendered, "doc_type": precedent["doc_type"], "version_id": version_id}
 
 
 @router.get("/{precedent_id}/versions", response_model=list[PrecedentVersionOut])

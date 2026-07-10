@@ -19,6 +19,8 @@ import type {
   ChatConversation,
   ChatMessage,
   ChatStreamEvent,
+  LibraryItem,
+  PrecedentVersionHtml,
   AppNotification,
   Colleague,
   CounselQueueItem,
@@ -2538,6 +2540,7 @@ export async function stubSendChatMessage(
     content,
     citations: [],
     verification: null,
+    feedback: null,
     createdAt: new Date().toISOString(),
   });
 
@@ -2548,6 +2551,8 @@ export async function stubSendChatMessage(
       precedentVersionId: "stub-version-1",
       docType: "Acta de Reunión del Consejo",
       source: "manual_upload",
+      section: "ACUERDOS",
+      used: true,
       snippet:
         "El consejo de administración aprueba la llamada de capital por importe de 500.000 euros…",
     },
@@ -2570,8 +2575,107 @@ export async function stubSendChatMessage(
     content: answer,
     citations,
     verification: null,
+    feedback: null,
     createdAt: new Date().toISOString(),
   };
   messages.push(message);
-  onEvent({ type: "done", messageId: message.id });
+  onEvent({ type: "done", messageId: message.id, usedIndexes: [1] });
+}
+
+export function stubChatFeedback(
+  messageId: string,
+  feedback: "up" | "down",
+): void {
+  for (const thread of Object.values(_stubChatMessages)) {
+    const message = thread.find((m) => m.id === messageId);
+    if (message) message.feedback = feedback;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Biblioteca del cliente (022)                                        */
+/* ------------------------------------------------------------------ */
+
+const _stubLibrary: LibraryItem[] = [
+  {
+    id: "stub-precedent-1",
+    docType: "Acta de Reunión del Consejo",
+    language: "es",
+    source: "manual_upload",
+    fundId: "fund-1",
+    fundName: "Iberia Ventures I, FCR",
+    documentDate: "2026-03-12",
+    createdAt: hoursAgoIso(24 * 30),
+    versionId: "stub-version-1",
+    versionStatus: "active",
+    versionNumber: 2,
+    isDocx: true,
+  },
+  {
+    id: "stub-precedent-2",
+    docType: "Contrato de Suscripción",
+    language: "es",
+    source: "validated_output",
+    fundId: "fund-1",
+    fundName: "Iberia Ventures I, FCR",
+    documentDate: "2025-11-02",
+    createdAt: hoursAgoIso(24 * 90),
+    versionId: "stub-version-2",
+    versionStatus: "active",
+    versionNumber: 1,
+    isDocx: true,
+  },
+  {
+    id: "stub-precedent-3",
+    docType: "NDA",
+    language: "en",
+    source: "manual_upload",
+    fundId: null,
+    fundName: null,
+    documentDate: null,
+    createdAt: hoursAgoIso(24 * 5),
+    versionId: "stub-version-3",
+    versionStatus: "draft",
+    versionNumber: 1,
+    isDocx: true,
+  },
+];
+
+export function stubMyLibrary(): LibraryItem[] {
+  return [..._stubLibrary];
+}
+
+export function stubUploadLibraryDocument(
+  filename: string,
+  docType: string,
+  extra: { fundId: string | null; documentDate: string | null },
+): void {
+  _stubLibrary.unshift({
+    id: `stub-precedent-${_stubLibrary.length + 1}`,
+    docType,
+    language: "es",
+    source: "manual_upload",
+    fundId: extra.fundId,
+    fundName: extra.fundId ? "Iberia Ventures I, FCR" : null,
+    documentDate: extra.documentDate,
+    createdAt: new Date().toISOString(),
+    versionId: `stub-version-up-${_stubLibrary.length + 1}`,
+    versionStatus: "draft",
+    versionNumber: 1,
+    isDocx: filename.toLowerCase().endsWith(".docx"),
+  });
+}
+
+export function stubPrecedentVersionHtml(
+  versionId: string,
+): PrecedentVersionHtml {
+  return {
+    versionId,
+    docType: "Acta de Reunión del Consejo",
+    html:
+      "<h1>ACTA DE REUNIÓN DEL CONSEJO</h1>" +
+      "<h2>ACUERDOS</h2>" +
+      "<p>El consejo de administración aprueba la llamada de capital por " +
+      "importe de 500.000 euros. (Documento simulado del modo desarrollo.)</p>",
+  };
 }

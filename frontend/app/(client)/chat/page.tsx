@@ -12,12 +12,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
+import PrecedentHtmlModal from "@/components/PrecedentHtmlModal";
 import { Banner, Button, Card, PageHeader, Spinner, Textarea } from "@/components/ui";
 import {
   createChatConversation,
   deleteChatConversation,
   getChatConversations,
   getChatMessages,
+  sendChatFeedback,
   sendChatMessage,
 } from "@/lib/api";
 import { docTypeLabel } from "@/lib/catalog";
@@ -32,7 +34,13 @@ import type {
 /* Subcomponents                                                       */
 /* ------------------------------------------------------------------ */
 
-function CitationChips({ citations }: { citations: ChatCitation[] }) {
+function CitationChips({
+  citations,
+  onOpen,
+}: {
+  citations: ChatCitation[];
+  onOpen?: (citation: ChatCitation) => void;
+}) {
   const { t } = useI18n();
   if (citations.length === 0) return null;
   return (
@@ -40,16 +48,82 @@ function CitationChips({ citations }: { citations: ChatCitation[] }) {
       <span className="text-[11px] font-medium uppercase tracking-wide text-ink-400">
         {t("chat.sources")}
       </span>
-      {citations.map((citation) => (
-        <span
-          key={`${citation.index}-${citation.precedentVersionId}`}
-          title={citation.snippet}
-          className="inline-flex max-w-full cursor-help items-center gap-1 rounded-full bg-ink-100 px-2 py-0.5 text-xs text-ink-600 ring-1 ring-inset ring-ink-200"
-        >
-          <span className="font-semibold">[{citation.index}]</span>
-          <span className="truncate">{docTypeLabel(citation.docType)}</span>
-        </span>
-      ))}
+      {citations.map((citation) => {
+        const label = citation.section
+          ? `${docTypeLabel(citation.docType)} · ${citation.section}`
+          : docTypeLabel(citation.docType);
+        const used = citation.used !== false;
+        return (
+          <button
+            key={`${citation.index}-${citation.precedentVersionId}`}
+            type="button"
+            title={
+              citation.used
+                ? `${t("chat.sourceUsed")} — ${citation.snippet}`
+                : citation.snippet
+            }
+            onClick={onOpen ? () => onOpen(citation) : undefined}
+            className={
+              (used
+                ? "bg-brand-50 text-brand-800 ring-brand-200 "
+                : "bg-ink-100 text-ink-500 ring-ink-200 opacity-80 ") +
+              "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs ring-1 ring-inset transition-colors hover:ring-brand-400"
+            }
+          >
+            <span className="font-semibold">[{citation.index}]</span>
+            <span className="max-w-[16rem] truncate">{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FeedbackButtons({
+  message,
+  onFeedback,
+}: {
+  message: ChatMessage;
+  onFeedback: (messageId: string, feedback: "up" | "down") => void;
+}) {
+  const { t } = useI18n();
+  if (message.id.startsWith("local-")) return null;
+  return (
+    <div className="mt-2 flex items-center gap-1">
+      {(["up", "down"] as const).map((kind) => {
+        const active = message.feedback === kind;
+        return (
+          <button
+            key={kind}
+            type="button"
+            aria-label={kind === "up" ? t("chat.feedbackUp") : t("chat.feedbackDown")}
+            title={kind === "up" ? t("chat.feedbackUp") : t("chat.feedbackDown")}
+            onClick={() => onFeedback(message.id, kind)}
+            className={
+              (active
+                ? "bg-brand-50 text-brand-700 "
+                : "text-ink-300 hover:bg-ink-100 hover:text-ink-600 ") +
+              "inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors"
+            }
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill={active ? "currentColor" : "none"}
+              aria-hidden="true"
+              className={kind === "down" ? "rotate-180" : undefined}
+            >
+              <path
+                d="M7 11v9H4a1 1 0 01-1-1v-7a1 1 0 011-1h3zm0 0l4-7a2 2 0 012 2v4h5a2 2 0 012 2.3l-1 6A2 2 0 0117 19h-8"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -77,7 +151,15 @@ function VerificationNote({
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  onOpenCitation,
+  onFeedback,
+}: {
+  message: ChatMessage;
+  onOpenCitation: (citation: ChatCitation) => void;
+  onFeedback: (messageId: string, feedback: "up" | "down") => void;
+}) {
   const isUser = message.role === "user";
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -91,8 +173,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
         {!isUser ? (
           <>
-            <CitationChips citations={message.citations} />
+            <CitationChips citations={message.citations} onOpen={onOpenCitation} />
             <VerificationNote verification={message.verification} />
+            <FeedbackButtons message={message} onFeedback={onFeedback} />
           </>
         ) : null}
       </div>
@@ -114,7 +197,20 @@ export default function ChatPage() {
   const [streamText, setStreamText] = useState("");
   const [streamCitations, setStreamCitations] = useState<ChatCitation[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [viewingCitation, setViewingCitation] = useState<ChatCitation | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const handleFeedback = useCallback(
+    (messageId: string, feedback: "up" | "down") => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, feedback } : m)),
+      );
+      void sendChatFeedback(messageId, feedback).catch(() => {
+        /* telemetría: un fallo no debe molestar al usuario */
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     void getChatConversations()
@@ -192,6 +288,7 @@ export default function ChatPage() {
         content,
         citations: [],
         verification: null,
+        feedback: null,
         createdAt: null,
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -199,6 +296,7 @@ export default function ChatPage() {
       let accumulated = "";
       let citations: ChatCitation[] = [];
       let verification: ChatVerification | null = null;
+      let messageId: string | null = null;
       let failed: string | null = null;
 
       await sendChatMessage(conversationId, content, (event) => {
@@ -218,6 +316,11 @@ export default function ChatPage() {
             failed = event.detail;
             break;
           case "done":
+            messageId = event.messageId;
+            citations = citations.map((c) => ({
+              ...c,
+              used: event.usedIndexes.includes(c.index),
+            }));
             break;
         }
       });
@@ -228,11 +331,13 @@ export default function ChatPage() {
         setMessages((prev) => [
           ...prev,
           {
-            id: `local-${Date.now()}-assistant`,
+            // El id real (evento done) habilita el feedback inmediato.
+            id: messageId ?? `local-${Date.now()}-assistant`,
             role: "assistant",
             content: accumulated,
             citations,
             verification,
+            feedback: null,
             createdAt: null,
           },
         ]);
@@ -328,7 +433,12 @@ export default function ChatPage() {
               </p>
             ) : (
               messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onOpenCitation={setViewingCitation}
+                  onFeedback={handleFeedback}
+                />
               ))
             )}
 
@@ -346,7 +456,10 @@ export default function ChatPage() {
                       {t("chat.thinking")}
                     </span>
                   )}
-                  <CitationChips citations={streamCitations} />
+                  <CitationChips
+                    citations={streamCitations}
+                    onOpen={setViewingCitation}
+                  />
                 </div>
               </div>
             ) : null}
@@ -383,6 +496,19 @@ export default function ChatPage() {
           </form>
         </Card>
       </div>
+
+      <PrecedentHtmlModal
+        versionId={viewingCitation?.precedentVersionId ?? null}
+        title={
+          viewingCitation
+            ? viewingCitation.section
+              ? `${docTypeLabel(viewingCitation.docType)} · ${viewingCitation.section}`
+              : docTypeLabel(viewingCitation.docType)
+            : undefined
+        }
+        fallback={viewingCitation?.snippet}
+        onClose={() => setViewingCitation(null)}
+      />
     </div>
   );
 }
