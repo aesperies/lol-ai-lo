@@ -50,14 +50,10 @@ const es = {
   "common.loading": "Cargando…",
   "common.error": "Se ha producido un error. Inténtalo de nuevo.",
   "common.cancel": "Cancelar",
-  "common.confirm": "Confirmar",
   "common.save": "Guardar",
   "common.edit": "Editar",
   "common.back": "Volver",
-  "common.actions": "Acciones",
-  "common.download": "Descargar",
   "common.upload": "Subir",
-  "common.search": "Buscar",
   "common.all": "Todos",
   "common.empty": "No hay resultados.",
   "common.status": "Estado",
@@ -71,7 +67,6 @@ const es = {
   "common.role": "Rol",
   "common.logout": "Cerrar sesión",
   "common.optional": "opcional",
-  "common.notAvailable": "No disponible",
 
   // Roles
   "role.client": "Cliente (fondo)",
@@ -129,7 +124,6 @@ const es = {
   "account.security.verify": "Verificar y activar",
   "account.security.devNotice":
     "La verificación en dos pasos usa Supabase Auth y no está disponible en modo desarrollo. Aquí puedes alternar el estado de demostración.",
-  "account.security.demoToggle": "Estado de demostración",
 
   // Account — privacy (GDPR subject rights)
   "account.privacy.title": "Privacidad y mis datos",
@@ -165,7 +159,6 @@ const es = {
   "modelconfig.keySet": "Configurada",
   "modelconfig.keyUnset": "No configurada",
   "modelconfig.keyPlaceholderSet": "•••••••• (déjalo vacío para mantener)",
-  "modelconfig.keyClear": "Vaciar para borrar la clave",
   "modelconfig.usingDefault": "Usando los valores globales de la plataforma",
   "modelconfig.usingCustom": "Configuración personalizada",
   "modelconfig.inherit": "(heredar global)",
@@ -221,7 +214,6 @@ const es = {
   "dashboard.activity.title": "Actividad reciente",
   "dashboard.activity.show": "Mostrar",
   "dashboard.activity.hide": "Ocultar",
-  "dashboard.activity.empty": "Sin actividad registrada.",
   // Humanized audit actions (~10 most common; unknown ones fall back to
   // the raw literal).
   "dashboard.activity.action.document_requested": "Documento solicitado",
@@ -356,8 +348,6 @@ const es = {
   "viewer.exitBDesc":
     "Un abogado de Lol-AI-lo Legal SLP revisará el documento y te lo entregará validado.",
   "viewer.exitBRequest": "Solicitar Validación",
-  "viewer.exitBRequested":
-    "Validación solicitada. Recibirás un correo cuando el documento esté validado.",
   "viewer.level3Warning": VERBATIM_LEVEL3_WARNING,
   "viewer.missingBlocksExitA":
     "El documento contiene campos [MISSING] sin completar. La descarga directa (Exit A) está bloqueada: se requiere validación por abogado.",
@@ -369,8 +359,6 @@ const es = {
   "viewer.counselReviewNote":
     "El documento está en revisión por un abogado. Te avisaremos por correo cuando esté validado.",
   "viewer.notReadyYet": "El documento aún no está disponible.",
-  "viewer.fallbackLevel": "Nivel de precedente",
-  "viewer.requestMeta": "Detalle de la solicitud",
   "viewer.tabDraft": "Borrador",
   "viewer.tabRedline": "Redline vs. Precedente",
   "viewer.versionLabel": "Versión",
@@ -619,7 +607,6 @@ const es = {
   "review.problem": "Problema",
   "review.suggestedFix": "Corrección sugerida",
   "review.confidence": "Confianza",
-  "review.location": "Ubicación",
   "review.citationWhere": "En el borrador",
   "review.severity.blocking": "Bloqueante",
   "review.severity.major": "Importante",
@@ -657,7 +644,6 @@ const es = {
   "admin.playbooks.anyBranch": "Todas las ramas",
   "admin.playbooks.anyDocType": "Todos los tipos",
   "admin.playbooks.file": "Adjunto (opcional .docx / .pdf)",
-  "admin.playbooks.activeOnly": "Activos",
   "admin.playbooks.inactive": "Inactivos",
   "admin.playbooks.active": "Activo",
   "admin.playbooks.scope": "Ámbito",
@@ -682,10 +668,7 @@ const es = {
   "admin.lessons.selectGestora": "Selecciona una gestora",
   "admin.lessons.filterBranch": "Filtrar por rama",
   "admin.lessons.allBranches": "Todas las ramas",
-  "admin.lessons.branch": "Rama",
-  "admin.lessons.docType": "Tipo de documento",
   "admin.lessons.weight": "Peso",
-  "admin.lessons.lesson": "Lección",
   "admin.lessons.empty": "Esta gestora aún no ha aprendido lecciones.",
 
   // Chat Q&A sobre el RAG de la gestora (021_chat.sql)
@@ -753,17 +736,12 @@ const es = {
   "tabular.new": "Nueva revisión",
   "tabular.empty": "Aún no has creado ninguna revisión tabular.",
   "tabular.open": "Abrir",
-  "tabular.column": "Columna",
-  "tabular.columns": "Columnas",
   "tabular.document": "Documento",
-  "tabular.documents": "Documentos",
-  "tabular.cells": "Celdas",
   "tabular.run": "Ejecutar extracción",
   "tabular.running": "Extrayendo…",
   "tabular.exportCsv": "Exportar CSV",
   "tabular.addColumn": "Añadir columna",
   "tabular.removeColumn": "Eliminar columna",
-  "tabular.removeDocument": "Eliminar documento",
   "tabular.progress": "{done} de {total} celdas",
   "tabular.errorCount": "{count} con error",
   "tabular.citation": "Cita",
@@ -773,7 +751,6 @@ const es = {
   "tabular.cellPending": "Pendiente",
   "tabular.cellError": "Error",
   "tabular.cellEmpty": "—",
-  "tabular.notFound": "No encontrado",
   // New-review flow
   "tabular.newTitle": "Nueva revisión tabular",
   "tabular.newSubtitle":
@@ -826,7 +803,6 @@ const es = {
   "funds.showVehicles": "Ver vehículos",
   "funds.hideVehicles": "Ocultar vehículos",
   "funds.addVehicle": "+ Añadir vehículo",
-  "funds.newVehicle": "Nuevo vehículo",
   "funds.vehicleName": "Nombre del vehículo",
   "funds.vehicleTypeLabel": "Tipo",
   "funds.createVehicle": "Crear vehículo",
@@ -853,14 +829,10 @@ const en: Record<DictKey, string> = {
   "common.loading": "Loading…",
   "common.error": "Something went wrong. Please try again.",
   "common.cancel": "Cancel",
-  "common.confirm": "Confirm",
   "common.save": "Save",
   "common.edit": "Edit",
   "common.back": "Back",
-  "common.actions": "Actions",
-  "common.download": "Download",
   "common.upload": "Upload",
-  "common.search": "Search",
   "common.all": "All",
   "common.empty": "No results.",
   "common.status": "Status",
@@ -874,7 +846,6 @@ const en: Record<DictKey, string> = {
   "common.role": "Role",
   "common.logout": "Sign out",
   "common.optional": "optional",
-  "common.notAvailable": "Not available",
 
   "role.client": "Client (fund)",
   "role.counsel": "Counsel (lawyer)",
@@ -928,7 +899,6 @@ const en: Record<DictKey, string> = {
   "account.security.verify": "Verify and enable",
   "account.security.devNotice":
     "Two-factor authentication uses Supabase Auth and is unavailable in development mode. You can toggle the demo state here.",
-  "account.security.demoToggle": "Demo state",
 
   // Account — privacy (GDPR subject rights)
   "account.privacy.title": "Privacy and my data",
@@ -963,7 +933,6 @@ const en: Record<DictKey, string> = {
   "modelconfig.keySet": "Set",
   "modelconfig.keyUnset": "Not set",
   "modelconfig.keyPlaceholderSet": "•••••••• (leave blank to keep)",
-  "modelconfig.keyClear": "Clear to remove the key",
   "modelconfig.usingDefault": "Using platform-wide defaults",
   "modelconfig.usingCustom": "Custom configuration",
   "modelconfig.inherit": "(inherit global)",
@@ -1013,7 +982,6 @@ const en: Record<DictKey, string> = {
   "dashboard.activity.title": "Recent activity",
   "dashboard.activity.show": "Show",
   "dashboard.activity.hide": "Hide",
-  "dashboard.activity.empty": "No recorded activity.",
   "dashboard.activity.action.document_requested": "Document requested",
   "dashboard.activity.action.params_confirmed": "Parameters confirmed",
   "dashboard.activity.action.document_generated": "Document generated",
@@ -1138,8 +1106,6 @@ const en: Record<DictKey, string> = {
   "viewer.exitBDesc":
     "A Lol-AI-lo Legal SLP lawyer will review the document and deliver it validated.",
   "viewer.exitBRequest": "Solicitar Validación",
-  "viewer.exitBRequested":
-    "Validation requested. You will receive an email when the document is validated.",
   "viewer.level3Warning": VERBATIM_LEVEL3_WARNING,
   "viewer.missingBlocksExitA":
     "The document contains unfilled [MISSING] fields. Direct download (Exit A) is blocked: lawyer validation is required.",
@@ -1151,8 +1117,6 @@ const en: Record<DictKey, string> = {
   "viewer.counselReviewNote":
     "The document is under counsel review. We'll email you once it's validated.",
   "viewer.notReadyYet": "The document is not available yet.",
-  "viewer.fallbackLevel": "Precedent level",
-  "viewer.requestMeta": "Request details",
   "viewer.tabDraft": "Draft",
   "viewer.tabRedline": "Redline vs. Precedent",
   "viewer.versionLabel": "Version",
@@ -1384,7 +1348,6 @@ const en: Record<DictKey, string> = {
   "review.problem": "Problem",
   "review.suggestedFix": "Suggested fix",
   "review.confidence": "Confidence",
-  "review.location": "Location",
   "review.citationWhere": "In the draft",
   "review.severity.blocking": "Blocking",
   "review.severity.major": "Major",
@@ -1422,7 +1385,6 @@ const en: Record<DictKey, string> = {
   "admin.playbooks.anyBranch": "All branches",
   "admin.playbooks.anyDocType": "All types",
   "admin.playbooks.file": "Attachment (optional .docx / .pdf)",
-  "admin.playbooks.activeOnly": "Active",
   "admin.playbooks.inactive": "Inactive",
   "admin.playbooks.active": "Active",
   "admin.playbooks.scope": "Scope",
@@ -1447,10 +1409,7 @@ const en: Record<DictKey, string> = {
   "admin.lessons.selectGestora": "Select a gestora",
   "admin.lessons.filterBranch": "Filter by branch",
   "admin.lessons.allBranches": "All branches",
-  "admin.lessons.branch": "Branch",
-  "admin.lessons.docType": "Document type",
   "admin.lessons.weight": "Weight",
-  "admin.lessons.lesson": "Lesson",
   "admin.lessons.empty": "This gestora has not learned any lessons yet.",
 
   // Chat Q&A sobre el RAG de la gestora (021_chat.sql)
@@ -1518,17 +1477,12 @@ const en: Record<DictKey, string> = {
   "tabular.new": "New review",
   "tabular.empty": "You haven't created any tabular reviews yet.",
   "tabular.open": "Open",
-  "tabular.column": "Column",
-  "tabular.columns": "Columns",
   "tabular.document": "Document",
-  "tabular.documents": "Documents",
-  "tabular.cells": "Cells",
   "tabular.run": "Run extraction",
   "tabular.running": "Extracting…",
   "tabular.exportCsv": "Export CSV",
   "tabular.addColumn": "Add column",
   "tabular.removeColumn": "Remove column",
-  "tabular.removeDocument": "Remove document",
   "tabular.progress": "{done} of {total} cells",
   "tabular.errorCount": "{count} with errors",
   "tabular.citation": "Citation",
@@ -1538,7 +1492,6 @@ const en: Record<DictKey, string> = {
   "tabular.cellPending": "Pending",
   "tabular.cellError": "Error",
   "tabular.cellEmpty": "—",
-  "tabular.notFound": "Not found",
   // New-review flow
   "tabular.newTitle": "New tabular review",
   "tabular.newSubtitle":
@@ -1590,7 +1543,6 @@ const en: Record<DictKey, string> = {
   "funds.showVehicles": "Show vehicles",
   "funds.hideVehicles": "Hide vehicles",
   "funds.addVehicle": "+ Add vehicle",
-  "funds.newVehicle": "New vehicle",
   "funds.vehicleName": "Vehicle name",
   "funds.vehicleTypeLabel": "Type",
   "funds.createVehicle": "Create vehicle",

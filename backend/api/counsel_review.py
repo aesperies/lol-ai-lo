@@ -21,7 +21,6 @@ from api import client_ip, get_request_or_404, load_draft_text
 from auth import assert_request_access, get_current_user, require_counsel_or_admin
 from typing import Optional
 
-from auth import gestora_of_request
 from config import get_settings
 from models.schema import (
     AuditAction,
@@ -77,10 +76,15 @@ async def counsel_queue(
         mine, pool = None, None
 
     items: list[dict[str, Any]] = []
+    gestora_cache: dict[str, Any] = {}
     for row in rows:
         fund = db.get("funds", row["fund_id"]) if row.get("fund_id") else None
-        row_gestora_id = gestora_of_request(db, row)
-        gestora = db.get("gestoras", row_gestora_id) if row_gestora_id else None
+        # The fund row already carries gestora_id (gestora_of_request would
+        # re-fetch this same fund); gestora rows are cached across the loop.
+        row_gestora_id = (fund or {}).get("gestora_id")
+        if row_gestora_id and row_gestora_id not in gestora_cache:
+            gestora_cache[row_gestora_id] = db.get("gestoras", row_gestora_id)
+        gestora = gestora_cache.get(row_gestora_id) if row_gestora_id else None
         pending = sla_hours_pending(row)
         if pending is None:
             level = "green"

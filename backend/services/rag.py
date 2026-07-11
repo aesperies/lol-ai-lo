@@ -210,15 +210,24 @@ def _semantic_scores(
     if not query_vectors:
         return None
     query_vector = query_vectors[0]
+    cosine = dbmod.cosine_similarity
 
-    def cosine(a: list[float], b: list[float]) -> float:
-        dot = sum(x * y for x, y in zip(a, b))
-        norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
-        return dot / norm if norm else 0.0
+    # ONE batched embed call for every candidate's chunks (cloud providers
+    # batch internally; per-candidate calls were pure serial latency). Same
+    # vectors, same scores, same degradation (any failure -> None).
+    chunks_per_candidate = [_chunk(c.text)[:20] for c in candidates]
+    flat = [chunk for chunks in chunks_per_candidate for chunk in chunks]
+    if not flat:
+        return None
+    vectors = _embed(flat, config)
+    if not vectors:
+        return None
 
     scores: list[float] = []
-    for candidate in candidates:
-        chunk_vectors = _embed(_chunk(candidate.text)[:20], config)
+    cursor = 0
+    for chunks in chunks_per_candidate:
+        chunk_vectors = vectors[cursor:cursor + len(chunks)]
+        cursor += len(chunks)
         if not chunk_vectors:
             return None
         best = max((cosine(query_vector, v) for v in chunk_vectors), default=0.0)
@@ -597,14 +606,12 @@ def search_silo(
     return hits[:limit]
 
 
-def reindex_gestora(gestora_id: str, precedent_id: Optional[str] = None) -> None:
-    """Sync the gestora silo's persisted index (precedent_chunks, 018).
-
-    ``precedent_id`` scopes the sync to one precedent (the hot path from
-    activate/supersede/delivery); without it the WHOLE silo is reconciled
-    (backfill / repair). Index failures never break the calling flow —
-    retrieval falls back to the file-based path for unindexed content.
-    """
+def _reindex(gestora_id: Optional[str], precedent_id: Optional[str]) -> None:
+    """Shared body for reindex_gestora/reindex_global (gestora_id None = the
+    global SLP/platform pool). ``precedent_id`` scopes the sync to one
+    precedent (the hot path from activate/supersede/delivery); without it the
+    whole scope is reconciled (backfill / repair). Index failures never break
+    the calling flow — retrieval falls back to the file-based path."""
     from services import indexer  # local import: indexer imports rag helpers
 
     db = dbmod.get_db()
@@ -616,33 +623,25 @@ def reindex_gestora(gestora_id: str, precedent_id: Optional[str] = None) -> None
             config = llm.resolve_embedding_config(gestora_id)
             for version in db.select("precedent_versions", precedent_id=precedent_id):
                 indexer._sync_version(db, precedent, version, config)
-        else:
+        elif gestora_id:
             indexer.sync_gestora(db, gestora_id)
+        else:
+            indexer.sync_global(db)
     except Exception:  # noqa: BLE001 — indexing must never break the caller
         _logger().exception(
-            "RAG index sync failed for gestora %s (retrieval will fall back)", gestora_id
+            "RAG index sync failed for %s (retrieval will fall back)",
+            f"gestora {gestora_id}" if gestora_id else "the global pool",
         )
+
+
+def reindex_gestora(gestora_id: str, precedent_id: Optional[str] = None) -> None:
+    """Sync the gestora silo's persisted index (precedent_chunks, 018)."""
+    _reindex(gestora_id, precedent_id)
 
 
 def reindex_global(precedent_id: Optional[str] = None) -> None:
-    """Sync the global SLP/platform pool's persisted index. See above."""
-    from services import indexer
-
-    db = dbmod.get_db()
-    try:
-        if precedent_id:
-            precedent = db.get("precedents", precedent_id)
-            if precedent is None:
-                return
-            config = llm.resolve_embedding_config(None)
-            for version in db.select("precedent_versions", precedent_id=precedent_id):
-                indexer._sync_version(db, precedent, version, config)
-        else:
-            indexer.sync_global(db)
-    except Exception:  # noqa: BLE001
-        _logger().exception(
-            "RAG index sync failed for the global pool (retrieval will fall back)"
-        )
+    """Sync the global SLP/platform pool's persisted index."""
+    _reindex(None, precedent_id)
 
 
 def _logger():  # tiny indirection keeps module import light

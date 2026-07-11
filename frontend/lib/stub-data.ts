@@ -2271,17 +2271,6 @@ export function stubDeleteTabularColumn(
   return cloneTabularDetail(review);
 }
 
-export function stubDeleteTabularDocument(
-  id: string,
-  documentId: string,
-): TabularReviewDetail {
-  const review = findStubReview(id);
-  review.documents = review.documents.filter((d) => d.id !== documentId);
-  review.cells = review.cells.filter((c) => c.documentId !== documentId);
-  review.updatedAt = nowIso();
-  return cloneTabularDetail(review);
-}
-
 export function stubTabularReviewCsv(id: string): string {
   const review = findStubReview(id);
   const byPos = new Map<string, string>();

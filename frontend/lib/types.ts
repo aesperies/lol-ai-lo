@@ -5,16 +5,7 @@
 
 export type Role = "client" | "counsel" | "admin";
 
-export type RequestStatus =
-  | "parsing"
-  | "confirmed"
-  | "generating"
-  | "review_pending"
-  | "counsel_review"
-  | "validated"
-  | "delivered";
-
-export const REQUEST_STATUSES: RequestStatus[] = [
+export const REQUEST_STATUSES = [
   "parsing",
   "confirmed",
   "generating",
@@ -22,7 +13,9 @@ export const REQUEST_STATUSES: RequestStatus[] = [
   "counsel_review",
   "validated",
   "delivered",
-];
+] as const;
+
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
 export type SubscriptionTier = "starter" | "growth" | "custom";
 
@@ -99,23 +92,12 @@ export interface AccountProfile {
   mfaEnabled: boolean;
 }
 
-/** A Supabase MFA factor (subset of @supabase/supabase-js Factor). */
-export interface MfaFactor {
-  id: string;
-  friendlyName: string | null;
-  status: string;
-}
-
 /** GDPR deletion mode (services/data_subject.py). */
 export type DeleteMode = "anonymize" | "erase";
 
 /** Exact confirmation phrase required to delete one's own data (backend
  * DATA_DELETE_CONFIRMATION). */
 export const DATA_DELETE_CONFIRMATION = "ELIMINAR MIS DATOS";
-
-/** LLM provider options for the per-gestora model config. */
-export type LlmProvider = "ollama" | "anthropic";
-export type EmbeddingProvider = "ollama" | "openai";
 
 /** Per-gestora model configuration (no plaintext keys ever; *_key_set only). */
 export interface ModelConfig {
@@ -312,18 +294,6 @@ export interface AppNotification {
   /** null = unread. */
   readAt: string | null;
   createdAt: string | null;
-}
-
-export interface DocumentItem {
-  id: string;
-  requestId: string;
-  versionType: DocumentVersionType;
-  filePath: string;
-  precedentVersionId?: string | null;
-  uploadedBy?: string | null;
-  /** Refinement iteration this version belongs to (0 = original generation). */
-  iteration: number;
-  createdAt: string;
 }
 
 export interface PrecedentVersion {

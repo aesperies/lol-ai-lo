@@ -28,6 +28,16 @@ logger = logging.getLogger("lolailo.model_router")
 HEAVY = "heavy"
 LIGHT = "light"
 
+# Single source of truth for "which config attribute holds each provider's
+# model" and "which setting holds its light-tier model". light_model_for,
+# apply and model_of all read from here — adding a provider is one entry.
+PROVIDER_MODEL_FIELDS: dict[str, tuple[str, str]] = {
+    "ollama": ("ollama_llm_model", "ollama_light_model"),
+    "anthropic": ("claude_model", "anthropic_light_model"),
+    "mistral": ("mistral_model", "mistral_light_model"),
+    "grok": ("grok_model", "grok_light_model"),
+}
+
 # Task -> tier. Unknown/None tasks default to HEAVY (never degrade quality of
 # an untagged call by accident).
 TASK_TIERS: dict[str, str] = {
@@ -53,13 +63,8 @@ def tier_for(task: Optional[str]) -> str:
 
 def light_model_for(provider: str) -> str:
     """The configured light-tier model for ``provider`` ("" = no routing)."""
-    settings = get_settings()
-    return {
-        "ollama": settings.ollama_light_model,
-        "anthropic": settings.anthropic_light_model,
-        "mistral": settings.mistral_light_model,
-        "grok": settings.grok_light_model,
-    }.get(provider, "")
+    fields = PROVIDER_MODEL_FIELDS.get(provider)
+    return getattr(get_settings(), fields[1]) if fields else ""
 
 
 def apply(config: Any, task: Optional[str]) -> Any:
@@ -74,25 +79,15 @@ def apply(config: Any, task: Optional[str]) -> Any:
     if getattr(config, "model_pinned", False):
         return config
     light = light_model_for(config.llm_provider)
-    if not light:
+    fields = PROVIDER_MODEL_FIELDS.get(config.llm_provider)
+    if not light or fields is None:
         return config
-    if config.llm_provider == "ollama":
-        config.ollama_llm_model = light
-    elif config.llm_provider == "anthropic":
-        config.claude_model = light
-    elif config.llm_provider == "mistral":
-        config.mistral_model = light
-    elif config.llm_provider == "grok":
-        config.grok_model = light
+    setattr(config, fields[0], light)
     logger.debug("Routed task %s to %s:%s (light tier)", task, config.llm_provider, light)
     return config
 
 
 def model_of(config: Any) -> str:
     """The model name the config would use with its current provider."""
-    return {
-        "ollama": config.ollama_llm_model,
-        "anthropic": config.claude_model,
-        "mistral": config.mistral_model,
-        "grok": config.grok_model,
-    }.get(config.llm_provider, "?")
+    fields = PROVIDER_MODEL_FIELDS.get(config.llm_provider)
+    return getattr(config, fields[0]) if fields else "?"

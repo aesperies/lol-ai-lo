@@ -23,13 +23,10 @@ from typing import Any, Optional
 
 from models.schema import RefinementStatus
 from services import db as dbmod
+from services.workflow import now_iso as _now_iso
 from services import docx_renderer, storage
 
 logger = logging.getLogger("lolailo.quality")
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _normalize(text: str) -> str:

@@ -30,12 +30,9 @@ from models.schema import (
     User,
 )
 from services import audit, db as dbmod, lessons, rag
+from services.workflow import now_iso as _now_iso
 
 logger = logging.getLogger("lolailo.delivery")
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def create_final_document(

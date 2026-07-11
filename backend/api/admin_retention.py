@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api import client_ip, now_iso
+from api import client_ip, get_gestora_or_404, now_iso
 from auth import require_admin
 from models.schema import (
     AuditAction,
@@ -25,13 +25,6 @@ router = APIRouter(prefix="/api/admin", tags=["admin-retention"])
 
 
 
-def _get_gestora_or_404(db: dbmod.Database, gestora_id: str) -> dict[str, Any]:
-    row = db.get("gestoras", gestora_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Gestora not found")
-    return row
-
-
 @router.get("/gestoras/{gestora_id}/retention", response_model=RetentionPolicyOut)
 async def get_retention_policy(
     gestora_id: str,
@@ -40,7 +33,7 @@ async def get_retention_policy(
     """The gestora's retention policy; the platform default (is_default=true)
     when no explicit policy row exists."""
     db = dbmod.get_db()
-    _get_gestora_or_404(db, gestora_id)
+    get_gestora_or_404(db, gestora_id)
     rows = db.select("data_retention_policies", gestora_id=gestora_id)
     if not rows:
         return RetentionPolicyOut(
@@ -67,7 +60,7 @@ async def put_retention_policy(
 ) -> Any:
     """Upsert the gestora's retention policy (months, 6-120)."""
     db = dbmod.get_db()
-    _get_gestora_or_404(db, gestora_id)
+    get_gestora_or_404(db, gestora_id)
     existing = db.select("data_retention_policies", gestora_id=gestora_id)
     fields = {"months": body.months, "updated_by": user.id, "updated_at": now_iso()}
     previous_months = existing[-1]["months"] if existing else None

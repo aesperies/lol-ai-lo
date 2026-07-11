@@ -332,10 +332,6 @@ class DraftWithReviewResult:
     approved: bool
     forced_counsel: bool
 
-    @property
-    def critic_ran(self) -> bool:
-        return bool(self.rounds)
-
 
 def review(
     *,
@@ -421,10 +417,6 @@ def build_revision_instruction(issues: list[Issue]) -> str:
 # A revise callable takes (current_text, instruction) and returns the full
 # revised document. Defaults to generator.refine_document; injectable for tests.
 ReviseFn = Callable[[str, str], str]
-
-
-def _default_revise(current_text: str, instruction: str) -> str:
-    return generator.refine_document(current_text=current_text, instruction=instruction)
 
 
 def _make_default_revise(gestora_id: Optional[str]) -> ReviseFn:

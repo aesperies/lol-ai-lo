@@ -61,3 +61,10 @@ def get_request_or_404(db: dbmod.Database, request_id: str) -> dict[str, Any]:
     if row is None:
         raise HTTPException(status_code=404, detail="Request not found")
     return row
+
+
+def get_gestora_or_404(db: dbmod.Database, gestora_id: str) -> dict[str, Any]:
+    row = db.get("gestoras", gestora_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Gestora not found")
+    return row

@@ -16,7 +16,12 @@ from typing import Any, Iterator, Optional
 import httpx
 
 from config import ServiceNotConfiguredError, get_settings
-from services.providers.base import json_instructions, retryable, stream_openai_sse
+from services.providers.base import (
+    complete_openai_chat,
+    json_instructions,
+    retryable,
+    stream_openai_sse,
+)
 
 _API_URL = "https://api.mistral.ai/v1/chat/completions"
 _EMBED_URL = "https://api.mistral.ai/v1/embeddings"
@@ -62,31 +67,15 @@ class MistralLLM:
         if json_schema is not None:
             payload["response_format"] = {"type": "json_object"}
 
-        def _do() -> httpx.Response:
-            return httpx.post(
-                _API_URL,
-                json=payload,
-                headers={"Authorization": f"Bearer {config.mistral_api_key}"},
-                timeout=settings.ollama_timeout_seconds,
-            )
-
-        try:
-            response = retryable(_do, settings.llm_retry_attempts)
-        except httpx.HTTPError as exc:
-            raise ServiceNotConfiguredError(
-                "mistral", "Could not reach the Mistral API."
-            ) from exc
-
-        if response.status_code != 200:
-            raise ServiceNotConfiguredError(
-                "mistral",
-                f"Mistral returned HTTP {response.status_code}: {response.text[:200]}.",
-            )
-        data = response.json()
-        choices = data.get("choices") or []
-        if not choices:
-            return ""
-        return (choices[0].get("message") or {}).get("content", "") or ""
+        return complete_openai_chat(
+            url=_API_URL,
+            payload=payload,
+            api_key=config.mistral_api_key,
+            provider_name="mistral",
+            unreachable_hint="Could not reach the Mistral API.",
+            timeout=settings.ollama_timeout_seconds,
+            retry_attempts=settings.llm_retry_attempts,
+        )
 
     def stream(
         self,

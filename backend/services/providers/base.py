@@ -92,6 +92,47 @@ def retryable(func, attempts: int):
     raise last_exc
 
 
+def complete_openai_chat(
+    *,
+    url: str,
+    payload: dict[str, Any],
+    api_key: str,
+    provider_name: str,
+    unreachable_hint: str,
+    timeout: float,
+    retry_attempts: int,
+) -> str:
+    """Non-streaming completion against an OpenAI-compatible chat endpoint
+    (Mistral, xAI) — the single-shot sibling of :func:`stream_openai_sse`.
+    Same error contract as every provider: connection/HTTP failures raise
+    ServiceNotConfiguredError (the API layer translates to HTTP 503)."""
+    from config import ServiceNotConfiguredError  # local import, no cycle
+
+    def _do() -> httpx.Response:
+        return httpx.post(
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        )
+
+    try:
+        response = retryable(_do, retry_attempts)
+    except httpx.HTTPError as exc:
+        raise ServiceNotConfiguredError(provider_name, unreachable_hint) from exc
+
+    if response.status_code != 200:
+        raise ServiceNotConfiguredError(
+            provider_name,
+            f"{provider_name} returned HTTP {response.status_code}: "
+            f"{response.text[:200]}.",
+        )
+    choices = response.json().get("choices") or []
+    if not choices:
+        return ""
+    return (choices[0].get("message") or {}).get("content", "") or ""
+
+
 def stream_openai_sse(
     *,
     url: str,

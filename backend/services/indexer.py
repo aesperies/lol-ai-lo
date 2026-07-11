@@ -159,9 +159,3 @@ def sync_global(db: dbmod.Database) -> None:
         for version in db.select("precedent_versions", precedent_id=precedent["id"]):
             _sync_version(db, precedent, version, config)
 
-
-def remove_version(db: dbmod.Database, version_id: str) -> None:
-    """Drop a version's chunk rows (Postgres also cascades on delete; this
-    keeps the DevStore consistent and covers soft-removal paths)."""
-    for row in db.select("precedent_chunks", precedent_version_id=version_id):
-        db.delete("precedent_chunks", row["id"])

@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api import client_ip, now_iso
+from api import client_ip, get_gestora_or_404, now_iso
 from auth import require_admin
 from models.schema import (
     AuditAction,
@@ -39,13 +39,6 @@ _PLAIN_FIELDS = (
     "ollama_base_url",
 )
 
-
-
-def _get_gestora_or_404(db: dbmod.Database, gestora_id: str) -> dict[str, Any]:
-    row = db.get("gestoras", gestora_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Gestora not found")
-    return row
 
 
 def _config_row(db: dbmod.Database, gestora_id: str) -> Optional[dict[str, Any]]:
@@ -87,7 +80,7 @@ async def get_model_config(
     """The gestora's model-config override (platform default when none set).
     Never returns decrypted keys."""
     db = dbmod.get_db()
-    _get_gestora_or_404(db, gestora_id)
+    get_gestora_or_404(db, gestora_id)
     return _serialize(gestora_id, _config_row(db, gestora_id))
 
 
@@ -105,7 +98,7 @@ async def put_model_config(
     The encrypted key material is never logged or echoed back.
     """
     db = dbmod.get_db()
-    _get_gestora_or_404(db, gestora_id)
+    get_gestora_or_404(db, gestora_id)
     existing = _config_row(db, gestora_id)
 
     fields: dict[str, Any] = {}

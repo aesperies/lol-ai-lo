@@ -177,6 +177,30 @@ def _local_llm_config(settings: Any) -> EffectiveLLMConfig:
     )
 
 
+def _decrypt_byo(row: dict[str, Any], enc_field: str, provider_label: str,
+                 env_name: str, gestora_id: str) -> Optional[str]:
+    """Decrypt one BYO key from the gestora's override row, or None.
+
+    A key that fails to decrypt is treated as "not set" (WARNING, never the
+    plaintext) — the caller keeps the global env key. One helper instead of
+    six copies of the same try/except (adding a provider = one call).
+    """
+    from services import secrets  # local import (optional-deps-free startup)
+
+    enc = row.get(enc_field)
+    if not enc:
+        return None
+    try:
+        return secrets.decrypt(enc)
+    except secrets.DecryptionError:
+        logger.warning(
+            "%s BYO key for gestora %s could not be decrypted; "
+            "falling back to global %s.",
+            provider_label, gestora_id, env_name,
+        )
+        return None
+
+
 def resolve_config(
     gestora_id: Optional[str] = None, *, task: Optional[str] = None
 ) -> EffectiveLLMConfig:
@@ -213,8 +237,6 @@ def resolve_config(
     if not gestora_id:
         return model_router.apply(config, task)
 
-    from services import secrets  # local import (optional-deps-free startup)
-
     try:
         row = _load_override_row(gestora_id)
     except Exception:  # noqa: BLE001 — resolution must never break a call
@@ -239,36 +261,14 @@ def resolve_config(
         config.model_pinned = True
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
-    enc = row.get("anthropic_api_key_enc")
-    if enc:
-        try:
-            config.anthropic_api_key = secrets.decrypt(enc)
-        except secrets.DecryptionError:
-            logger.warning(
-                "Anthropic BYO key for gestora %s could not be decrypted; "
-                "falling back to global ANTHROPIC_API_KEY.",
-                gestora_id,
-            )
-    enc = row.get("mistral_api_key_enc")
-    if enc:
-        try:
-            config.mistral_api_key = secrets.decrypt(enc)
-        except secrets.DecryptionError:
-            logger.warning(
-                "Mistral BYO key for gestora %s could not be decrypted; "
-                "falling back to global MISTRAL_API_KEY.",
-                gestora_id,
-            )
-    enc = row.get("xai_api_key_enc")
-    if enc:
-        try:
-            config.xai_api_key = secrets.decrypt(enc)
-        except secrets.DecryptionError:
-            logger.warning(
-                "xAI BYO key for gestora %s could not be decrypted; "
-                "falling back to global XAI_API_KEY.",
-                gestora_id,
-            )
+    for enc_field, attr, label, env in (
+        ("anthropic_api_key_enc", "anthropic_api_key", "Anthropic", "ANTHROPIC_API_KEY"),
+        ("mistral_api_key_enc", "mistral_api_key", "Mistral", "MISTRAL_API_KEY"),
+        ("xai_api_key_enc", "xai_api_key", "xAI", "XAI_API_KEY"),
+    ):
+        key = _decrypt_byo(row, enc_field, label, env, gestora_id)
+        if key:
+            setattr(config, attr, key)
     return model_router.apply(config, task)
 
 
@@ -314,8 +314,6 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
     if not gestora_id:
         return config
 
-    from services import secrets  # local import (optional-deps-free startup)
-
     try:
         row = _load_override_row(gestora_id)
     except Exception:  # noqa: BLE001 — resolution must never break a call
@@ -344,36 +342,14 @@ def resolve_embedding_config(gestora_id: Optional[str] = None) -> EffectiveEmbed
         config.grok_embed_model = row["embedding_model"]
     if row.get("ollama_base_url"):
         config.ollama_base_url = row["ollama_base_url"]
-    enc = row.get("openai_api_key_enc")
-    if enc:
-        try:
-            config.openai_api_key = secrets.decrypt(enc)
-        except secrets.DecryptionError:
-            logger.warning(
-                "OpenAI BYO key for gestora %s could not be decrypted; "
-                "falling back to global OPENAI_API_KEY.",
-                gestora_id,
-            )
-    mistral_enc = row.get("mistral_api_key_enc")
-    if mistral_enc:
-        try:
-            config.mistral_api_key = secrets.decrypt(mistral_enc)
-        except secrets.DecryptionError:
-            logger.warning(
-                "Mistral BYO key for gestora %s could not be decrypted; "
-                "falling back to global MISTRAL_API_KEY.",
-                gestora_id,
-            )
-    xai_enc = row.get("xai_api_key_enc")
-    if xai_enc:
-        try:
-            config.xai_api_key = secrets.decrypt(xai_enc)
-        except secrets.DecryptionError:
-            logger.warning(
-                "xAI BYO key for gestora %s could not be decrypted; "
-                "falling back to global XAI_API_KEY.",
-                gestora_id,
-            )
+    for enc_field, attr, label, env in (
+        ("openai_api_key_enc", "openai_api_key", "OpenAI", "OPENAI_API_KEY"),
+        ("mistral_api_key_enc", "mistral_api_key", "Mistral", "MISTRAL_API_KEY"),
+        ("xai_api_key_enc", "xai_api_key", "xAI", "XAI_API_KEY"),
+    ):
+        key = _decrypt_byo(row, enc_field, label, env, gestora_id)
+        if key:
+            setattr(config, attr, key)
     return config
 
 

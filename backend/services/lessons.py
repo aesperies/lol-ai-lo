@@ -34,6 +34,7 @@ from config import ServiceNotConfiguredError, get_settings
 from models.doc_branches import Branch, branch_for
 from services import db as dbmod
 from services import docx_renderer, jobs, llm, quality, storage
+from services.workflow import now_iso as _now_iso
 
 logger = logging.getLogger("lolailo.lessons")
 
@@ -76,10 +77,6 @@ AI DRAFT:
 COUNSEL-VALIDATED FINAL:
 {final}
 """
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _coerce_branch(branch: Any) -> str:

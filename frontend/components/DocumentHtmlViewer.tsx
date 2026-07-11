@@ -23,7 +23,6 @@ export default function DocumentHtmlViewer({
   versionType,
   iteration,
   refreshToken,
-  className,
 }: {
   requestId: string;
   versionType: DocumentVersionType;
@@ -31,7 +30,6 @@ export default function DocumentHtmlViewer({
   iteration?: number;
   /** Bump to force a re-fetch (e.g. after a refinement created a new iteration). */
   refreshToken?: number;
-  className?: string;
 }) {
   const { t } = useI18n();
   const [doc, setDoc] = useState<DocumentHtml | null>(null);
@@ -67,7 +65,7 @@ export default function DocumentHtmlViewer({
   }
 
   return (
-    <div className={className}>
+    <div>
       {/* Redline legend: insertion / deletion counts */}
       {versionType === "redline" ? (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-ink-200 bg-ink-50 px-3 py-2 text-xs text-ink-600">

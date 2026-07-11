@@ -230,21 +230,32 @@ class Settings(BaseSettings):
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
 
+    # Per-provider readiness delegates to the registry (each provider owns
+    # its credential check) — same pattern as llm_configured below, so adding
+    # a provider never touches config.py.
     @property
     def anthropic_configured(self) -> bool:
-        return bool(self.anthropic_api_key)
+        from services import providers  # lazy: providers imports config
+
+        return providers.llm_configured("anthropic", self)
 
     @property
     def mistral_configured(self) -> bool:
-        return bool(self.mistral_api_key)
+        from services import providers  # lazy: providers imports config
+
+        return providers.llm_configured("mistral", self)
 
     @property
     def grok_configured(self) -> bool:
-        return bool(self.xai_api_key)
+        from services import providers  # lazy: providers imports config
+
+        return providers.llm_configured("grok", self)
 
     @property
     def openai_configured(self) -> bool:
-        return bool(self.openai_api_key)
+        from services import providers  # lazy: providers imports config
+
+        return providers.embeddings_configured("openai", self)
 
     @property
     def llm_configured(self) -> bool:

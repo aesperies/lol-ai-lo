@@ -57,7 +57,9 @@ def for_user(db: dbmod.Database, user_id: str, *, limit: int = 50) -> list[dict[
 
 
 def unread_count(db: dbmod.Database, user_id: str) -> int:
-    return sum(1 for r in db.select("notifications", user_id=user_id) if not r.get("read_at"))
+    # read_at=None matches SQL NULL in both backends (db layer contract) — the
+    # bell polls this every 60s per session, so never transfer read history.
+    return len(db.select("notifications", user_id=user_id, read_at=None))
 
 
 def mark_read(db: dbmod.Database, user_id: str, ids: Optional[list[str]] = None) -> int:

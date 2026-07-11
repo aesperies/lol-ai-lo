@@ -28,15 +28,12 @@ from models.schema import (
     RequestStatus,
 )
 from services import db as dbmod
+from services.workflow import now_iso as _now
 
 logger = logging.getLogger("lolailo.jobs")
 
 # Re-invoked on every retry: must return a FRESH awaitable each call.
 CoroutineFactory = Callable[[], Awaitable[Any]]
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 class JobRunner:

@@ -19,6 +19,21 @@ from config import ServiceNotConfiguredError, get_settings
 from models.schema import User, UserRole
 from services import db as dbmod
 
+# Cached per process like services/db.py's SupabaseDB — building a client per
+# request added avoidable setup cost to EVERY authenticated endpoint. The
+# access token is passed per call (client.auth.get_user(token)), so sharing
+# the client never mixes sessions.
+_auth_client = None
+
+
+def _get_auth_client(settings):
+    global _auth_client
+    if _auth_client is None:
+        from supabase import create_client  # type: ignore[import-not-found]
+
+        _auth_client = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    return _auth_client
+
 
 def _load_user_row(db: dbmod.Database, user_id: str) -> Optional[dict[str, Any]]:
     return db.get("users", user_id)
@@ -50,13 +65,12 @@ async def get_current_user(
     if not settings.supabase_configured:
         raise HTTPException(status_code=503, detail="Service not configured: supabase auth")
 
-    # Lazy import: the supabase package is optional in dev.
+    # Lazy import inside the cache helper: the supabase package is optional in dev.
     try:
-        from supabase import create_client  # type: ignore[import-not-found]
+        client = _get_auth_client(settings)
     except ImportError:
         raise HTTPException(status_code=503, detail="supabase package not installed")
 
-    client = create_client(settings.supabase_url, settings.supabase_service_role_key)
     try:
         auth_user = client.auth.get_user(token)
     except Exception:
@@ -89,6 +103,16 @@ require_any = get_current_user
 # ---------------------------------------------------------------------------
 # Gestora isolation helpers (SPEC guardrail 1)
 # ---------------------------------------------------------------------------
+
+def require_gestora(user: User) -> str:
+    """403 unless the client user belongs to a gestora. Returns its id.
+
+    Shared by the gestora-siloed client surfaces (chat, library) so the check
+    and its message live in one audited place."""
+    if not user.gestora_id:
+        raise HTTPException(status_code=403, detail="User has no gestora")
+    return user.gestora_id
+
 
 def gestora_of_request(db: dbmod.Database, request_row: dict[str, Any]) -> Optional[str]:
     fund = db.get("funds", request_row["fund_id"])

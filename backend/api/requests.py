@@ -277,11 +277,25 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
     "Compartido contigo" badge and hide owner-only actions."""
     db = dbmod.get_db()
     rows = db.unscoped_select("requests")
+
+    def enrich(listed: list[dict[str, Any]], funds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """fund_name/vehicle_name via bulk maps — the listing is the hottest
+        read path and the previous per-row db.get made it N+1."""
+        fund_names = {f["id"]: f.get("name") for f in funds}
+        vehicle_ids = {r["vehicle_id"] for r in listed if r.get("vehicle_id")}
+        vehicle_names = {vid: (db.get("vehicles", vid) or {}).get("name") for vid in vehicle_ids}
+        return [
+            {**r, "fund_name": fund_names.get(r.get("fund_id")),
+             "vehicle_name": vehicle_names.get(r.get("vehicle_id"))}
+            for r in listed
+        ]
+
     if user.role in (UserRole.counsel, UserRole.admin):
-        return [{**r, **_fund_name(db, r), **_vehicle_name(db, r)} for r in rows]
+        return enrich(rows, db.unscoped_select("funds"))
     # Client: requests they OWN, plus requests a same-gestora colleague SHARED
     # with them (collaboration). A request is private to its owner otherwise.
-    fund_ids = {f["id"] for f in db.select("funds", gestora_id=user.gestora_id)}
+    gestora_funds = db.select("funds", gestora_id=user.gestora_id)
+    fund_ids = {f["id"] for f in gestora_funds}
     shared_ids = {
         s["request_id"]
         for s in db.select("request_shares", shared_with_user_id=user.id)
@@ -293,7 +307,19 @@ async def list_requests(user: User = Depends(get_current_user)) -> Any:
         if r["fund_id"] in fund_ids
         and (is_request_owner(user, r) or r["id"] in shared_ids)
     ]
-    return [{**r, **_request_flags(db, user, r), **_fund_name(db, r), **_vehicle_name(db, r)} for r in visible]
+
+    def flags(row: dict[str, Any]) -> dict[str, Any]:
+        # Same output as _request_flags, reusing the shared_ids set fetched
+        # above instead of re-querying request+fund+shares per row.
+        owner = is_request_owner(user, row)
+        shared = (not owner) and row["id"] in shared_ids
+        shared_by_email = None
+        if shared:
+            owner_row = db.get("users", row.get("user_id")) if row.get("user_id") else None
+            shared_by_email = (owner_row or {}).get("email")
+        return {"is_owner": owner, "shared_with_me": shared, "shared_by_email": shared_by_email}
+
+    return [{**r, **flags(r)} for r in enrich(visible, gestora_funds)]
 
 
 @router.get("/{request_id}", response_model=RequestOut)

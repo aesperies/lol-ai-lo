@@ -263,23 +263,6 @@ export async function deleteTabularColumn(
   return mapTabularDetail(wire);
 }
 
-export async function deleteTabularDocument(
-  id: string,
-  documentId: string,
-): Promise<TabularReviewDetail> {
-  if (isStubMode()) {
-    return stubCall(async (stub) => {
-      await stub.delay(STUB_LATENCY / 2);
-      return stub.stubDeleteTabularDocument(id, documentId);
-    });
-  }
-  const wire = await apiFetch<TabularReviewDetailWire>(
-    apiPaths.tabularReviewDocument(id, documentId),
-    { method: "DELETE" },
-  );
-  return mapTabularDetail(wire);
-}
-
 /** CSV export of the grid (values only) as a Blob. */
 export async function downloadTabularReviewCsv(id: string): Promise<Blob> {
   if (isStubMode()) {

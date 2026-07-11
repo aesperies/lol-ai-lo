@@ -171,6 +171,20 @@ _ORDER_COLUMN_OVERRIDES = {
 }
 
 
+# Tables whose SQL schema has an updated_at trigger — DevStore mirrors it.
+_UPDATED_AT_TABLES = (
+    "requests", "generation_jobs", "tabular_reviews", "tabular_review_cells",
+    "gestora_model_config",
+)
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity (shared by DevStore ANN and rag's file fallback)."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
+    return dot / norm if norm else 0.0
+
+
 def _order_column(table: str) -> str:
     """Creation-time column used to keep select() ordering identical in both
     backends (callers rely on rows[-1] being the newest row)."""
@@ -195,7 +209,7 @@ class DevStore:
             # override column (timestamp / updated_at / computed_at / sent_at).
             row.setdefault(_order_column(table), _now())
             # Mirror the SQL updated_at trigger for every table that has one.
-            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells", "gestora_model_config"):
+            if table in _UPDATED_AT_TABLES:
                 row.setdefault("updated_at", _now())
             if table == "documents":
                 # Mirrors the SQL DEFAULT 0 (003_refinements.sql).
@@ -239,7 +253,7 @@ class DevStore:
             if row is None:
                 raise KeyError(f"{table}/{row_id} not found")
             row.update(fields)
-            if table in ("requests", "generation_jobs", "tabular_reviews", "tabular_review_cells", "gestora_model_config"):
+            if table in _UPDATED_AT_TABLES:
                 row["updated_at"] = _now()
             return dict(row)
 
@@ -263,11 +277,7 @@ class DevStore:
     ) -> list[dict[str, Any]]:
         """In-memory cosine ANN mirroring match_precedent_chunks (018/021)
         exactly — the contract suite asserts both backends rank identically."""
-
-        def cosine(a: list[float], b: list[float]) -> float:
-            dot = sum(x * y for x, y in zip(a, b))
-            norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
-            return dot / norm if norm else 0.0
+        cosine = cosine_similarity
 
         matches: list[dict[str, Any]] = []
         for row in self._table("precedent_chunks").values():

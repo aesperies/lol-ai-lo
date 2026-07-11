@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from api import client_ip
-from auth import require_client
+from auth import require_client, require_gestora
 from models.schema import (
     AuditAction,
     AuditResourceType,
@@ -37,12 +37,6 @@ from services.rate_limit import rate_limit
 logger = logging.getLogger("lolailo.chat")
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
-
-def _gestora_or_403(user: User) -> str:
-    if not user.gestora_id:
-        raise HTTPException(status_code=403, detail="User has no gestora")
-    return user.gestora_id
 
 
 def _own_conversation_or_404(
@@ -66,7 +60,7 @@ async def create_conversation(
     user: User = Depends(require_client),
 ) -> Any:
     db = dbmod.get_db()
-    gestora_id = _gestora_or_403(user)
+    gestora_id = require_gestora(user)
     return db.insert(
         "chat_conversations",
         {"gestora_id": gestora_id, "user_id": user.id, "title": body.title},
@@ -76,7 +70,7 @@ async def create_conversation(
 @router.get("/conversations", response_model=list[ChatConversationOut])
 async def list_conversations(user: User = Depends(require_client)) -> Any:
     db = dbmod.get_db()
-    gestora_id = _gestora_or_403(user)
+    gestora_id = require_gestora(user)
     rows = db.select("chat_conversations", gestora_id=gestora_id, user_id=user.id)
     return list(reversed(rows))  # newest-first
 

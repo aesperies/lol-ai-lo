@@ -22,7 +22,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
 from api import client_ip, validate_upload
-from auth import require_client
+from auth import require_client, require_gestora
 from models.schema import (
     AuditAction,
     AuditResourceType,
@@ -47,12 +47,6 @@ _STATUS_PRIORITY = [
 ]
 
 
-def _gestora_or_403(user: User) -> str:
-    if not user.gestora_id:
-        raise HTTPException(status_code=403, detail="User has no gestora")
-    return user.gestora_id
-
-
 def _representative_version(versions: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     """La versión que representa al precedente en la biblioteca: la activa;
     si no hay, el último borrador; si no, la última sustituida."""
@@ -72,21 +66,18 @@ async def my_library(user: User = Depends(require_client)) -> Any:
     trimestre / tipo a partir de fund_id + document_date (o created_at).
     """
     db = dbmod.get_db()
-    gestora_id = _gestora_or_403(user)
+    gestora_id = require_gestora(user)
 
     precedents = db.select("precedents", gestora_id=gestora_id)
     if not precedents:
         return []
-    wanted = {p["id"] for p in precedents}
-    versions_by_precedent: dict[str, list[dict[str, Any]]] = {}
-    for version in db.unscoped_select("precedent_versions"):
-        if version["precedent_id"] in wanted:
-            versions_by_precedent.setdefault(version["precedent_id"], []).append(version)
+    from api.precedents import _with_versions  # mismo bulk-join que la vista admin
+
     funds = {f["id"]: f for f in db.select("funds", gestora_id=gestora_id)}
 
     items: list[dict[str, Any]] = []
-    for precedent in precedents:
-        version = _representative_version(versions_by_precedent.get(precedent["id"], []))
+    for precedent in _with_versions(db, precedents):
+        version = _representative_version(precedent["versions"])
         fund = funds.get(precedent.get("fund_id") or "")
         items.append({
             "id": precedent["id"],
@@ -121,7 +112,7 @@ async def upload_document(
     activación) — el cliente enriquece, el admin cura.
     """
     db = dbmod.get_db()
-    gestora_id = _gestora_or_403(user)
+    gestora_id = require_gestora(user)
 
     if fund_id:
         fund = db.get("funds", fund_id)
