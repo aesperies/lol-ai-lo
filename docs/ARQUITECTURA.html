@@ -117,6 +117,98 @@
       validado enriquece la biblioteca de la gestora: el sistema mejora con el uso.</span></div>
     </div>
 
+    <h3 style="font-size:1rem;margin:1.6rem 0 .4rem">El flujo, en un vistazo</h3>
+    <svg width="100%" viewBox="0 0 680 530" role="img" style="max-width:760px;display:block;margin:0 auto"
+         font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+      <title>Cómo funciona Lol-AI-lo</title>
+      <desc>El cliente pide documentos, pregunta al chat o sube documentos. La IA trabaja solo con la
+      biblioteca de su gestora, un verificador independiente frena datos inventados, y el resultado es una
+      respuesta con citas o un documento que valida un abogado cuando hace falta. El documento validado
+      vuelve a la biblioteca.</desc>
+      <defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6"
+        orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+      <!-- Fila 1: acciones del cliente -->
+      <g>
+        <rect x="45" y="50" width="180" height="56" rx="6" fill="var(--client-soft)" stroke="var(--client)" stroke-width="1"/>
+        <text x="135" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="var(--client)">Pide un documento</text>
+        <text x="135" y="93" text-anchor="middle" font-size="12" fill="var(--client)">«necesito un NDA…»</text>
+      </g>
+      <g>
+        <rect x="250" y="50" width="185" height="56" rx="6" fill="var(--client-soft)" stroke="var(--client)" stroke-width="1"/>
+        <text x="342" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="var(--client)">Pregunta al chat</text>
+        <text x="342" y="93" text-anchor="middle" font-size="12" fill="var(--client)">«¿cuál es la comisión?»</text>
+      </g>
+      <g>
+        <rect x="460" y="50" width="175" height="56" rx="6" fill="var(--client-soft)" stroke="var(--client)" stroke-width="1"/>
+        <text x="547" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="var(--client)">Sube documentos</text>
+        <text x="547" y="93" text-anchor="middle" font-size="12" fill="var(--client)">Word o PDF</text>
+      </g>
+
+      <line x1="135" y1="106" x2="135" y2="162" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+      <line x1="342" y1="106" x2="342" y2="162" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+      <line x1="547" y1="106" x2="547" y2="162" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+
+      <!-- Fila 2: IA + biblioteca (aislamiento) -->
+      <g>
+        <rect x="45" y="170" width="390" height="64" rx="6" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1"/>
+        <text x="240" y="196" text-anchor="middle" font-size="14" font-weight="600" fill="var(--brand)">La IA de la plataforma</text>
+        <text x="240" y="217" text-anchor="middle" font-size="12" fill="var(--brand)">trabaja solo con esa biblioteca</text>
+      </g>
+      <g>
+        <rect x="475" y="170" width="160" height="64" rx="6" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1"/>
+        <text x="555" y="196" text-anchor="middle" font-size="14" font-weight="600" fill="var(--brand)">Biblioteca</text>
+        <text x="555" y="217" text-anchor="middle" font-size="12" fill="var(--brand)">su caja fuerte</text>
+      </g>
+      <line x1="443" y1="202" x2="467" y2="202" stroke="var(--ink-3)" stroke-width="1.5"
+        marker-start="url(#flow-arrow)" marker-end="url(#flow-arrow)"/>
+
+      <line x1="240" y1="234" x2="240" y2="282" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+
+      <!-- Fila 3: verificador -->
+      <g>
+        <rect x="45" y="290" width="390" height="56" rx="6" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1"/>
+        <text x="240" y="312" text-anchor="middle" font-size="14" font-weight="600" fill="var(--brand)">Verificador independiente</text>
+        <text x="240" y="333" text-anchor="middle" font-size="12" fill="var(--brand)">frena datos inventados</text>
+      </g>
+
+      <line x1="155" y1="346" x2="155" y2="402" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+      <line x1="387" y1="346" x2="387" y2="402" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+
+      <!-- Fila 4: salidas -->
+      <g>
+        <rect x="45" y="410" width="220" height="56" rx="6" fill="var(--client-soft)" stroke="var(--client)" stroke-width="1"/>
+        <text x="155" y="432" text-anchor="middle" font-size="14" font-weight="600" fill="var(--client)">Respuesta en el chat</text>
+        <text x="155" y="453" text-anchor="middle" font-size="12" fill="var(--client)">con citas a la fuente</text>
+      </g>
+      <g>
+        <rect x="295" y="410" width="185" height="56" rx="6" fill="var(--client-soft)" stroke="var(--client)" stroke-width="1"/>
+        <text x="387" y="432" text-anchor="middle" font-size="14" font-weight="600" fill="var(--client)">Documento listo</text>
+        <text x="387" y="453" text-anchor="middle" font-size="12" fill="var(--client)">con control de cambios</text>
+      </g>
+      <g>
+        <rect x="500" y="410" width="135" height="56" rx="6" fill="var(--counsel-soft)" stroke="var(--counsel)" stroke-width="1"/>
+        <text x="567" y="432" text-anchor="middle" font-size="14" font-weight="600" fill="var(--counsel)">Abogado</text>
+        <text x="567" y="453" text-anchor="middle" font-size="12" fill="var(--counsel)">si hace falta</text>
+      </g>
+      <line x1="484" y1="438" x2="494" y2="438" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#flow-arrow)"/>
+
+      <!-- Bucle de aprendizaje: validado → biblioteca -->
+      <line x1="567" y1="408" x2="567" y2="242" stroke="var(--ok)" stroke-width="1.5"
+        stroke-dasharray="5 4" marker-end="url(#flow-arrow)"/>
+
+      <!-- Leyenda -->
+      <rect x="60" y="494" width="12" height="12" rx="2" fill="var(--client-soft)" stroke="var(--client)"/>
+      <text x="78" y="504" font-size="12" fill="var(--ink-2)">El cliente</text>
+      <rect x="175" y="494" width="12" height="12" rx="2" fill="var(--brand-soft)" stroke="var(--brand)"/>
+      <text x="193" y="504" font-size="12" fill="var(--ink-2)">La plataforma</text>
+      <rect x="310" y="494" width="12" height="12" rx="2" fill="var(--counsel-soft)" stroke="var(--counsel)"/>
+      <text x="328" y="504" font-size="12" fill="var(--ink-2)">El abogado</text>
+      <line x1="425" y1="500" x2="450" y2="500" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="458" y="504" font-size="12" fill="var(--ink-2)">lo validado vuelve a la biblioteca</text>
+    </svg>
+
     <div class="trust">
       <div class="card"><b>🔒 Cada gestora, su caja fuerte</b><span>Los documentos de una gestora jamás se usan para otra:
       la separación se impone en la base de datos y en el código, no es una promesa. Cumplimiento RGPD (exportar y borrar
