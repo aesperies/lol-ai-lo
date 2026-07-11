@@ -29,3 +29,6 @@ storage/
 *.log
 .vercel
 .env*
+
+# Claude Code (configuración personal por máquina)
+.claude/settings.local.json
